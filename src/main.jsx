@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
-const VERSION = '1.3.13-v5.4.8-driver-ux'
+const VERSION = '1.3.14-v5.4.9-driver-safe-area'
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
@@ -603,8 +603,11 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 @media (max-width:900px){.week-grid{grid-template-columns:1fr}.driver-status-grid,.driver-mini-grid,.driver-actions{grid-template-columns:1fr}.compact-list{max-height:none}.modal-card{max-height:calc(100vh - 20px)}}
 
 /* v5.4.8 driver mobile priority UX */
+/* v5.4.9 TASK 1: driver PWA safe-area guard for iOS notch/Dynamic Island and Android status bar */
+.driver-app-shell .main{padding-top:calc(24px + env(safe-area-inset-top,0px));padding-right:max(24px,env(safe-area-inset-right,0px));padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));padding-left:max(24px,env(safe-area-inset-left,0px))}
+.driver-app-shell .sidebar{padding-right:max(22px,env(safe-area-inset-right,0px));padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(22px,env(safe-area-inset-left,0px))}
 .driver-priority-view{max-width:760px;margin:0 auto;display:grid;gap:14px}.driver-mobile-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:0}.driver-mobile-head div{display:grid;gap:2px;min-width:0}.driver-mobile-head span{color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}.driver-mobile-head b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.driver-mobile-head .ghost{padding:9px 12px;border-radius:14px}.driver-priority-view .driver-hero{margin-bottom:0}.driver-empty-focus{margin-bottom:0}.driver-quick-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none}.driver-quick-strip::-webkit-scrollbar{display:none}.quick-chip{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.055);color:var(--muted);padding:8px 10px;font-size:12px;font-weight:850;white-space:nowrap}.quick-chip.warn{color:#fff3c7;border-color:rgba(255,207,90,.45);background:rgba(255,207,90,.12)}.driver-open-shifts{margin-top:0}.driver-open-shifts summary{padding:14px 16px}.driver-open-shifts .collapse-content{padding:0 16px 16px}.driver-priority-view .driver-list-title{margin-top:4px}.driver-priority-view .driver-card-list{margin-top:0}
-@media (max-width:1000px){.driver-app-shell{display:flex;flex-direction:column}.driver-app-shell .main{order:1}.driver-app-shell .sidebar{order:2;border-right:0;border-top:1px solid var(--line)}.driver-app-shell .brand{margin-bottom:10px}.driver-app-shell .nav{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.driver-app-shell .compact-sidebox{margin-top:10px}}
+@media (max-width:1000px){.driver-app-shell{display:flex;flex-direction:column}.driver-app-shell .main{order:1}.driver-app-shell .sidebar{order:2;position:relative;top:auto;height:auto;max-height:none;overflow:visible;border-right:0;border-top:1px solid var(--line);padding-top:14px;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}.driver-app-shell .brand{margin-bottom:10px}.driver-app-shell .nav{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.driver-app-shell .compact-sidebox{margin-top:10px}}
 @media (max-width:640px){.driver-mobile-head .ghost{width:auto}.driver-priority-view{gap:12px}.driver-shift-head h3{font-size:34px}.driver-actions{grid-template-columns:1fr 1fr}.driver-actions button{min-height:48px}.driver-mini-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.driver-mini-grid .kpi{padding:10px}.driver-mini-grid .kpi .value{font-size:20px}.driver-open-shifts summary{align-items:flex-start}.driver-app-shell .nav button{padding:10px 8px;font-size:13px}}
 
 `
