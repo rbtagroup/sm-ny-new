@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
-const VERSION = '1.3.7-v5.4.2-delete-fix'
+const VERSION = '1.3.8-v5.4.3-driver-swap-fix'
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
@@ -247,10 +247,17 @@ async function sendPushForNotifications(notices) {
 async function syncChangedRows(prev, next, profile) {
   if (!supabase || !profile) return
   const isStaff = ['admin','dispatcher'].includes(profile.role)
-  const allowedForDriver = new Set(['shifts','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
+  const currentDriver = !isStaff ? (next.drivers || []).find((d) => d.profileId === profile.id || (d.email && profile.email && d.email.toLowerCase() === profile.email.toLowerCase())) : null
+  const currentDriverId = currentDriver?.id || '\n  const allowedForDriver = new Set(['shifts','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
   for (const key of ONLINE_TABLES) {
     if (!isStaff && !allowedForDriver.has(key)) continue
-    const rows = changedRows(prev[key], next[key]).map(toDb[key]).filter((r) => r.id)
+    let changed = changedRows(prev[key], next[key])
+    // Řidič při převzetí nabídnuté / volné směny mění lokálně i swapRequestStatus.
+    // Pokud směnu nevlastní, neposíláme update do tabulky shifts; ukládá se jen swap_requests.
+    if (!isStaff && key === 'shifts') {
+      changed = changed.filter((row) => row.driverId === currentDriverId)
+    }
+    const rows = changed.map(toDb[key]).filter((r) => r.id)
     if (rows.length) {
       const { error } = await supabase.from(tableName(key)).upsert(rows, { onConflict: 'id' })
       if (error) throw new Error(`${tableName(key)}: ${error.message}`)
