@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
-const VERSION = '1.3.10-v5.4.5-ux-cleanup'
+const VERSION = '1.3.11-v5.4.6-notify-interest-fix'
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
@@ -26,17 +26,28 @@ function addNotificationsToData(data, notices) {
   return { ...data, notifications: [...clean, ...(data.notifications || [])].slice(0, 500) }
 }
 function isNoticeVisible(notice, currentDriver, isDriver) {
-  if (!notice) return false
+  if (!notice || isNoticeDeleted(notice, currentDriver, isDriver)) return false
   if (!isDriver) return true
   if (notice.targetRole === 'all' || notice.targetRole === 'driver_all') return true
   return Boolean(currentDriver?.id && notice.targetDriverId === currentDriver.id)
 }
+function noticeUserKey(currentDriver, isDriver) {
+  return isDriver ? `driver:${currentDriver?.id || ''}` : 'admin'
+}
 function isNoticeRead(notice, currentDriver, isDriver) {
-  const key = isDriver ? `driver:${currentDriver?.id || ''}` : 'admin'
+  const key = noticeUserKey(currentDriver, isDriver)
+  return (notice.readBy || []).includes(key)
+}
+function isNoticeDeleted(notice, currentDriver, isDriver) {
+  const key = `deleted:${noticeUserKey(currentDriver, isDriver)}`
   return (notice.readBy || []).includes(key)
 }
 function markNoticeRead(notice, currentDriver, isDriver) {
-  const key = isDriver ? `driver:${currentDriver?.id || ''}` : 'admin'
+  const key = noticeUserKey(currentDriver, isDriver)
+  return { ...notice, readBy: [...new Set([...(notice.readBy || []), key])] }
+}
+function markNoticeDeleted(notice, currentDriver, isDriver) {
+  const key = `deleted:${noticeUserKey(currentDriver, isDriver)}`
   return { ...notice, readBy: [...new Set([...(notice.readBy || []), key])] }
 }
 function urlBase64ToUint8Array(base64String) {
@@ -255,31 +266,38 @@ async function syncChangedRows(prev, next, profile) {
   const currentDriver = !isStaff ? (next.drivers || []).find((d) => d.profileId === profile.id || (d.email && profile.email && d.email.toLowerCase() === profile.email.toLowerCase())) : null
   const currentDriverId = currentDriver?.id || ''
   const allowedForDriver = new Set(['shifts','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
+  const errors = []
+  const critical = new Set(['shifts','swapRequests','notifications','pushSubscriptions'])
   for (const key of ONLINE_TABLES) {
     if (!isStaff && !allowedForDriver.has(key)) continue
     let changed = changedRows(prev[key], next[key])
-    // Řidič při převzetí nabídnuté / volné směny mění lokálně i swapRequestStatus.
-    // Pokud směnu nevlastní, neposíláme update do tabulky shifts; ukládá se jen swap_requests.
-    if (!isStaff && key === 'shifts') {
-      changed = changed.filter((row) => row.driverId === currentDriverId)
-    }
+    // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
+    if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId)
     const rows = changed.map(toDb[key]).filter((r) => r.id)
     if (rows.length) {
       const { error } = await supabase.from(tableName(key)).upsert(rows, { onConflict: 'id' })
-      if (error) throw new Error(`${tableName(key)}: ${error.message}`)
+      if (error) {
+        errors.push(`${tableName(key)}: ${error.message}`)
+        if (critical.has(key)) throw new Error(errors.join('\n'))
+      }
     }
     if (isStaff) {
       const nextIds = new Set((next[key] || []).map((x) => x.id))
       const removed = (prev[key] || []).filter((x) => x.id && !nextIds.has(x.id)).map((x) => x.id)
       if (removed.length) {
         const { error } = await supabase.from(tableName(key)).delete().in('id', removed)
-        if (error) throw new Error(`${tableName(key)} delete: ${error.message}`)
+        if (error) {
+          errors.push(`${tableName(key)} delete: ${error.message}`)
+          if (critical.has(key)) throw new Error(errors.join('\n'))
+        }
       }
     }
   }
   if (isStaff && JSON.stringify(prev.settings || {}) !== JSON.stringify(next.settings || {})) {
-    await supabase.from('app_settings').upsert({ id: 'default', payload: next.settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    const { error } = await supabase.from('app_settings').upsert({ id: 'default', payload: next.settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) errors.push(`app_settings: ${error.message}`)
   }
+  if (errors.length) throw new Error(errors.join('\n'))
 }
 async function seedSupabaseFromLocal(localData) {
   if (!supabase) return
@@ -441,6 +459,7 @@ function readinessChecks(data, helpers, weekStart = startOfWeek(todayISO())) {
   const conflicts = activeWeek.flatMap((s) => helpers.conflictMessages(s).map((message) => ({ shift: s, message })))
   const gaps = coverageGaps(data, weekStart)
   const pendingSwaps = (data.swapRequests || []).filter((r) => ['pending','accepted'].includes(r.status))
+  const openInterests = pendingSwaps.filter((r) => r.targetMode === 'open')
   const waiting = week.filter((s) => ['draft', 'assigned'].includes(s.status))
   const declined = week.filter((s) => s.status === 'declined')
   const runningOld = (data.shifts || []).filter((s) => s.actualStartAt && !s.actualEndAt && s.date < todayISO())
@@ -887,15 +906,16 @@ function DayColumn({ day, shifts, data, helpers, commit, setEditing, setSelected
   return <div className={`day ${day === todayISO() ? 'today' : ''}`}>
     <h4><span>{formatDate(day)}</span><button className="ghost" style={{ padding: '6px 8px', borderRadius: 10 }} onClick={() => copyDay(day)}>kopírovat</button></h4>
     <span className="mobile-day-head">{items.length ? `${items.length} směn` : 'volno'}</span>
-    {items.map((s) => <ShiftMini key={s.id} shift={s} helpers={helpers} commit={commit} setEditing={setEditing} setSelected={setSelected} />)}
+    {items.map((s) => <ShiftMini key={s.id} shift={s} data={data} helpers={helpers} commit={commit} setEditing={setEditing} setSelected={setSelected} />)}
     {!items.length && <div className="empty" style={{ padding: 14 }}>Bez směn</div>}
   </div>
 }
-function ShiftMini({ shift, helpers, commit, setEditing, setSelected }) {
+function ShiftMini({ shift, data, helpers, commit, setEditing, setSelected }) {
   const [open, setOpen] = useState(false)
   const conflicts = helpers.conflictMessages(shift)
   const status = shift.status === 'confirmed' || shift.status === 'completed' ? 'goodline' : conflicts.length ? 'badline' : ''
   const pendingSwap = ['pending','accepted'].includes(shift.swapRequestStatus)
+  const openInterestCount = (data.swapRequests || []).filter((r) => r.shiftId === shift.id && r.targetMode === 'open' && ['pending','accepted'].includes(r.status)).length
   const setStatus = (id, status, reason = '') => {
     if (!confirmPastChange(shift)) return
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, status, declineReason: reason } : s) }, statusNoticeForShift({ ...shift, status, declineReason: reason }, status, helpers, reason)), `Změněn stav směny na ${statusMap[status]}.`)
@@ -920,8 +940,9 @@ function ShiftMini({ shift, helpers, commit, setEditing, setSelected }) {
       <span className="shift-summary-main"><b>{shift.start}–{shift.end}</b><span>{helpers.driverName(shift.driverId)}</span></span>
       <span className="shift-summary-side"><StatusPill status={shift.status} helpers={helpers} /><small>{open ? 'Sbalit' : 'Rozbalit'}</small></span>
     </button>
-    {(pendingSwap || conflicts.length > 0) && <div className="compact-flags">
+    {(pendingSwap || openInterestCount > 0 || conflicts.length > 0) && <div className="compact-flags">
       {pendingSwap && <span className="pill warn">žádost o výměnu</span>}
+      {openInterestCount > 0 && <span className="pill good">{openInterestCount} zájemců</span>}
       {conflicts.length > 0 && <span className="pill bad">{conflicts.length} kolize</span>}
     </div>}
     {open && <>
@@ -1305,7 +1326,7 @@ function DriverHome({ data, helpers, commit, currentDriver }) {
       makeNotice({ title: 'Kolega přijal výměnu', body: `${currentDriver?.name || 'Kolega'} přijal nabídku směny ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetRole: 'admin', type: 'swap-accepted', shiftId: shift.id }),
       makeNotice({ title: 'Kolega přijal tvoji nabídku', body: `${currentDriver?.name || 'Kolega'} chce převzít tvoji směnu ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetDriverId: request.driverId, type: 'swap-accepted', shiftId: shift.id }),
     ]
-    commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'accepted', acceptedByDriverId: currentDriver?.id, acceptedAt: new Date().toISOString() }, `${currentDriver?.name || 'Kolega'} chce směnu převzít.`) : r), shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'accepted' } : s) }, notices), `${currentDriver?.name || 'Řidič'} přijal nabídku výměny směny.`)
+    commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'accepted', acceptedByDriverId: currentDriver?.id, acceptedAt: new Date().toISOString() }, `${currentDriver?.name || 'Kolega'} chce směnu převzít.`) : r) }, notices), `${currentDriver?.name || 'Řidič'} přijal nabídku výměny směny.`)
   }
   const applyForOpenShift = (shift) => {
     if (!currentDriver?.id) return alert('Řidičský profil není propojený.')
@@ -1319,7 +1340,7 @@ function DriverHome({ data, helpers, commit, currentDriver }) {
       makeNotice({ title: 'Zájem o volnou směnu', body: `${currentDriver.name} se hlásí na ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetRole: 'admin', type: 'open-shift-interest', shiftId: shift.id }),
       makeNotice({ title: 'Zájem odeslán', body: `${formatDate(shift.date)} ${shift.start}–${shift.end} čeká na schválení dispečerem.`, targetDriverId: currentDriver.id, type: 'open-shift-interest-sent', shiftId: shift.id }),
     ]
-    commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver.name} projevil zájem o volnou směnu.`)
+    commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])] }, notices), `${currentDriver.name} projevil zájem o volnou směnu.`)
   }
   const decline = (shift) => { const reason = prompt('Důvod odmítnutí:', shift.declineReason || ''); if (reason !== null) setStatus(shift.id, 'declined', reason || '') }
   const DriverActions = ({ shift, compact = false }) => {
@@ -1435,9 +1456,9 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
   const visible = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver))
   const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver))
   const markOne = (id) => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označena jako přečtená.')
-  const deleteOne = (id) => safeDelete('notifikace') && commit((prev) => ({ ...prev, notifications: (prev.notifications || []).filter((n) => n.id !== id) }), 'Smazána notifikace.')
+  const deleteOne = (id) => safeDelete('notifikace') && commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Notifikace skryta.')
   const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => isNoticeVisible(n, currentDriver, isDriver) ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označeny jako přečtené.')
-  const clearRead = () => safeDelete('smazání přečtených notifikací') && commit((prev) => ({ ...prev, notifications: (prev.notifications || []).filter((n) => !isNoticeVisible(n, currentDriver, isDriver) || !isNoticeRead(n, currentDriver, isDriver)) }), 'Smazány přečtené notifikace.')
+  const clearRead = () => safeDelete('smazání přečtených notifikací') && commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => isNoticeVisible(n, currentDriver, isDriver) && isNoticeRead(n, currentDriver, isDriver) ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Přečtené notifikace skryty.')
   return <>
     <PageTitle title="Notifikace" subtitle="Směny, změny, výměny a provozní upozornění.">
       <button className="ghost" onClick={markAll}>Označit vše jako přečtené</button>

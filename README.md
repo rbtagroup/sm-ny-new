@@ -4,7 +4,7 @@ Stabilizační verze zaměřená na geometrii dispečerské aplikace, přehledno
 
 Nově:
 
-- verze aplikace `1.3.10-v5.4.5-ux-cleanup`
+- verze aplikace `1.3.11-v5.4.6-notify-interest-fix`
 - kalendář směn zobrazuje **2 týdny pod sebou**
 - opravené přesahy v týdenním plánu
 - sekce **Chybí obsazení** je rozbalovací
@@ -48,3 +48,12 @@ npm run build
 ## Vercel / Supabase
 
 Ponech stávající proměnné ve Vercelu. Tato verze nemění VAPID ani Supabase připojení.
+
+
+## v5.4.6 – oprava notifikací a zájmů o volné směny
+
+- zájem o volnou směnu se ukládá jen do `swap_requests`, nezkouší upravovat cizí/open směnu
+- převzetí nabídnuté směny řidičem se ukládá jen do `swap_requests`; samotnou směnu převádí až dispečer/admin
+- notifikace se při mazání skryjí pro daného uživatele přes `read_by`, nemažou se globálně
+- karta směny v týdenním plánu ukazuje počet zájemců o volnou směnu
+- build ověřen přes `npm run build`
