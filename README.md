@@ -1,25 +1,36 @@
-# RBSHIFT v5.4.1 – mobilní režim řidiče
+# RBSHIFT v5.4.5 – UX cleanup dispečinku
 
-Tato verze navazuje na v5.3.1 a zaměřuje se na praktické používání aplikace řidičem na mobilu.
+Stabilizační verze zaměřená na geometrii dispečerské aplikace, přehlednost dvou-týdenního plánu a odstranění zbytečných doprovodných textů.
 
-Obsahuje:
+Nově:
 
-- online režim přes Supabase Auth a databázi
-- push notifikace přes Vercel backend
-- živou synchronizaci přes Supabase Realtime
-- automatický fallback polling každých 8 sekund, pokud Realtime v prohlížeči vypadne
-- zrušení směny jako stav **Zrušeno** včetně notifikace řidiči
-- potvrzení / odmítnutí směny bez ručního refresh dispečera
-- výměny směn bez ručního refresh
-- finální RLS patch v `supabase/rls-final-fix.sql`
-- samostatný realtime patch v `supabase/realtime-live-sync-fix.sql`
-- šablonu pro založení adminů, dispečerů, řidičů a aut v `supabase/seed-users-template.sql`
-- nový čistý mobilní pohled řidiče **Moje směny**
-- velká akční tlačítka: potvrdit, nastoupit, ukončit, výměna, odmítnout
-- upozornění na chybějící push zařízení přímo v řidičském režimu
-- přehled aktivních zařízení pro push notifikace
-- možnost odebrat staré zařízení z push notifikací
-- návod pro iPhone přímo u nastavení notifikací
+- verze aplikace `1.3.10-v5.4.5-ux-cleanup`
+- kalendář směn zobrazuje **2 týdny pod sebou**
+- opravené přesahy v týdenním plánu
+- sekce **Chybí obsazení** je rozbalovací
+- sekce **Kolize k řešení** je rozbalovací
+- výchozí směny: **Denní 07:00–19:00**, **Noční 19:00–07:00**
+- časy směn lze upravit v Nastavení
+- Audit provozu je zjednodušený a rozbalovací
+- odstraněné provozně zbytečné texty o Supabase/datovém modelu
+- Notifikace mají u každé položky tlačítko **Smazat**
+- Dostupnost řidiče lze zadat opakovaně podle dne v týdnu nebo na konkrétní datum a čas
+- Historie změn je zkrácená, starší záznamy jsou rozbalovací
+- řidičský režim má méně rušivý panel úložiště
+
+## Důležité po nasazení
+
+Pokud chceš používat dostupnost na konkrétní datum, spusť v Supabase SQL Editoru:
+
+```text
+supabase/ux-cleanup-v5-4-5.sql
+```
+
+Nebo spusť celý aktualizovaný:
+
+```text
+supabase/rls-final-fix.sql
+```
 
 ## Lokální spuštění
 
@@ -34,71 +45,6 @@ npm run dev
 npm run build
 ```
 
-## Vercel Environment Variables
+## Vercel / Supabase
 
-Ve Vercelu nastav tyto proměnné:
-
-```env
-VITE_SUPABASE_URL=https://tvuj-projekt.supabase.co
-VITE_SUPABASE_ANON_KEY=tvuj-anon-public-key
-VITE_VAPID_PUBLIC_KEY=tvuj-public-vapid-key
-
-SUPABASE_URL=https://tvuj-projekt.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=tvuj-service-role-key
-VAPID_PUBLIC_KEY=tvuj-public-vapid-key
-VAPID_PRIVATE_KEY=tvuj-private-vapid-key
-VAPID_SUBJECT=mailto:prace@rbgroup.cz
-```
-
-Důležité: `SUPABASE_SERVICE_ROLE_KEY` nikdy nedávej do proměnné začínající `VITE_`. Je pouze pro serverovou Vercel funkci.
-
-Po změně proměnných udělej ve Vercelu `Redeploy`.
-
-## VAPID klíče
-
-V projektu po `npm install` můžeš vygenerovat klíče:
-
-```bash
-npm run generate:vapid
-```
-
-Výstup:
-
-```text
-Public Key  → VITE_VAPID_PUBLIC_KEY a VAPID_PUBLIC_KEY
-Private Key → VAPID_PRIVATE_KEY
-```
-
-## Doporučený test po nasazení
-
-1. Řidič otevře aplikaci na mobilu.
-2. V záložce Notifikace povolí zařízení.
-3. Admin vytvoří novou směnu.
-4. Řidič dostane push a uvidí ji v **Moje směny**.
-5. Řidič směnu potvrdí.
-6. Dispečer/admin vidí stav bez refresh.
-7. Řidič provede `Nastoupil jsem` a později `Ukončit směnu`.
-8. Řidič vyzkouší výměnu směny.
-
-
-
-## v5.4.1 – Volné směny
-
-Nově lze vytvořit směnu bez řidiče a bez auta. Aplikace ji uloží jako `Volná směna`, pošle push notifikaci všem aktivním řidičům a řidiči se na ni mohou přihlásit tlačítkem `Mám zájem`.
-
-Po nasazení v5.4.1 do existující Supabase databáze spusť:
-
-```sql
-supabase/open-shifts-v5-4-1.sql
-```
-
-Nebo znovu spusť celý:
-
-```sql
-supabase/rls-final-fix.sql
-```
-
-
-## v5.4.4 – automatické potvrzení převzaté směny
-
-Po schválení výměny nebo volné směny dispečerem se směna automaticky převede na nového řidiče a nastaví do stavu `confirmed`. Řidič už ji nemusí potvrzovat podruhé.
+Ponech stávající proměnné ve Vercelu. Tato verze nemění VAPID ani Supabase připojení.
