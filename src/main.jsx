@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
-const VERSION = '1.3.15-v5.5.0-driver-refactor'
+const VERSION = '1.3.16-v5.5.1-driver-fix1'
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
@@ -1478,7 +1478,7 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
       {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
       {s.note && <p className="muted driver-note">{s.note}</p>}
       {(s.actualStartAt || s.actualEndAt) ? <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div> : <div className="driver-info-line">Začněte směnu kliknutím na „Nastoupil jsem“.</div>}
-      <ConflictBox messages={helpers.conflictMessages(s)} />
+      <ConflictBox messages={helpers.conflictMessages(s).filter((message) => !(message === 'Není vybrané vozidlo.' && !vehicle))} />
       {['pending','accepted'].includes(s.swapRequestStatus) && <div className="alert warn">Žádost o výměnu je odeslaná a čeká na admina.</div>}
       {s.declineReason && <p className="muted">Důvod odmítnutí: {s.declineReason}</p>}
       <DriverActions shift={s} compact={!focusCard} />
