@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
-const VERSION = '1.3.14-v5.4.9-driver-safe-area'
+const VERSION = '1.3.15-v5.5.0-driver-refactor'
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
@@ -49,6 +49,10 @@ function markNoticeRead(notice, currentDriver, isDriver) {
 function markNoticeDeleted(notice, currentDriver, isDriver) {
   const key = `deleted:${noticeUserKey(currentDriver, isDriver)}`
   return { ...notice, readBy: [...new Set([...(notice.readBy || []), key])] }
+}
+function unmarkNoticeDeleted(notice, currentDriver, isDriver) {
+  const key = `deleted:${noticeUserKey(currentDriver, isDriver)}`
+  return { ...notice, readBy: (notice.readBy || []).filter((x) => x !== key) }
 }
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4)
@@ -608,6 +612,11 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 .driver-app-shell .sidebar{padding-right:max(22px,env(safe-area-inset-right,0px));padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(22px,env(safe-area-inset-left,0px))}
 .driver-priority-view{max-width:760px;margin:0 auto;display:grid;gap:14px}.driver-mobile-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:0}.driver-mobile-head div{display:grid;gap:2px;min-width:0}.driver-mobile-head span{color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}.driver-mobile-head b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.driver-mobile-head .ghost{padding:9px 12px;border-radius:14px}.driver-priority-view .driver-hero{margin-bottom:0}.driver-empty-focus{margin-bottom:0}.driver-quick-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none}.driver-quick-strip::-webkit-scrollbar{display:none}.quick-chip{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.055);color:var(--muted);padding:8px 10px;font-size:12px;font-weight:850;white-space:nowrap}.quick-chip.warn{color:#fff3c7;border-color:rgba(255,207,90,.45);background:rgba(255,207,90,.12)}.driver-open-shifts{margin-top:0}.driver-open-shifts summary{padding:14px 16px}.driver-open-shifts .collapse-content{padding:0 16px 16px}.driver-priority-view .driver-list-title{margin-top:4px}.driver-priority-view .driver-card-list{margin-top:0}
 @media (max-width:1000px){.driver-app-shell{display:flex;flex-direction:column}.driver-app-shell .main{order:1}.driver-app-shell .sidebar{order:2;position:relative;top:auto;height:auto;max-height:none;overflow:visible;border-right:0;border-top:1px solid var(--line);padding-top:14px;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}.driver-app-shell .brand{margin-bottom:10px}.driver-app-shell .nav{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.driver-app-shell .compact-sidebox{margin-top:10px}}
+/* v5.5.0 driver-only refactor: IA, bottom nav, safe-area, compact UX */
+.driver-shell-v2{min-height:100vh;min-height:100dvh;background:inherit;color:var(--text);padding-bottom:calc(82px + env(safe-area-inset-bottom,0px));overflow-x:hidden}
+.driver-topbar-v2{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(10px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));background:rgba(8,17,31,.92);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+.driver-topbar-brand{display:flex;align-items:center;gap:10px;min-width:0}.driver-topbar-brand strong{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.driver-topbar-brand small{display:block;color:var(--muted);font-size:12px}.compact-logo{width:38px;height:38px;border-radius:14px;flex:0 0 auto}.driver-main-v2{width:100%;max-width:820px;margin:0 auto;padding:14px max(14px,env(safe-area-inset-right,0px)) 18px max(14px,env(safe-area-inset-left,0px));overflow-x:hidden}.driver-bottom-nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px max(10px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(10px,env(safe-area-inset-left,0px));background:rgba(8,17,31,.96);border-top:1px solid var(--line);backdrop-filter:blur(18px)}.driver-bottom-nav button{position:relative;border:1px solid transparent;background:transparent;color:var(--muted);border-radius:14px;padding:8px 4px 7px;display:grid;gap:2px;place-items:center}.driver-bottom-nav button span{font-size:17px;line-height:1}.driver-bottom-nav button b{font-size:11px}.driver-bottom-nav button.active{color:var(--text);background:rgba(255,255,255,.065);border-color:var(--line)}.driver-bottom-nav em{position:absolute;top:2px;right:12px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:rgba(255,207,90,.95);color:#07101d;font-style:normal;font-size:11px;font-weight:950;display:grid;place-items:center}.driver-priority-view{gap:12px}.driver-info-line{border:1px dashed rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;color:var(--muted);background:rgba(255,255,255,.035);font-size:13px}.driver-calendar-card{overflow:hidden}.driver-week-block{display:grid;gap:8px;margin-top:12px}.driver-week-title{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.04em}.driver-week-title span{text-transform:none;letter-spacing:0;font-weight:700}.driver-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.driver-day{min-width:0;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.045);color:var(--text);padding:8px 3px;display:grid;place-items:center;gap:2px}.driver-day b{font-size:10px;color:var(--muted)}.driver-day strong{font-size:16px}.driver-day small{min-height:14px;color:var(--gold);font-weight:950;letter-spacing:1px}.driver-day.today{outline:2px solid rgba(245,199,106,.45);background:rgba(245,199,106,.10)}.driver-calendar-legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:10px 0}.toast-undo{position:sticky;top:calc(54px + env(safe-area-inset-top,0px));z-index:18;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:rgba(8,17,31,.94);box-shadow:var(--shadow);margin-bottom:12px}.notification-row{overflow:hidden}.driver-settings-view{display:grid;gap:14px}.driver-settings-view .topbar{margin-bottom:0}
+@media (max-width:640px){.driver-main-v2{padding-top:12px}.driver-shift-head h3{font-size:32px}.driver-week-grid{gap:4px}.driver-day{border-radius:12px;padding:7px 2px}.driver-day strong{font-size:15px}.driver-actions{grid-template-columns:1fr 1fr}.driver-bottom-nav{gap:4px}.driver-bottom-nav button b{font-size:10px}}
 @media (max-width:640px){.driver-mobile-head .ghost{width:auto}.driver-priority-view{gap:12px}.driver-shift-head h3{font-size:34px}.driver-actions{grid-template-columns:1fr 1fr}.driver-actions button{min-height:48px}.driver-mini-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.driver-mini-grid .kpi{padding:10px}.driver-mini-grid .kpi .value{font-size:20px}.driver-open-shifts summary{align-items:flex-start}.driver-app-shell .nav button{padding:10px 8px;font-size:13px}}
 
 `
@@ -738,33 +747,46 @@ function App({ session = null, profile = null, signOut = null }) {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => null)
   }, [])
   useEffect(() => {
-    if (isDriver && !['driver', 'notifications', 'availability'].includes(page)) setPage('driver')
+    if (isDriver && !['driver', 'notifications', 'availability', 'driverSettings'].includes(page)) setPage('driver')
     if (!isDriver && page === 'driver') setPage('planner')
     if (role === 'dispatcher' && page === 'settings') setPage('planner')
   }, [isDriver, page])
 
+  const unreadForCurrent = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver) && !isNoticeRead(n, currentDriver, isDriver)).length
   const nav = isDriver
-    ? [['driver', 'Moje směny'], ['notifications', 'Notifikace'], ['availability', 'Dostupnost']]
+    ? [['driver', 'Domů', '⌂'], ['availability', 'Dostupnost', '◷'], ['notifications', 'Notifikace', '●'], ['driverSettings', 'Settings', '⚙']]
     : role === 'dispatcher'
       ? [['planner', 'Týdenní plán'], ['dashboard', 'Dashboard'], ['audit', 'Audit provozu'], ['notifications', 'Notifikace'], ['shifts', 'Seznam směn'], ['drivers', 'Řidiči'], ['vehicles', 'Vozidla'], ['availability', 'Dostupnost'], ['history', 'Historie']]
       : [['planner', 'Týdenní plán'], ['dashboard', 'Dashboard'], ['audit', 'Audit provozu'], ['notifications', 'Notifikace'], ['shifts', 'Seznam směn'], ['drivers', 'Řidiči'], ['vehicles', 'Vozidla'], ['availability', 'Dostupnost'], ['history', 'Historie'], ['settings', 'Nastavení']]
 
-  return <div className={isDriver ? 'app driver-app-shell' : 'app'}>
+  if (isDriver) return <div className="driver-shell-v2">
+    <header className="driver-topbar-v2">
+      <div className="driver-topbar-brand"><div className="logo compact-logo">RB</div><div><strong>{currentDriver?.name || 'Řidič'}</strong><small>{onlineMode ? 'Online' : 'Demo'}</small></div></div>
+      <span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online ●' : 'Demo'}</span>
+    </header>
+    <main className="driver-main-v2">
+      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} onOpenNotifications={() => setPage('notifications')} />}
+      {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} />}
+      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} />}
+      {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} onlineMode={onlineMode} signOut={signOut} syncState={syncState} />}
+    </main>
+    <nav className="driver-bottom-nav" aria-label="Řidičská navigace">
+      {nav.map(([key, label, icon]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span>{icon}</span><b>{label}</b>{key === 'notifications' && unreadForCurrent > 0 && <em>{unreadForCurrent}</em>}</button>)}
+    </nav>
+  </div>
+
+  return <div className="app">
     <aside className="sidebar">
-      <div className="brand"><div className="logo">RB</div><div><h1>{data.settings?.companyName || 'RBSHIFT'}</h1><small>{isDriver ? ((currentDriver?.name || 'Řidič') + ' · v' + VERSION) : ('Taxi směny · v' + VERSION)}</small></div></div>
-      {!isDriver && <div className="sidebox"><label>Role aplikace</label>{onlineMode ? <div className="pill good">{roleMap[role] || role}</div> : <select value={role} onChange={(e) => setRole(e.target.value)}>{Object.entries(roleMap).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>}</div>}
-      {isDriver && !onlineMode && <div className="sidebox compact-sidebox"><select value={currentDriver?.id || ''} onChange={(e) => setCurrentDriverId(e.target.value)}>{data.drivers.filter((d) => d.active).map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></div>}
-      {!isDriver && <div className="sidebox"><div className="split"><span className="muted">Nepřečtené notifikace</span><span className={(data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver) && !isNoticeRead(n, currentDriver, isDriver)).length ? 'pill warn' : 'pill good'}>{(data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver) && !isNoticeRead(n, currentDriver, isDriver)).length}</span></div></div>}
+      <div className="brand"><div className="logo">RB</div><div><h1>{data.settings?.companyName || 'RBSHIFT'}</h1><small>{'Taxi směny · v' + VERSION}</small></div></div>
+      <div className="sidebox"><label>Role aplikace</label>{onlineMode ? <div className="pill good">{roleMap[role] || role}</div> : <select value={role} onChange={(e) => setRole(e.target.value)}>{Object.entries(roleMap).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>}</div>
+      <div className="sidebox"><div className="split"><span className="muted">Nepřečtené notifikace</span><span className={unreadForCurrent ? 'pill warn' : 'pill good'}>{unreadForCurrent}</span></div></div>
       <nav className="nav">{nav.map(([key, label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}>{label}</button>)}</nav>
-      {isDriver ? <div className="sidebox compact-sidebox">
-        <div className="split"><span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online' : 'Demo'}</span>{onlineMode && <button onClick={signOut}>Odhlásit</button>}</div>
-        {syncState?.error && <p className="hintline danger-mini-text">{syncState.error}</p>}
-      </div> : <div className="sidebox">
+      <div className="sidebox">
         <div className="split"><span className="muted">Uložiště</span><span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Supabase online' : 'Demo / localStorage'}</span></div>
         {onlineMode ? <p className="muted" style={{ marginBottom: 0 }}>{syncState?.saving ? 'Ukládám změny…' : syncState?.lastSyncAt ? `Synchronizováno ${new Date(syncState.lastSyncAt).toLocaleTimeString('cs-CZ')}` : 'Online režim aktivní.'}</p> : <p className="muted" style={{ marginBottom: 0 }}>Demo režim.</p>}
         {syncState?.error && <p className="hintline danger-mini-text">{syncState.error}</p>}
         {onlineMode && <div className="row-actions" style={{ marginTop: 10 }}><button onClick={reloadOnline}>Načíst z DB</button><button onClick={signOut}>Odhlásit</button></div>}
-      </div>}
+      </div>
     </aside>
     <main className="main">
       {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} />}
@@ -774,10 +796,9 @@ function App({ session = null, profile = null, signOut = null }) {
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
       {page === 'drivers' && <Drivers data={data} commit={commit} />}
       {page === 'vehicles' && <Vehicles data={data} commit={commit} />}
-      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={isDriver ? currentDriver : null} />}
+      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={null} />}
       {page === 'history' && <History data={data} />}
       {page === 'settings' && <Settings data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} />}
-      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} />}
     </main>
   </div>
 }
@@ -1300,7 +1321,7 @@ function Vehicles({ data, commit }) {
 function Availability({ data, commit, currentDriver }) {
   const firstDriverId = currentDriver?.id || data.drivers[0]?.id || ''
   const [absence, setAbsence] = useState({ driverId: firstDriverId, from: todayISO(), to: todayISO(), reason: '' })
-  const [slot, setSlot] = useState({ driverId: firstDriverId, mode: 'range', fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), weekday: 1, start: '07:00', end: '19:00', note: '' })
+  const [slot, setSlot] = useState({ driverId: firstDriverId, mode: 'range', kind: 'available', fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), weekday: 1, start: '07:00', end: '19:00', note: '' })
   useEffect(() => {
     if (currentDriver?.id) {
       setAbsence((f) => ({ ...f, driverId: currentDriver.id }))
@@ -1318,9 +1339,10 @@ function Availability({ data, commit, currentDriver }) {
   const submitSlot = (e) => {
     e.preventDefault()
     if (!slot.driverId) return alert('Vyber řidiče.')
+    const availabilityNote = `[${slot.kind}] ${slot.note || ""}`.trim()
     const payload = slot.mode === 'range'
-      ? { id: uid('av'), driverId: slot.driverId, fromAt: slot.fromAt, toAt: slot.toAt, date: '', weekday: '', start: timePart(slot.fromAt), end: timePart(slot.toAt), note: slot.note }
-      : { id: uid('av'), driverId: slot.driverId, fromAt: '', toAt: '', date: '', weekday: Number(slot.weekday), start: slot.start, end: slot.end, note: slot.note }
+      ? { id: uid('av'), driverId: slot.driverId, fromAt: slot.fromAt, toAt: slot.toAt, date: '', weekday: '', start: timePart(slot.fromAt), end: timePart(slot.toAt), note: availabilityNote }
+      : { id: uid('av'), driverId: slot.driverId, fromAt: '', toAt: '', date: '', weekday: Number(slot.weekday), start: slot.start, end: slot.end, note: availabilityNote }
     if (slot.mode === 'range' && (!slot.fromAt || !slot.toAt)) return alert('Vyplň datum a čas od/do.')
     if (slot.mode === 'range' && new Date(slot.toAt) <= new Date(slot.fromAt)) return alert('Čas Do musí být později než Od.')
     commit((prev) => ({ ...prev, availability: [payload, ...(prev.availability || [])] }), 'Přidána dostupnost řidiče.')
@@ -1333,7 +1355,7 @@ function Availability({ data, commit, currentDriver }) {
     <div className="grid two">
       <div className="card"><h3>Nová dostupnost</h3><form className="form two-col" onSubmit={submitSlot}>
         <DriverSelect value={slot.driverId} onChange={(v) => setSlot({ ...slot, driverId: v })} />
-        <Field label="Typ"><select value={slot.mode} onChange={(e) => setSlot({ ...slot, mode: e.target.value })}><option value="range">Konkrétní rozsah od–do</option><option value="weekly">Opakovaně každý týden</option></select></Field>
+        <Field label="Typ"><select value={slot.mode} onChange={(e) => setSlot({ ...slot, mode: e.target.value })}><option value="range">Konkrétní rozsah od–do</option><option value="weekly">Opakovaně každý týden</option></select></Field><Field label="Stav"><select value={slot.kind} onChange={(e) => setSlot({ ...slot, kind: e.target.value })}><option value="available">Dostupný</option><option value="unavailable">Nedostupný</option><option value="preferred">Preferuji</option></select></Field>
         {slot.mode === 'range' ? <>
           <Field label="Od"><input type="datetime-local" value={slot.fromAt} onChange={(e) => setSlot({ ...slot, fromAt: e.target.value })} /></Field>
           <Field label="Do"><input type="datetime-local" value={slot.toAt} onChange={(e) => setSlot({ ...slot, toAt: e.target.value })} /></Field>
@@ -1361,13 +1383,12 @@ function Availability({ data, commit, currentDriver }) {
 }
 
 
-function DriverHome({ data, helpers, commit, currentDriver }) {
+function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications }) {
   const shifts = sortByDateTime(data.shifts.filter((s) => s.driverId === currentDriver?.id && s.date >= todayISO() && s.status !== 'cancelled')).slice(0, 30)
   const openShifts = sortByDateTime((data.shifts || []).filter((s) => s.status === 'open' && !s.driverId && s.date >= todayISO())).slice(0, 30)
   const myOpenInterests = (data.swapRequests || []).filter((r) => r.targetMode === 'open' && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
   const visibleNotices = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, true))
   const unreadNotices = visibleNotices.filter((n) => !isNoticeRead(n, currentDriver, true))
-  const myDevices = (data.pushSubscriptions || []).filter((p) => p.active !== false && p.driverId === currentDriver?.id)
   const awaiting = shifts.filter((s) => s.status === 'assigned' || s.status === 'draft')
   const running = shifts.find((s) => s.actualStartAt && !s.actualEndAt)
   const todayShift = shifts.find((x) => x.date === todayISO())
@@ -1387,30 +1408,24 @@ function DriverHome({ data, helpers, commit, currentDriver }) {
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, shift ? adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}`, 'attendance-end', id) : null), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
   }
   const requestSwap = (shift) => {
-    if (['cancelled', 'completed'].includes(shift.status)) return alert('Tuto směnu už nelze nabídnout k výměně.')
     const colleagues = data.drivers.filter((d) => d.active && d.id !== currentDriver?.id)
-    const targetRaw = prompt(`Komu nabídnout výměnu?\nNapiš VŠEM nebo jméno kolegy.\nKolegové: ${colleagues.map((d) => d.name).join(', ')}`, 'VŠEM')
-    if (targetRaw === null) return
-    const normalized = targetRaw.trim().toLowerCase()
+    const input = prompt('Komu nabídnout výměnu? Napiš VŠEM nebo jméno kolegy:', 'VŠEM')
+    if (input === null) return
+    const reason = prompt('Důvod / poznámka k výměně:', '') || ''
+    const normalized = input.trim().toLowerCase()
     const targetDriver = normalized && !['vsem', 'všem', 'all', '*'].includes(normalized) ? colleagues.find((d) => d.name.toLowerCase().includes(normalized)) : null
-    if (normalized && !['vsem', 'všem', 'all', '*'].includes(normalized) && !targetDriver) return alert('Kolegu jsem nenašel. Zadej přesné jméno nebo napiš VŠEM.')
-    const reason = prompt('Důvod žádosti / zpráva pro kolegy:', '')
-    if (reason === null) return
+    if (normalized && !targetDriver && !['vsem', 'všem', 'all', '*'].includes(normalized)) return alert('Kolega nebyl nalezený. Zkus přesnější jméno nebo napiš VŠEM.')
     const request = { id: uid('swap'), shiftId: shift.id, driverId: currentDriver?.id, reason, status: 'pending', targetMode: targetDriver ? 'driver' : 'all', targetDriverId: targetDriver?.id || '', acceptedByDriverId: '', acceptedAt: '', createdAt: new Date().toISOString(), history: [{ at: new Date().toISOString(), text: targetDriver ? `Nabídnuto kolegovi ${targetDriver.name}.` : 'Nabídnuto všem kolegům.' }] }
     const targetIds = targetDriver ? [targetDriver.id] : colleagues.map((d) => d.id)
-    const notices = [
-      makeNotice({ title: 'Nová žádost o výměnu', body: `${currentDriver?.name || 'Řidič'} nabízí směnu ${formatDate(shift.date)} ${shift.start}–${shift.end}${targetDriver ? ` pro: ${targetDriver.name}` : ' všem kolegům'}.`, targetRole: 'admin', type: 'swap-request', shiftId: shift.id }),
-      ...targetIds.map((id) => makeNotice({ title: 'Nabídka výměny směny', body: `${formatDate(shift.date)} ${shift.start}–${shift.end} · ${helpers.vehicleName(shift.vehicleId)}. ${reason || ''}`, targetDriverId: id, type: 'swap-offer', shiftId: shift.id })),
-    ]
-    commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver?.name || 'Řidič'} nabídl výměnu směny ${targetDriver ? `kolegovi ${targetDriver.name}` : 'všem kolegům'}.`)
+    const notices = targetIds.map((id) => makeNotice({ title: 'Nabídka výměny směny', body: `${currentDriver?.name || 'Kolega'} nabízí směnu ${formatDate(shift.date)} ${shift.start}–${shift.end}.${reason ? ` Důvod: ${reason}` : ''}`, targetDriverId: id, type: 'swap-offer', shiftId: shift.id }))
+    notices.push(adminNotice('Nová žádost o výměnu směny', `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}`, 'swap-request', shift.id))
+    commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver?.name || 'Řidič'} požádal o výměnu směny.`)
   }
   const cancelSwap = (shift) => {
     const activeReq = (data.swapRequests || []).find((r) => r.shiftId === shift.id && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
-    if (!activeReq) return alert('U této směny nemáš aktivní žádost o výměnu.')
-    if (!confirm('Zrušit žádost o výměnu této směny?')) return
+    if (!activeReq || !confirm('Zrušit žádost o výměnu?')) return
     const notices = [adminNotice('Řidič zrušil žádost o výměnu', `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}`, 'swap-cancelled', shift.id)]
-    if (activeReq.acceptedByDriverId) notices.push(makeNotice({ title: 'Výměna byla zrušena', body: `${formatDate(shift.date)} ${shift.start}–${shift.end}`, targetDriverId: activeReq.acceptedByDriverId, type: 'swap-cancelled', shiftId: shift.id }))
-    commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === activeReq.id ? appendSwapHistory({ ...r, status: 'cancelled', cancelledAt: new Date().toISOString(), resolvedAt: new Date().toISOString() }, 'Řidič žádost zrušil.') : r), shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'cancelled' } : s) }, notices), `${currentDriver?.name || 'Řidič'} zrušil žádost o výměnu.`)
+    commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === activeReq.id ? appendSwapHistory({ ...r, status: 'cancelled', cancelledAt: new Date().toISOString() }, 'Řidič žádost zrušil.') : r), shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'cancelled' } : s) }, notices), `${currentDriver?.name || 'Řidič'} zrušil žádost o výměnu.`)
   }
   const incomingSwaps = (data.swapRequests || []).filter((r) => r.status === 'pending' && r.driverId !== currentDriver?.id && (r.targetMode === 'all' || r.targetDriverId === currentDriver?.id))
     .map((r) => ({ request: r, shift: data.shifts.find((s) => s.id === r.shiftId) }))
@@ -1459,10 +1474,10 @@ function DriverHome({ data, helpers, commit, currentDriver }) {
     const duration = actualDurationMinutes(s)
     const vehicle = helpers.vehicle(s.vehicleId)
     return <div className={focusCard ? 'card driver-hero' : 'card driver-shift-card'}>
-      <div className="driver-shift-head"><div><span className="driver-date">{formatDate(s.date)}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name || 'Bez vozu'} · {vehicle?.plate || 'SPZ nezadaná'}</p></div><StatusPill status={s.status} helpers={helpers} /></div>
+      <div className="driver-shift-head"><div><span className="driver-date">{formatDate(s.date)}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><StatusPill status={s.status} helpers={helpers} /></div>
       {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
       {s.note && <p className="muted driver-note">{s.note}</p>}
-      <div className="driver-mini-grid"><Kpi label="Nástup" value={s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} hint={s.actualStartAt ? 'zaznamenáno' : 'čeká'} /><Kpi label="Konec" value={s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} hint={s.actualEndAt ? 'hotovo' : 'čeká'} /><Kpi label="Reál" value={durationLabel(duration)} hint="docházka" /></div>
+      {(s.actualStartAt || s.actualEndAt) ? <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div> : <div className="driver-info-line">Začněte směnu kliknutím na „Nastoupil jsem“.</div>}
       <ConflictBox messages={helpers.conflictMessages(s)} />
       {['pending','accepted'].includes(s.swapRequestStatus) && <div className="alert warn">Žádost o výměnu je odeslaná a čeká na admina.</div>}
       {s.declineReason && <p className="muted">Důvod odmítnutí: {s.declineReason}</p>}
@@ -1471,17 +1486,59 @@ function DriverHome({ data, helpers, commit, currentDriver }) {
   }
   const otherShifts = shifts.filter((s) => s.id !== focus?.id)
   return <div className="driver-view driver-mobile-view driver-priority-view">
-    <div className="driver-mobile-head"><div><span>Řidič</span><b>{currentDriver?.name || 'Nepřiřazený profil'}</b></div><button className="ghost" onClick={() => copyText(driverText(data, helpers, currentDriver?.id))}>Kopírovat směny</button></div>
-    {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty driver-empty-focus">Nemáš žádnou dnešní ani budoucí směnu.</div>}
-    <div className="driver-quick-strip" aria-label="Rychlý přehled"><span className={awaiting.length ? 'quick-chip warn' : 'quick-chip'}>⏳ {awaiting.length} čeká</span><span className={unreadNotices.length ? 'quick-chip warn' : 'quick-chip'}>🔔 {unreadNotices.length} nové</span><span className={openShifts.length ? 'quick-chip warn' : 'quick-chip'}>➕ {openShifts.length} volné</span><span className={incomingSwaps.length ? 'quick-chip warn' : 'quick-chip'}>↔ {incomingSwaps.length} výměny</span></div>
+    {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty driver-empty-focus"><b>Žádná nadcházející směna</b><br /><span className="muted">Zkontroluj volné směny níže nebo počkej na přiřazení od dispečera.</span></div>}
+    <div className="driver-quick-strip" aria-label="Rychlý přehled"><span className={awaiting.length ? 'quick-chip warn' : 'quick-chip'}>⏳ {awaiting.length} čeká</span><span className={unreadNotices.length ? 'quick-chip warn' : 'quick-chip'} onClick={onOpenNotifications}>🔔 {unreadNotices.length} nové</span><span className={openShifts.length ? 'quick-chip warn' : 'quick-chip'}>➕ {openShifts.length} volné</span><span className={incomingSwaps.length ? 'quick-chip warn' : 'quick-chip'}>↔ {incomingSwaps.length} výměny</span></div>
+    {awaiting.length > 0 && <details className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
     <details className="card driver-offers collapse-card driver-open-shifts"><summary><span><b>Zobrazit volné směny ({openShifts.length})</b><small>Nabídky, na které se můžeš přihlásit</small></span><span className={openShifts.length ? 'pill warn' : 'pill'}>{openShifts.length}</span></summary><div className="collapse-content"><div className="stack">{openShifts.map((shift) => { const interested = myOpenInterests.some((r) => r.shiftId === shift.id); return <div className="alert warn" key={shift.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />{helpers.vehicleName(shift.vehicleId)} · {shift.note || 'Volná směna k obsazení'}<br />{shift.instruction && <small>Instrukce: {shift.instruction}</small>}<div className="row-actions" style={{ marginTop: 8 }}>{interested ? <span className="pill good">Zájem odeslán</span> : <button onClick={() => applyForOpenShift(shift)}>Mám zájem</button>}</div></div> })}{!openShifts.length && <div className="empty">Momentálně nejsou žádné volné směny.</div>}</div></div></details>
     {incomingSwaps.length > 0 && <div className="card driver-offers"><div className="section-title"><h3>Nabídnuté výměny pro mě</h3><span className="pill warn">{incomingSwaps.length}</span></div><div className="stack">{incomingSwaps.map(({ request, shift }) => <div className="alert warn" key={request.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />Nabízí: {helpers.driverName(request.driverId)} · {helpers.vehicleName(shift.vehicleId)}<br /><small>{request.reason || 'Bez zprávy'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => acceptSwap(request)}>Chci převzít směnu</button></div></div>)}</div></div>}
     <div className="section-title driver-list-title"><h3>Moje další směny</h3><span className="pill">{otherShifts.length}</span></div>
     <div className="driver-card-list">{otherShifts.map((s) => <ShiftMobileCard s={s} key={s.id} />)}{!otherShifts.length && <div className="empty">Nemáš další plánované směny.</div>}</div>
+    <details className="card collapse-card driver-open-shifts"><summary><span><b>Notifikace ({unreadNotices.length})</b><small>Poslední nepřečtená upozornění</small></span><span className={unreadNotices.length ? 'pill warn' : 'pill good'}>{unreadNotices.length}</span></summary><div className="collapse-content stack">{unreadNotices.slice(0, 3).map((n) => <div className="alert warn" key={n.id}><b>{n.title}</b><br /><small>{n.body || 'Bez detailu'}</small></div>)}{!unreadNotices.length && <div className="empty">Nemáš nepřečtené notifikace.</div>}<button className="ghost" onClick={onOpenNotifications}>Otevřít notifikace</button></div></details>
+    <DriverTwoWeekCalendar shifts={shifts} openShifts={openShifts} helpers={helpers} />
+  </div>
+}
+function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
+  const [selectedDay, setSelectedDay] = useState('')
+  const weekStart = startOfWeek(todayISO())
+  const dayRows = [0, 7].map((offset) => Array.from({ length: 7 }, (_, i) => addDays(weekStart, offset + i)))
+  const dayItems = (day) => [
+    ...shifts.filter((s) => s.date === day).map((s) => ({ type: s.status === 'confirmed' ? 'confirmed' : 'own', label: `${s.start}–${s.end} · ${statusMap[s.status] || s.status}` })),
+    ...openShifts.filter((s) => s.date === day).map((s) => ({ type: 'open', label: `${s.start}–${s.end} · volná směna` })),
+  ]
+  return <div className="card driver-calendar-card">
+    <div className="section-title"><h3>Kalendář 2 týdny</h3><span className="pill">view</span></div>
+    {dayRows.map((days, rowIndex) => <div className="driver-week-block" key={rowIndex}>
+      <div className="driver-week-title">{rowIndex === 0 ? 'Tento týden' : 'Příští týden'} <span>{formatDate(days[0])} – {formatDate(days[6])}</span></div>
+      <div className="driver-week-grid">{days.map((day) => {
+        const items = dayItems(day)
+        return <button key={day} className={day === todayISO() ? 'driver-day today' : 'driver-day'} onClick={() => setSelectedDay(selectedDay === day ? '' : day)}>
+          <b>{weekdayMap[new Date(day).getDay()]?.slice(0,2)}</b><strong>{Number(day.slice(8,10))}</strong><small>{items.some((x) => x.type === 'open') ? '•' : ''}{items.some((x) => x.type === 'confirmed') ? '●' : ''}{items.some((x) => x.type === 'own') && !items.some((x) => x.type === 'confirmed') ? '◦' : ''}</small>
+        </button>
+      })}</div>
+    </div>)}
+    <div className="driver-calendar-legend"><span>• volná</span><span>● potvrzená</span><span>◦ ostatní moje</span></div>
+    {selectedDay && <div className="alert good"><b>{formatDate(selectedDay)}</b><br />{dayItems(selectedDay).length ? dayItems(selectedDay).map((x, i) => <div key={i}>{x.label}</div>) : <span>Bez směn.</span>}</div>}
   </div>
 }
 
-
+function DriverSettings({ data, commit, currentDriver, profile, onlineMode, signOut, syncState }) {
+  const devices = (data.pushSubscriptions || []).filter((p) => p.active !== false && p.driverId === currentDriver?.id)
+  const removeDevice = (id) => safeDelete('push zařízení') && commit((prev) => ({ ...prev, pushSubscriptions: (prev.pushSubscriptions || []).map((p) => p.id === id ? { ...p, active: false } : p) }), 'Push zařízení bylo odhlášeno.')
+  return <div className="driver-settings-view">
+    <PageTitle title="Settings" />
+    <div className="card"><div className="section-title"><h3>Účet</h3><span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online' : 'Demo'}</span></div>
+      <div className="compact-list"><div className="log"><b>{currentDriver?.name || profile?.full_name || 'Řidič'}</b><br /><span className="muted">{currentDriver?.email || profile?.email || 'Email nezadaný'}</span>{currentDriver?.phone && <><br /><span className="muted">{currentDriver.phone}</span></>}</div></div>
+    </div>
+    <div className="card"><div className="section-title"><h3>Notifikace</h3><span className="pill">{devices.length}</span></div><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} /></div>
+    <details className="card collapse-card"><summary><span><b>Diagnostika</b><small>Zařízení a verze aplikace</small></span><span className="pill">{devices.length}</span></summary><div className="collapse-content stack">
+      {devices.map((d) => <div className="log" key={d.id}><b>{d.platform?.slice(0, 60) || 'Zařízení'}</b><br /><small className="muted">Aktivní push zařízení</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeDevice(d.id)}>Odhlásit zařízení</button></div></div>)}
+      {!devices.length && <div className="empty">Žádné aktivní push zařízení.</div>}
+      <div className="log"><b>Verze app</b><br /><span className="muted">v{VERSION}</span></div>
+      {syncState?.error && <div className="alert warn">{syncState.error}</div>}
+    </div></details>
+    <div className="card"><button className="danger" onClick={signOut}>Odhlásit</button></div>
+  </div>
+}
 function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
   const [permission, setPermission] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'))
   const [status, setStatus] = useState('')
@@ -1552,39 +1609,44 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
 function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile }) {
   const visible = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver))
   const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver))
+  const [undoItem, setUndoItem] = useState(null)
   const markOne = (id) => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označena jako přečtená.')
-  const deleteOne = (id) => safeDelete('notifikace') && commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Notifikace skryta.')
+  const deleteOne = (id) => {
+    const original = visible.find((n) => n.id === id)
+    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Notifikace skryta.')
+    if (original) {
+      setUndoItem(original)
+      setTimeout(() => setUndoItem((item) => item?.id === id ? null : item), 5000)
+    }
+  }
+  const undoDelete = () => {
+    if (!undoItem) return
+    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === undoItem.id ? unmarkNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Smazání notifikace vráceno zpět.')
+    setUndoItem(null)
+  }
   const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => isNoticeVisible(n, currentDriver, isDriver) ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označeny jako přečtené.')
   const clearRead = () => safeDelete('smazání přečtených notifikací') && commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => isNoticeVisible(n, currentDriver, isDriver) && isNoticeRead(n, currentDriver, isDriver) ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Přečtené notifikace skryty.')
   return <>
-    <PageTitle title="Notifikace" subtitle="Směny, změny, výměny a provozní upozornění.">
+    <PageTitle title="Notifikace">
       <button className="ghost" onClick={markAll}>Označit vše jako přečtené</button>
       <button className="danger" onClick={clearRead}>Smazat přečtené</button>
     </PageTitle>
-    <div className="grid kpis compact-kpis" style={{ marginBottom: 16 }}>
-      <Kpi label="Viditelné" value={visible.length} hint={isDriver ? 'pro tohoto řidiče' : 'admin/dispečer'} />
-      <Kpi label="Nepřečtené" value={unread.length} hint="vyžaduje pozornost" kind={unread.length ? 'warn' : 'good'} />
-      <Kpi label="Zařízení" value={(data.pushSubscriptions || []).filter((p) => p.active !== false).length} hint="aktivní push" />
-      <Kpi label="Režim" value={import.meta.env.VITE_VAPID_PUBLIC_KEY ? 'push' : 'demo'} hint="VAPID + Vercel API" />
-    </div>
-    <div className="grid two">
-      <div className="card"><div className="section-title"><h3>Centrum upozornění</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div><div className="stack">
-        {visible.map((n) => {
-          const read = isNoticeRead(n, currentDriver, isDriver)
-          return <div className={read ? 'log' : 'alert warn'} key={n.id}>
-            <div className="split"><div><b>{n.title}</b><br /><small className="muted">{new Date(n.at).toLocaleString('cs-CZ')} · {n.type || 'info'}</small></div>{!read && <span className="pill warn">nové</span>}</div>
-            <p>{n.body || 'Bez detailu'}</p>
-            {n.shiftId && <small className="muted">Směna: {n.shiftId}</small>}
-            <div className="row-actions" style={{ marginTop: 8 }}>
-              {!read && <button onClick={() => markOne(n.id)}>Přečteno</button>}
-              <button className="danger-mini" onClick={() => deleteOne(n.id)}>Smazat</button>
-            </div>
+    {undoItem && <div className="toast-undo"><span>Notifikace smazána.</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
+    <div className="card"><div className="section-title"><h3>Centrum upozornění</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div><div className="stack">
+      {visible.map((n) => {
+        const read = isNoticeRead(n, currentDriver, isDriver)
+        return <div className={read ? 'log notification-row' : 'alert warn notification-row'} key={n.id}>
+          <div className="split"><div><b>{n.title}</b><br /><small className="muted">{new Date(n.at).toLocaleString('cs-CZ')}</small></div>{!read && <span className="pill warn">nové</span>}</div>
+          <p>{n.body || 'Bez detailu'}</p>
+          <div className="row-actions" style={{ marginTop: 8 }}>
+            {!read && <button onClick={() => markOne(n.id)}>Přečteno</button>}
+            <button className="danger-mini" onClick={() => deleteOne(n.id)}>Smazat</button>
           </div>
-        })}
-        {!visible.length && <div className="empty">Zatím žádné notifikace.</div>}
-      </div></div>
-      <div className="stack"><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} /></div>
-    </div>
+        </div>
+      })}
+      {!visible.length && <div className="empty">Zatím žádné notifikace.</div>}
+    </div></div>
+    {!isDriver && <div className="stack" style={{ marginTop: 16 }}><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} /></div>}
   </>
 }
 
