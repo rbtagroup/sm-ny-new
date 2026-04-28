@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
-const VERSION = '1.3.11-v5.4.6-notify-interest-fix'
+const VERSION = '1.3.12-v5.4.7-senior-refactor'
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
@@ -195,7 +195,7 @@ const toDb = {
   vehicles: (v) => stripUndefined({ id: normalizeId(v.id, 'car'), name: v.name || '', plate: v.plate || '', active: v.active !== false, note: v.note || null }),
   shifts: (s) => stripUndefined({ id: normalizeId(s.id, 'sh'), shift_date: s.date, start_time: s.start || '00:00', end_time: s.end || '00:00', driver_id: s.driverId || null, vehicle_id: s.vehicleId || null, type: s.type || 'day', status: s.status || 'assigned', note: s.note || null, instruction: s.instruction || null, decline_reason: s.declineReason || null, actual_start_at: s.actualStartAt || null, actual_end_at: s.actualEndAt || null, swap_request_status: s.swapRequestStatus || null }),
   absences: (a) => stripUndefined({ id: normalizeId(a.id, 'abs'), driver_id: a.driverId, from_date: a.from, to_date: a.to, reason: a.reason || null }),
-  availability: (a) => stripUndefined({ id: normalizeId(a.id, 'av'), driver_id: a.driverId, weekday: a.date ? null : Number(a.weekday || 0), avail_date: a.date || null, start_time: a.start || '00:00', end_time: a.end || '23:59', note: a.note || null }),
+  availability: (a) => stripUndefined({ id: normalizeId(a.id, 'av'), driver_id: a.driverId, weekday: a.fromAt ? null : (a.date ? null : Number(a.weekday || 0)), avail_date: a.fromAt ? null : (a.date || null), from_at: a.fromAt || null, to_at: a.toAt || null, start_time: a.start || timePart(a.fromAt) || '00:00', end_time: a.end || timePart(a.toAt) || '23:59', note: a.note || null }),
   serviceBlocks: (b) => stripUndefined({ id: normalizeId(b.id, 'srv'), vehicle_id: b.vehicleId, from_date: b.from, to_date: b.to, reason: b.reason || null }),
   swapRequests: (r) => stripUndefined({ id: normalizeId(r.id, 'swap'), shift_id: r.shiftId, driver_id: r.driverId, target_mode: r.targetMode || 'all', target_driver_id: r.targetDriverId || null, accepted_by_driver_id: r.acceptedByDriverId || null, approved_driver_id: r.approvedDriverId || null, status: r.status || 'pending', reason: r.reason || null, rejected_reason: r.rejectedReason || null, history: r.history || [], created_at: r.createdAt || new Date().toISOString(), accepted_at: r.acceptedAt || null, resolved_at: r.resolvedAt || null, cancelled_at: r.cancelledAt || null }),
   notifications: (n) => stripUndefined({ id: normalizeId(n.id, 'ntf'), target_driver_id: n.targetDriverId || null, target_role: n.targetRole || 'admin', type: n.type || 'info', shift_id: n.shiftId || null, title: n.title || '', body: n.body || null, read_by: n.readBy || [], created_at: n.at || n.createdAt || new Date().toISOString() }),
@@ -207,7 +207,7 @@ const fromDb = {
   vehicles: (v) => ({ id: v.id, name: v.name || '', plate: v.plate || '', active: v.active !== false, note: v.note || '' }),
   shifts: (s) => ({ id: s.id, date: s.shift_date, start: String(s.start_time || '').slice(0,5), end: String(s.end_time || '').slice(0,5), driverId: s.driver_id || '', vehicleId: s.vehicle_id || '', type: s.type || 'day', status: s.status || 'assigned', note: s.note || '', instruction: s.instruction || '', declineReason: s.decline_reason || '', actualStartAt: s.actual_start_at || '', actualEndAt: s.actual_end_at || '', swapRequestStatus: s.swap_request_status || '' }),
   absences: (a) => ({ id: a.id, driverId: a.driver_id, from: a.from_date, to: a.to_date, reason: a.reason || '' }),
-  availability: (a) => ({ id: a.id, driverId: a.driver_id, weekday: a.weekday === null || a.weekday === undefined ? '' : Number(a.weekday), date: a.avail_date || '', start: String(a.start_time || '').slice(0,5), end: String(a.end_time || '').slice(0,5), note: a.note || '' }),
+  availability: (a) => ({ id: a.id, driverId: a.driver_id, weekday: a.weekday === null || a.weekday === undefined ? '' : Number(a.weekday), date: a.avail_date || '', fromAt: a.from_at ? String(a.from_at).slice(0,16) : '', toAt: a.to_at ? String(a.to_at).slice(0,16) : '', start: String(a.start_time || '').slice(0,5), end: String(a.end_time || '').slice(0,5), note: a.note || '' }),
   serviceBlocks: (b) => ({ id: b.id, vehicleId: b.vehicle_id, from: b.from_date, to: b.to_date, reason: b.reason || '' }),
   swapRequests: (r) => ({ id: r.id, shiftId: r.shift_id, driverId: r.driver_id, targetMode: r.target_mode || 'all', targetDriverId: r.target_driver_id || '', acceptedByDriverId: r.accepted_by_driver_id || '', approvedDriverId: r.approved_driver_id || '', status: r.status || 'pending', reason: r.reason || '', rejectedReason: r.rejected_reason || '', history: r.history || [], createdAt: r.created_at, acceptedAt: r.accepted_at || '', resolvedAt: r.resolved_at || '', cancelledAt: r.cancelled_at || '' }),
   notifications: (n) => ({ id: n.id, at: n.created_at, title: n.title || '', body: n.body || '', targetDriverId: n.target_driver_id || '', targetRole: n.target_role || 'admin', type: n.type || 'info', shiftId: n.shift_id || '', readBy: n.read_by || [] }),
@@ -367,7 +367,7 @@ function readStore() {
       vehicles: parsed.vehicles || base.vehicles,
       shifts: (parsed.shifts || base.shifts).map((s) => ({ declineReason: '', instruction: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '', ...s })),
       absences: parsed.absences || [],
-      availability: parsed.availability || base.availability || [],
+      availability: (parsed.availability || base.availability || []).map((a) => ({ fromAt: '', toAt: '', ...a })),
       serviceBlocks: parsed.serviceBlocks || [],
       swapRequests: (parsed.swapRequests || []).map((r) => ({ targetMode: 'all', targetDriverId: '', acceptedByDriverId: '', acceptedAt: '', resolvedAt: '', approvedDriverId: '', rejectedReason: '', cancelledAt: '', history: [], ...r })),
       notifications: parsed.notifications || [],
@@ -440,6 +440,35 @@ function durationLabel(minutesTotal) {
   const h = Math.floor(minutesTotal / 60)
   const m = minutesTotal % 60
   return h + ' h ' + m + ' min'
+}
+function datetimeLocal(date = todayISO(), value = '07:00') { return `${date}T${value}` }
+function datePart(value) { return value ? String(value).slice(0, 10) : '' }
+function timePart(value) { return value ? String(value).slice(11, 16) : '' }
+function formatDateTime(value) {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
+}
+function availabilityLabel(slot) {
+  if (slot.fromAt || slot.toAt) return `${formatDateTime(slot.fromAt)} → ${formatDateTime(slot.toAt)}`
+  return `${slot.date ? formatDate(slot.date) : weekdayMap[slot.weekday]} ${slot.start}–${slot.end}`
+}
+function availabilityRelevantToShift(slot, shift) {
+  if (slot.fromAt || slot.toAt) {
+    const fromDate = datePart(slot.fromAt)
+    const toDate = datePart(slot.toAt || slot.fromAt)
+    return fromDate && toDate && dateInRange(shift.date, fromDate, toDate)
+  }
+  return slot.date ? slot.date === shift.date : Number(slot.weekday) === weekdayOf(shift.date)
+}
+function availabilityCoversShift(slot, shift) {
+  if (slot.fromAt || slot.toAt) {
+    if (!slot.fromAt || !slot.toAt) return false
+    const [s1, s2] = intervalForShift(shift)
+    const a1 = new Date(slot.fromAt).getTime()
+    const a2 = new Date(slot.toAt).getTime()
+    return Number.isFinite(a1) && Number.isFinite(a2) && a1 <= s1 && s2 <= a2
+  }
+  return overlapsTimeWindow(shift.start, shift.end, slot.start, slot.end)
 }
 
 function plannedDurationMinutes(shift) {
@@ -568,6 +597,11 @@ const css = `
 @media (max-width:1350px){.drawer-grid{grid-template-columns:1fr}.sticky-card{position:relative;top:auto;max-height:none}.week-grid{grid-template-columns:repeat(7,minmax(112px,1fr))}.day{min-height:170px}.shift-summary{display:grid}.shift-summary-side{align-items:flex-start}.compact-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.week-grid{grid-template-columns:1fr}.week-block-title{display:grid}.compact-kpis{grid-template-columns:1fr}.driver-status-grid,.driver-mini-grid,.driver-actions{grid-template-columns:1fr}.planner-filter{grid-template-columns:1fr}}
 
+/* v5.4.7 senior layout/refactor */
+html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-grid,.calendar-card,.week-block,.week-grid,.day,.shift-card,.table-wrap{min-width:0;max-width:100%}.main{overflow:hidden}.table-wrap{max-width:100%;overflow:auto}.week-grid{width:100%;overflow:hidden}.shift-summary{width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:0;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.shift-summary-main,.shift-summary-side{display:grid;gap:4px;min-width:0}.shift-summary-main span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.compact-flags{display:flex;gap:6px;flex-wrap:wrap}.modal-backdrop{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.58);display:grid;place-items:center;padding:18px}.modal-card{width:min(720px,100%);max-height:calc(100vh - 36px);overflow:auto}.compact-list{max-height:calc(100vh - 240px);overflow:auto;padding-right:4px}.compact-note{margin:8px 0 0}.driver-status-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}.driver-card-list,.driver-offers{margin-top:16px}.driver-shift-card{border-color:rgba(245,199,106,.25)}.driver-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.driver-mini-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.soft-primary{background:rgba(72,213,151,.18);color:#d8fff0;border-color:rgba(72,213,151,.45)}
+@media (max-width:1350px){.drawer-grid{grid-template-columns:1fr}.sticky-card{position:relative;top:auto;max-height:none}.week-grid{grid-template-columns:repeat(7,minmax(96px,1fr));overflow:hidden}.day{min-height:170px}.compact-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:900px){.week-grid{grid-template-columns:1fr}.driver-status-grid,.driver-mini-grid,.driver-actions{grid-template-columns:1fr}.compact-list{max-height:none}.modal-card{max-height:calc(100vh - 20px)}}
+
 `
 function installStyles() {
   if (document.getElementById('rbshift-style')) return
@@ -668,8 +702,8 @@ function buildHelpers(data) {
     if (shift.vehicleId) data.serviceBlocks.forEach((s) => {
       if (s.vehicleId === shift.vehicleId && dateInRange(shift.date, s.from, s.to)) conflicts.push(`Vozidlo ${vehicleName(shift.vehicleId)} je blokované: ${s.reason || 'servis'}.`)
     })
-    const availability = shift.driverId ? (data.availability || []).filter((a) => a.driverId === shift.driverId && (a.date ? a.date === shift.date : Number(a.weekday) === weekdayOf(shift.date))) : []
-    if (availability.length && !availability.some((a) => overlapsTimeWindow(shift.start, shift.end, a.start, a.end))) {
+    const availability = shift.driverId ? (data.availability || []).filter((a) => a.driverId === shift.driverId && availabilityRelevantToShift(a, shift)) : []
+    if (availability.length && !availability.some((a) => availabilityCoversShift(a, shift))) {
       conflicts.push(`Řidič ${driverName(shift.driverId)} nemá v tomto čase zadanou dostupnost.`)
     }
     return [...new Set(conflicts)]
@@ -711,7 +745,7 @@ function App({ session = null, profile = null, signOut = null }) {
     <aside className="sidebar">
       <div className="brand"><div className="logo">RB</div><div><h1>{data.settings?.companyName || 'RBSHIFT'}</h1><small>Taxi směny · v{VERSION}</small></div></div>
       <div className="sidebox"><label>Role aplikace</label>{onlineMode ? <div className="pill good">{roleMap[role] || role}</div> : <select value={role} onChange={(e) => setRole(e.target.value)}>{Object.entries(roleMap).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>}</div>
-      {isDriver && <div className="sidebox"><label>Aktuální řidič</label>{onlineMode ? <div className="pill">{currentDriver?.name || 'Profil řidiče není propojený'}</div> : <select value={currentDriver?.id || ''} onChange={(e) => setCurrentDriverId(e.target.value)}>{data.drivers.filter((d) => d.active).map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select>}{onlineMode && !currentDriver?.id && <p className="hintline">V administraci propoj řidiče přes e-mail nebo profile_id.</p>}</div>}
+      {isDriver && <div className="sidebox"><label>Aktuální řidič</label>{onlineMode ? <div className="pill">{currentDriver?.name || 'Profil řidiče není propojený'}</div> : <select value={currentDriver?.id || ''} onChange={(e) => setCurrentDriverId(e.target.value)}>{data.drivers.filter((d) => d.active).map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select>}</div>}
       <div className="sidebox"><div className="split"><span className="muted">Nepřečtené notifikace</span><span className={(data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver) && !isNoticeRead(n, currentDriver, isDriver)).length ? 'pill warn' : 'pill good'}>{(data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver) && !isNoticeRead(n, currentDriver, isDriver)).length}</span></div></div>
       <nav className="nav">{nav.map(([key, label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}>{label}</button>)}</nav>
       {isDriver ? <div className="sidebox compact-sidebox">
@@ -719,7 +753,7 @@ function App({ session = null, profile = null, signOut = null }) {
         {syncState?.error && <p className="hintline danger-mini-text">{syncState.error}</p>}
       </div> : <div className="sidebox">
         <div className="split"><span className="muted">Uložiště</span><span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Supabase online' : 'Demo / localStorage'}</span></div>
-        {onlineMode ? <p className="muted" style={{ marginBottom: 0 }}>{syncState?.saving ? 'Ukládám změny…' : syncState?.lastSyncAt ? `Synchronizováno ${new Date(syncState.lastSyncAt).toLocaleTimeString('cs-CZ')}` : 'Online režim aktivní.'}</p> : <p className="muted" style={{ marginBottom: 0 }}>Lokální demo. Po vyplnění .env a přihlášení poběží ostrý online režim.</p>}
+        {onlineMode ? <p className="muted" style={{ marginBottom: 0 }}>{syncState?.saving ? 'Ukládám změny…' : syncState?.lastSyncAt ? `Synchronizováno ${new Date(syncState.lastSyncAt).toLocaleTimeString('cs-CZ')}` : 'Online režim aktivní.'}</p> : <p className="muted" style={{ marginBottom: 0 }}>Demo režim.</p>}
         {syncState?.error && <p className="hintline danger-mini-text">{syncState.error}</p>}
         {onlineMode && <div className="row-actions" style={{ marginTop: 10 }}><button onClick={reloadOnline}>Načíst z DB</button><button onClick={signOut}>Odhlásit</button></div>}
       </div>}
@@ -745,6 +779,9 @@ function Kpi({ label, value, hint, kind = '' }) { return <div className="card kp
 function StatusPill({ status, helpers }) { return <span className={`pill ${helpers.statusClass(status)}`}>{statusMap[status] || status}</span> }
 function Field({ label, children, className = '' }) { return <div className={`field ${className}`}><label>{label}</label>{children}</div> }
 function Select({ value, onChange, options }) { return <select value={value} onChange={(e) => onChange(e.target.value)}>{Object.entries(options).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select> }
+function Modal({ title, children, onClose }) {
+  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="modal-card card"><div className="section-title"><h3>{title}</h3><button className="ghost" onClick={onClose}>Zavřít</button></div>{children}</div></div>
+}
 function ConflictBox({ messages }) { return <div className="stack">{messages?.length ? messages.map((m, i) => <div key={i} className="alert bad">{m}</div>) : <div className="alert good">Bez kolize.</div>}</div> }
 
 const blankShift = (date = todayISO(), settings = {}) => { const t = configuredShiftTimes(settings); return ({ date, start: t.dayStart, end: t.dayEnd, driverId: '', vehicleId: '', type: 'day', status: 'assigned', note: '', instruction: '', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }) }
@@ -849,7 +886,7 @@ function Planner({ data, helpers, commit }) {
   }
   const weeks = [weekStart, addDays(weekStart, 7)]
   return <>
-    <PageTitle title="Plán směn" subtitle="Dvou-týdenní přehled, volné směny a rychlé plánování.">
+    <PageTitle title="Plán směn">
       <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, -14))}>← Předchozí</button>
       <button className="ghost" onClick={() => setWeekStart(startOfWeek(todayISO()))}>Dnes</button>
       <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
@@ -1048,7 +1085,7 @@ function Dashboard({ data, helpers, commit }) {
   const pendingSwaps = (data.swapRequests || []).filter((r) => ['pending','accepted'].includes(r.status))
   const running = todayShifts.filter((s) => s.actualStartAt && !s.actualEndAt)
   return <>
-    <PageTitle title="Provozní dashboard" subtitle={`Dnes je ${todayRangeTitle()}. Rychlá kontrola směn, reakcí, aut a problémů.`}>
+    <PageTitle title="Provozní dashboard" subtitle={`Dnes je ${todayRangeTitle()}.`}>
       <button className="ghost" onClick={() => copyText(dayText(data, helpers, today))}>WhatsApp dnes</button>
       <button className="ghost" onClick={() => exportCSV(data, helpers)}>Export CSV</button>
       <button className="primary" onClick={() => backup(data)}>Záloha JSON</button>
@@ -1110,7 +1147,7 @@ function OperationalAudit({ data, helpers, commit }) {
   }
   const sectionProps = (key) => ({ open: openSection === key, onToggle: (e) => e.currentTarget.open && setOpenSection(key) })
   return <>
-    <PageTitle title="Audit provozu" subtitle="Přehled problémů, pokrytí a docházky.">
+    <PageTitle title="Audit provozu">
       <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, -7))}>← Předchozí</button>
       <button className="ghost" onClick={() => setWeekStart(startOfWeek(todayISO()))}>Tento týden</button>
       <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 7))}>Další →</button>
@@ -1156,7 +1193,7 @@ function ShiftsList({ data, helpers, commit }) {
     return (!q || text.includes(q)) && (filter === 'all' || s.status === filter)
   }))
   return <>
-    <PageTitle title="Seznam směn" subtitle="Tabulkový přehled všech směn s rychlou změnou stavu.">
+    <PageTitle title="Seznam směn">
       <input className="searchbox" placeholder="Hledat směnu…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ minWidth: 240 }} />
       <select className="searchbox" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 190 }}>{[['all', 'Vše'], ...Object.entries(statusMap)].map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
     </PageTitle>
@@ -1188,26 +1225,74 @@ function Drivers({ data, commit }) {
   const empty = { name: '', phone: '', email: '', profileId: '', active: true, note: '' }
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState(null)
-  const submit = (e) => { e.preventDefault(); if (!form.name) return alert('Vyplň jméno řidiče.'); if (editing) commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === editing ? { ...d, ...form } : d) }), `Upraven řidič ${form.name}.`); else commit((prev) => ({ ...prev, drivers: [{ id: uid('drv'), ...form }, ...prev.drivers] }), `Přidán řidič ${form.name}.`); setForm(empty); setEditing(null) }
+  const [modalOpen, setModalOpen] = useState(false)
+  const openCreate = () => { setForm(empty); setEditing(null); setModalOpen(true) }
+  const openEdit = (d) => { setForm({ ...empty, ...d }); setEditing(d.id); setModalOpen(true) }
+  const submit = (e) => {
+    e.preventDefault()
+    if (!form.name.trim()) return alert('Vyplň jméno řidiče.')
+    const payload = { ...form, name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim() }
+    if (editing) commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === editing ? { ...d, ...payload } : d) }), 'Upraven řidič ' + payload.name + '.')
+    else commit((prev) => ({ ...prev, drivers: [{ id: uid('drv'), ...payload }, ...prev.drivers] }), 'Přidán řidič ' + payload.name + '.')
+    setForm(empty); setEditing(null); setModalOpen(false)
+  }
   const remove = (id) => safeDelete('řidič') && commit((prev) => ({ ...prev, drivers: prev.drivers.filter((d) => d.id !== id) }), 'Smazán řidič.')
-  return <><PageTitle title="Řidiči" subtitle="Správa řidičů pro plánování směn." /><div className="grid two"><div className="card"><h3>{editing ? 'Upravit řidiče' : 'Nový řidič'}</h3><form className="form two-col" onSubmit={submit}><Field label="Jméno"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field><Field label="Telefon"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field><Field label="E-mail"><input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field><Field label="Profile ID / Auth ID"><input value={form.profileId || ''} onChange={(e) => setForm({ ...form, profileId: e.target.value })} placeholder="volitelné – UUID uživatele" /></Field><Field label="Aktivní"><select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field><Field label="Poznámka" className="span2"><textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Uložit řidiče</button></div></form></div><div className="card"><div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{data.drivers.length}</span></div><div className="stack">{data.drivers.map((d) => <div className="log" key={d.id}><div className="split"><div><b>{d.name}</b><br /><small className="muted">{d.phone || 'Bez telefonu'} · {d.email || 'Bez e-mailu'}{d.profileId ? ` · profil: ${d.profileId.slice(0, 8)}…` : ''}</small></div><span className={d.active ? 'pill good' : 'pill bad'}>{d.active ? 'Aktivní' : 'Neaktivní'}</span></div><p className="muted">{d.note}</p><div className="row-actions"><button onClick={() => { setEditing(d.id); setForm({ ...d }) }}>Upravit</button><button className="danger-mini" onClick={() => remove(d.id)}>Smazat</button></div></div>)}</div></div></div></>
+  return <>
+    <PageTitle title="Řidiči"><button className="primary" onClick={openCreate}>+ Nový řidič</button></PageTitle>
+    <div className="card"><div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{data.drivers.length}</span></div><div className="stack compact-list">{data.drivers.map((d) => <div className="log" key={d.id}><div className="split"><div><b>{d.name}</b><br /><small className="muted">{d.phone || 'Bez telefonu'} · {d.email || 'Bez e-mailu'}{d.profileId ? ' · profil: ' + d.profileId.slice(0, 8) + '…' : ''}</small></div><span className={d.active ? 'pill good' : 'pill bad'}>{d.active ? 'Aktivní' : 'Neaktivní'}</span></div>{d.note && <p className="muted compact-note">{d.note}</p>}<div className="row-actions"><button onClick={() => openEdit(d)}>Upravit</button><button className="danger-mini" onClick={() => remove(d.id)}>Smazat</button></div></div>)}</div></div>
+    {modalOpen && <Modal title={editing ? 'Upravit řidiče' : 'Nový řidič'} onClose={() => setModalOpen(false)}><form className="form two-col" onSubmit={submit}>
+      <Field label="Jméno"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></Field>
+      <Field label="Telefon"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+      <Field label="E-mail"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+      <Field label="Profile/Auth ID"><input value={form.profileId || ''} onChange={(e) => setForm({ ...form, profileId: e.target.value })} placeholder="volitelné" /></Field>
+      <Field label="Aktivní"><select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
+      <Field label="Poznámka" className="span2"><textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
+      <div className="field span2"><button className="primary" type="submit">Uložit řidiče</button></div>
+    </form></Modal>}
+  </>
 }
+
 
 function Vehicles({ data, commit }) {
   const empty = { name: '', plate: '', active: true, note: '' }
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
   const [block, setBlock] = useState({ vehicleId: '', from: todayISO(), to: todayISO(), reason: '' })
-  const submit = (e) => { e.preventDefault(); if (!form.name || !form.plate) return alert('Vyplň vůz a SPZ.'); if (editing) commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === editing ? { ...v, ...form } : v) }), `Upraveno vozidlo ${form.name}.`); else commit((prev) => ({ ...prev, vehicles: [{ id: uid('car'), ...form }, ...prev.vehicles] }), `Přidáno vozidlo ${form.name}.`); setForm(empty); setEditing(null) }
+  const openCreate = () => { setForm(empty); setEditing(null); setModalOpen(true) }
+  const openEdit = (v) => { setForm({ ...empty, ...v }); setEditing(v.id); setModalOpen(true) }
+  const submit = (e) => {
+    e.preventDefault()
+    if (!form.name.trim() || !form.plate.trim()) return alert('Vyplň název vozu a SPZ.')
+    const payload = { ...form, name: form.name.trim(), plate: form.plate.trim() }
+    if (editing) commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === editing ? { ...v, ...payload } : v) }), 'Upraveno vozidlo ' + payload.name + '.')
+    else commit((prev) => ({ ...prev, vehicles: [{ id: uid('car'), ...payload }, ...prev.vehicles] }), 'Přidáno vozidlo ' + payload.name + '.')
+    setForm(empty); setEditing(null); setModalOpen(false)
+  }
   const addBlock = (e) => { e.preventDefault(); if (!block.vehicleId) return alert('Vyber vozidlo.'); commit((prev) => ({ ...prev, serviceBlocks: [{ id: uid('srv'), ...block }, ...prev.serviceBlocks] }), 'Přidána servisní blokace vozidla.'); setBlock({ vehicleId: '', from: todayISO(), to: todayISO(), reason: '' }) }
   const removeBlock = (id) => safeDelete('servisní blokace') && commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((b) => b.id !== id) }), 'Smazána servisní blokace.')
-  return <><PageTitle title="Vozidla" subtitle="Správa aut a servisních blokací." /><div className="grid two"><div className="card"><h3>{editing ? 'Upravit vozidlo' : 'Nové vozidlo'}</h3><form className="form two-col" onSubmit={submit}><Field label="Název"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field><Field label="SPZ"><input value={form.plate} onChange={(e) => setForm({ ...form, plate: e.target.value })} /></Field><Field label="Aktivní"><select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field><Field label="Poznámka"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Uložit vozidlo</button></div></form><hr style={{ borderColor: 'var(--line)', margin: '18px 0' }} /><h3>Servisní blokace</h3><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(e) => setBlock({ ...block, vehicleId: e.target.value })}><option value="">Vyber vůz</option>{data.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name} · {v.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })} /></Field><Field label="Od"><input type="date" value={block.from} onChange={(e) => setBlock({ ...block, from: e.target.value })} /></Field><Field label="Do"><input type="date" value={block.to} onChange={(e) => setBlock({ ...block, to: e.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form></div><div className="card"><div className="section-title"><h3>Seznam vozidel</h3><span className="pill">{data.vehicles.length}</span></div><div className="stack">{data.vehicles.map((v) => <div className="log" key={v.id}><div className="split"><div><b>{v.name}</b><br /><small className="muted">{v.plate} · {v.note}</small></div><span className={v.active ? 'pill good' : 'pill bad'}>{v.active ? 'Aktivní' : 'Neaktivní'}</span></div><div className="row-actions"><button onClick={() => { setEditing(v.id); setForm({ ...v }) }}>Upravit</button></div></div>)}</div><hr style={{ borderColor: 'var(--line)', margin: '18px 0' }} /><h3>Aktivní blokace</h3><div className="stack">{data.serviceBlocks.map((s) => <div className="alert warn" key={s.id}>{data.vehicles.find((v) => v.id === s.vehicleId)?.name || 'Vůz'} · {s.from} až {s.to}<br /><small>{s.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeBlock(s.id)}>Smazat</button></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div></div></>
+  const removeVehicle = (id) => safeDelete('vozidlo') && commit((prev) => ({ ...prev, vehicles: prev.vehicles.filter((v) => v.id !== id) }), 'Smazáno vozidlo.')
+  return <>
+    <PageTitle title="Vozidla"><button className="primary" onClick={openCreate}>+ Nové vozidlo</button></PageTitle>
+    <div className="grid two">
+      <div className="card"><div className="section-title"><h3>Seznam vozidel</h3><span className="pill">{data.vehicles.length}</span></div><div className="stack compact-list">{data.vehicles.map((v) => <div className="log" key={v.id}><div className="split"><div><b>{v.name}</b><br /><small className="muted">{v.plate}{v.note ? ' · ' + v.note : ''}</small></div><span className={v.active ? 'pill good' : 'pill bad'}>{v.active ? 'Aktivní' : 'Neaktivní'}</span></div><div className="row-actions"><button onClick={() => openEdit(v)}>Upravit</button><button className="danger-mini" onClick={() => removeVehicle(v.id)}>Smazat</button></div></div>)}</div></div>
+      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill warn">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(e) => setBlock({ ...block, vehicleId: e.target.value })}><option value="">Vyber vůz</option>{data.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name} · {v.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })} /></Field><Field label="Od"><input type="date" value={block.from} onChange={(e) => setBlock({ ...block, from: e.target.value })} /></Field><Field label="Do"><input type="date" value={block.to} onChange={(e) => setBlock({ ...block, to: e.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><div className="stack" style={{ marginTop: 12 }}>{data.serviceBlocks.map((s) => <div className="alert warn" key={s.id}>{data.vehicles.find((v) => v.id === s.vehicleId)?.name || 'Vůz'} · {s.from} až {s.to}<br /><small>{s.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeBlock(s.id)}>Smazat</button></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div>
+    </div>
+    {modalOpen && <Modal title={editing ? 'Upravit vozidlo' : 'Nové vozidlo'} onClose={() => setModalOpen(false)}><form className="form two-col" onSubmit={submit}>
+      <Field label="Název"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></Field>
+      <Field label="SPZ"><input value={form.plate} onChange={(e) => setForm({ ...form, plate: e.target.value })} /></Field>
+      <Field label="Aktivní"><select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
+      <Field label="Poznámka"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
+      <div className="field span2"><button className="primary" type="submit">Uložit vozidlo</button></div>
+    </form></Modal>}
+  </>
 }
+
 
 function Availability({ data, commit, currentDriver }) {
   const firstDriverId = currentDriver?.id || data.drivers[0]?.id || ''
   const [absence, setAbsence] = useState({ driverId: firstDriverId, from: todayISO(), to: todayISO(), reason: '' })
-  const [slot, setSlot] = useState({ driverId: firstDriverId, mode: 'weekly', date: todayISO(), weekday: 1, start: '07:00', end: '19:00', note: '' })
+  const [slot, setSlot] = useState({ driverId: firstDriverId, mode: 'range', fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), weekday: 1, start: '07:00', end: '19:00', note: '' })
   useEffect(() => {
     if (currentDriver?.id) {
       setAbsence((f) => ({ ...f, driverId: currentDriver.id }))
@@ -1225,27 +1310,31 @@ function Availability({ data, commit, currentDriver }) {
   const submitSlot = (e) => {
     e.preventDefault()
     if (!slot.driverId) return alert('Vyber řidiče.')
-    const payload = slot.mode === 'date'
-      ? { id: uid('av'), driverId: slot.driverId, date: slot.date, weekday: '', start: slot.start, end: slot.end, note: slot.note }
-      : { id: uid('av'), driverId: slot.driverId, date: '', weekday: Number(slot.weekday), start: slot.start, end: slot.end, note: slot.note }
-    if (slot.mode === 'date' && !slot.date) return alert('Vyplň konkrétní datum.')
+    const payload = slot.mode === 'range'
+      ? { id: uid('av'), driverId: slot.driverId, fromAt: slot.fromAt, toAt: slot.toAt, date: '', weekday: '', start: timePart(slot.fromAt), end: timePart(slot.toAt), note: slot.note }
+      : { id: uid('av'), driverId: slot.driverId, fromAt: '', toAt: '', date: '', weekday: Number(slot.weekday), start: slot.start, end: slot.end, note: slot.note }
+    if (slot.mode === 'range' && (!slot.fromAt || !slot.toAt)) return alert('Vyplň datum a čas od/do.')
+    if (slot.mode === 'range' && new Date(slot.toAt) <= new Date(slot.fromAt)) return alert('Čas Do musí být později než Od.')
     commit((prev) => ({ ...prev, availability: [payload, ...(prev.availability || [])] }), 'Přidána dostupnost řidiče.')
-    setSlot({ ...slot, start: '07:00', end: '19:00', note: '' })
+    setSlot({ ...slot, fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), start: '07:00', end: '19:00', note: '' })
   }
   const removeAbsence = (id) => safeDelete('nepřítomnost řidiče') && commit((prev) => ({ ...prev, absences: prev.absences.filter((a) => a.id !== id) }), 'Smazána nepřítomnost řidiče.')
   const removeSlot = (id) => safeDelete('dostupnost řidiče') && commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((a) => a.id !== id) }), 'Smazána dostupnost řidiče.')
   const DriverSelect = ({ value, onChange }) => currentDriver ? null : <Field label="Řidič"><select value={value} onChange={(e) => onChange(e.target.value)}>{data.drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
-  return <><PageTitle title="Dostupnost řidičů" subtitle="Týdenní nebo konkrétní datum/čas pro plánování směn." />
+  return <><PageTitle title="Dostupnost řidičů" />
     <div className="grid two">
       <div className="card"><h3>Nová dostupnost</h3><form className="form two-col" onSubmit={submitSlot}>
         <DriverSelect value={slot.driverId} onChange={(v) => setSlot({ ...slot, driverId: v })} />
-        <Field label="Typ dostupnosti"><select value={slot.mode} onChange={(e) => setSlot({ ...slot, mode: e.target.value })}><option value="weekly">Opakovaně každý týden</option><option value="date">Konkrétní datum</option></select></Field>
-        {slot.mode === 'weekly'
-          ? <Field label="Den v týdnu"><select value={slot.weekday} onChange={(e) => setSlot({ ...slot, weekday: Number(e.target.value) })}>{Object.entries(weekdayMap).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-          : <Field label="Datum"><input type="date" value={slot.date} onChange={(e) => setSlot({ ...slot, date: e.target.value })} /></Field>}
-        <Field label="Od"><input type="time" value={slot.start} onChange={(e) => setSlot({ ...slot, start: e.target.value })} /></Field>
-        <Field label="Do"><input type="time" value={slot.end} onChange={(e) => setSlot({ ...slot, end: e.target.value })} /></Field>
-        <Field label="Poznámka" className="span2"><input value={slot.note} onChange={(e) => setSlot({ ...slot, note: e.target.value })} placeholder="Např. jen denní, jen víkend, po domluvě…" /></Field>
+        <Field label="Typ"><select value={slot.mode} onChange={(e) => setSlot({ ...slot, mode: e.target.value })}><option value="range">Konkrétní rozsah od–do</option><option value="weekly">Opakovaně každý týden</option></select></Field>
+        {slot.mode === 'range' ? <>
+          <Field label="Od"><input type="datetime-local" value={slot.fromAt} onChange={(e) => setSlot({ ...slot, fromAt: e.target.value })} /></Field>
+          <Field label="Do"><input type="datetime-local" value={slot.toAt} onChange={(e) => setSlot({ ...slot, toAt: e.target.value })} /></Field>
+        </> : <>
+          <Field label="Den v týdnu"><select value={slot.weekday} onChange={(e) => setSlot({ ...slot, weekday: Number(e.target.value) })}>{Object.entries(weekdayMap).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <Field label="Od"><input type="time" value={slot.start} onChange={(e) => setSlot({ ...slot, start: e.target.value })} /></Field>
+          <Field label="Do"><input type="time" value={slot.end} onChange={(e) => setSlot({ ...slot, end: e.target.value })} /></Field>
+        </>}
+        <Field label="Poznámka" className="span2"><input value={slot.note} onChange={(e) => setSlot({ ...slot, note: e.target.value })} placeholder="Např. jen denní, po domluvě…" /></Field>
         <div className="field span2"><button className="primary" type="submit">Uložit dostupnost</button></div>
       </form></div>
       <div className="card"><h3>Nová nepřítomnost</h3><form className="form two-col" onSubmit={submitAbsence}>
@@ -1257,8 +1346,8 @@ function Availability({ data, commit, currentDriver }) {
       </form></div>
     </div>
     <div className="grid two" style={{ marginTop: 16 }}>
-      <div className="card"><div className="section-title"><h3>Dostupnost</h3><span className="pill">{availability.length}</span></div><div className="stack">{availability.map((a) => <div className="alert good" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {a.date ? formatDate(a.date) : weekdayMap[a.weekday]} {a.start}–{a.end}<br /><small>{a.date ? 'Konkrétní datum' : 'Opakovaně každý týden'}{a.note ? ` · ${a.note}` : ''}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeSlot(a.id)}>Smazat</button></div></div>)}{!availability.length && <div className="empty">Není zadaná žádná dostupnost. Bez dostupnosti plánovač řidiče neomezuje.</div>}</div></div>
-      <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack">{absences.map((a) => <div className="alert warn" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {a.from} až {a.to}<br /><small>{a.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeAbsence(a.id)}>Smazat</button></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Dostupnost</h3><span className="pill">{availability.length}</span></div><div className="stack compact-list">{availability.map((a) => <div className="alert good" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {availabilityLabel(a)}<br />{a.note && <small>{a.note}</small>}<div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeSlot(a.id)}>Smazat</button></div></div>)}{!availability.length && <div className="empty">Není zadaná žádná dostupnost.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack compact-list">{absences.map((a) => <div className="alert warn" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {a.from} až {a.to}<br /><small>{a.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeAbsence(a.id)}>Smazat</button></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
     </div>
   </>
 }
@@ -1373,7 +1462,7 @@ function DriverHome({ data, helpers, commit, currentDriver }) {
     </div>
   }
   return <div className="driver-view driver-mobile-view">
-    <PageTitle title={`Moje směny · ${currentDriver?.name || ''}`} subtitle="v5.4.1: moje směny, volné směny a rychlé přihlášení na nabídku."><button className="ghost" onClick={() => copyText(driverText(data, helpers, currentDriver?.id))}>Kopírovat moje směny</button></PageTitle>
+    <PageTitle title={`Moje směny · ${currentDriver?.name || ''}`}><button className="ghost" onClick={() => copyText(driverText(data, helpers, currentDriver?.id))}>Kopírovat moje směny</button></PageTitle>
     <div className="driver-status-grid"><Kpi label="Čeká na potvrzení" value={awaiting.length} hint="směny" kind={awaiting.length ? 'warn' : 'good'} /><Kpi label="Nové notifikace" value={unreadNotices.length} hint="nepřečtené" kind={unreadNotices.length ? 'warn' : 'good'} /><Kpi label="Push zařízení" value={myDevices.length} hint={myDevices.length ? 'aktivní' : 'zapnout'} kind={myDevices.length ? 'good' : 'warn'} /><Kpi label="Volné směny" value={openShifts.length} hint="nabídky" kind={openShifts.length ? 'warn' : 'good'} /><Kpi label="Výměny pro mě" value={incomingSwaps.length} hint="nabídky" kind={incomingSwaps.length ? 'warn' : 'good'} /></div>
     {!myDevices.length && <div className="alert warn driver-push-warning"><b>Zapni notifikace.</b><br />Aby ti přišly nové směny a změny, otevři záložku Notifikace a povol zařízení. Na iPhonu spusť aplikaci z plochy.</div>}
     {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty">Nemáš žádnou dnešní ani budoucí směnu.</div>}
@@ -1494,10 +1583,10 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
 
 function History({ data }) {
   const logs = data.audit || []
-  const recent = logs.slice(0, 20)
-  const older = logs.slice(20)
+  const recent = logs.slice(0, 5)
+  const older = logs.slice(5)
   return <>
-    <PageTitle title="Historie změn" subtitle="Poslední akce v aplikaci." />
+    <PageTitle title="Historie změn" />
     <div className="card">
       <div className="section-title"><h3>Poslední změny</h3><span className="pill">{logs.length}</span></div>
       <div className="timeline stack">{recent.map((log) => <div className="log" key={log.id}><b>{new Date(log.at).toLocaleString('cs-CZ')}</b><br /><span className="muted">{log.text}</span></div>)}{!recent.length && <div className="empty">Historie je prázdná.</div>}</div>
@@ -1526,7 +1615,7 @@ function Settings({ data, commit, supabase, onlineMode, reloadOnline, profile })
     } catch { alert('Automatická záloha nejde načíst.') }
   }
   const saveTimes = () => commit((prev) => ({ ...prev, settings: { ...prev.settings, shiftTimes: times } }), 'Upraveno nastavení časů směn.')
-  return <><PageTitle title="Nastavení" subtitle="Záloha, výchozí časy směn a základní správa aplikace." />
+  return <><PageTitle title="Nastavení" />
     <div className="grid two">
       <div className="card"><h3>Firma / název aplikace</h3><div className="form two-col"><Field label="Název"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><div className="field"><label>&nbsp;</label><button className="primary" onClick={() => commit((prev) => ({ ...prev, settings: { ...prev.settings, companyName: name } }), 'Změněn název aplikace.')}>Uložit název</button></div></div>
         <hr style={{ borderColor: 'var(--line)', margin: '18px 0' }} />
@@ -1656,7 +1745,7 @@ function AuthGate() {
     } catch (err) { setMsg(err.message || String(err)) }
     setBusy(false)
   }
-  return <div className="auth-shell"><div className="card auth-card"><div className="brand"><div className="logo">RB</div><div><h1>RBSHIFT</h1><small>Online přihlášení</small></div></div><form className="stack" onSubmit={submit}><Field label="E-mail"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field><Field label="Heslo"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></Field><button className="primary" disabled={busy}>{busy ? 'Pracuji…' : mode === 'login' ? 'Přihlásit' : 'Vytvořit účet'}</button></form><div className="row-actions" style={{ marginTop: 12 }}><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Vytvořit účet' : 'Mám účet – přihlásit'}</button></div>{msg && <p className="hintline">{msg}</p>}<p className="muted">Pro ostrý provoz vytvoř uživatele v Supabase Auth a v tabulce profiles mu nastav roli admin / dispatcher / driver.</p></div></div>
+  return <div className="auth-shell"><div className="card auth-card"><div className="brand"><div className="logo">RB</div><div><h1>RBSHIFT</h1><small>Online přihlášení</small></div></div><form className="stack" onSubmit={submit}><Field label="E-mail"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field><Field label="Heslo"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></Field><button className="primary" disabled={busy}>{busy ? 'Pracuji…' : mode === 'login' ? 'Přihlásit' : 'Vytvořit účet'}</button></form><div className="row-actions" style={{ marginTop: 12 }}><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Vytvořit účet' : 'Mám účet – přihlásit'}</button></div>{msg && <p className="hintline">{msg}</p>}</div></div>
 }
 
 function MissingProfile({ session, error, reload }) {
@@ -1669,7 +1758,7 @@ function MissingProfile({ session, error, reload }) {
     await reload()
     setBusy(false)
   }
-  return <div className="auth-shell"><div className="card auth-card"><h2>Chybí profil uživatele</h2><p className="muted">Přihlášení existuje, ale v tabulce <b>profiles</b> není záznam pro tento účet.</p>{error && <div className="alert bad">{error}</div>}<Field label="Jméno pro profil řidiče"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><div className="row-actions" style={{ marginTop: 12 }}><button className="primary" disabled={busy} onClick={createDriverProfile}>Vytvořit profil řidiče</button><button onClick={reload}>Zkusit načíst znovu</button><button onClick={() => supabase.auth.signOut()}>Odhlásit</button></div><div className="alert warn" style={{ marginTop: 12 }}><b>První admin:</b><br />Po vytvoření účtu nastav v Supabase SQL editoru roli admin: <code>update public.profiles set role='admin' where id='USER_ID';</code></div></div></div>
+  return <div className="auth-shell"><div className="card auth-card"><h2>Chybí profil uživatele</h2><p className="muted">Přihlášení existuje, ale v tabulce <b>profiles</b> není záznam pro tento účet.</p>{error && <div className="alert bad">{error}</div>}<Field label="Jméno pro profil řidiče"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><div className="row-actions" style={{ marginTop: 12 }}><button className="primary" disabled={busy} onClick={createDriverProfile}>Vytvořit profil řidiče</button><button onClick={reload}>Zkusit načíst znovu</button><button onClick={() => supabase.auth.signOut()}>Odhlásit</button></div></div></div>
 }
 
 createRoot(document.getElementById('root')).render(<Root />)

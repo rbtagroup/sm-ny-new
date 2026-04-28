@@ -66,6 +66,8 @@ create table if not exists public.availability (
   driver_id text not null references public.drivers(id) on delete cascade,
   weekday int check (weekday between 0 and 6),
   avail_date date,
+  from_at timestamptz,
+  to_at timestamptz,
   start_time time not null,
   end_time time not null,
   note text,

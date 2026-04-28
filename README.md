@@ -57,3 +57,16 @@ Ponech stávající proměnné ve Vercelu. Tato verze nemění VAPID ani Supabas
 - notifikace se při mazání skryjí pro daného uživatele přes `read_by`, nemažou se globálně
 - karta směny v týdenním plánu ukazuje počet zájemců o volnou směnu
 - build ověřen přes `npm run build`
+
+## v5.4.7 – Senior refactor
+- vyčištěné provozní UI bez backendových vysvětlivek v běžných obrazovkách
+- opravy layout přesahů a horizontálního scrollu
+- modální formuláře pro řidiče a vozidla přímo v aplikaci
+- dostupnost řidiče jako konkrétní DateTime rozsah od/do
+- kompaktnější historie, audit a provozní sekce
+
+Po nasazení spusť v Supabase také:
+
+```sql
+supabase/senior-refactor-v5-4-7.sql
+```
