@@ -97,3 +97,8 @@ Nebo znovu spusť celý:
 ```sql
 supabase/rls-final-fix.sql
 ```
+
+
+## v5.4.4 – automatické potvrzení převzaté směny
+
+Po schválení výměny nebo volné směny dispečerem se směna automaticky převede na nového řidiče a nastaví do stavu `confirmed`. Řidič už ji nemusí potvrzovat podruhé.
