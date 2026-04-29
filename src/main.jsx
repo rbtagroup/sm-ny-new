@@ -665,8 +665,12 @@ function calendarDriverLabel(driverId, data, helpers) {
   const initial = lastInitialPart(fullName)
   return sameFirstNameCount > 1 && initial ? `${firstName} ${initial}` : firstName
 }
-function calendarShiftLineClass(shift, conflicts = []) {
+function activeSwapForShift(shift, data = {}) {
+  return (data.swapRequests || []).find((r) => r.shiftId === shift.id && ['pending','accepted'].includes(r.status))
+}
+function calendarShiftLineClass(shift, conflicts = [], activeSwap = null) {
   if (conflicts.length || ['declined', 'cancelled'].includes(shift.status)) return 'line-bad'
+  if (activeSwap || ['pending','accepted'].includes(shift.swapRequestStatus)) return 'line-swap'
   if (['confirmed', 'completed'].includes(shift.status)) return 'line-good'
   if (shift.status === 'open') return 'line-open'
   return 'line-waiting'
@@ -744,11 +748,13 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 .calendar-shift-card.line-good{border-left-color:var(--good)}
 .calendar-shift-card.line-open{border-left-color:var(--warn)}
 .calendar-shift-card.line-waiting{border-left-color:#ff9f43}
+.calendar-shift-card.line-swap{border-left-color:var(--blue);background:rgba(128,199,255,.10)}
 .calendar-shift-card.line-bad{border-left-color:var(--bad)}
-.calendar-shift-time,.calendar-shift-driver,.calendar-shift-conflict{display:block;overflow:visible;text-overflow:clip;white-space:nowrap;max-width:none}
+.calendar-shift-time,.calendar-shift-driver,.calendar-shift-conflict,.calendar-shift-swap{display:block;overflow:visible;text-overflow:clip;white-space:nowrap;max-width:none}
 .calendar-shift-time{font-weight:950;font-size:13px;letter-spacing:-.01em}
 .calendar-shift-driver{font-weight:850;color:#f3f7ff}
 .calendar-shift-conflict{font-size:12px;color:#ffdede;font-weight:850}
+.calendar-shift-swap{font-size:12px;color:#cfeaff;font-weight:900}
 
 
 /* TASK 4 new shift drawer */
@@ -1293,10 +1299,12 @@ function DayColumn({ day, shifts, data, helpers, commit, setEditing, setSelected
 }
 function ShiftMini({ shift, data, helpers, setSelected }) {
   const conflicts = helpers.conflictMessages(shift)
+  const activeSwap = activeSwapForShift(shift, data)
   const driverLabel = calendarDriverLabel(shift.driverId, data, helpers)
-  const lineClass = calendarShiftLineClass(shift, conflicts)
+  const lineClass = calendarShiftLineClass(shift, conflicts, activeSwap)
   const conflictLabel = conflicts.length === 1 ? '⚠ kolize' : `⚠ ${conflicts.length} kolize`
-  const title = [`${shift.start} – ${shift.end}`, helpers.driverName(shift.driverId), ...conflicts].filter(Boolean).join('\n')
+  const swapLabel = activeSwap?.targetMode === 'open' ? 'zájemce čeká' : (activeSwap?.status === 'accepted' ? 'výměna přijata' : 'čeká výměna')
+  const title = [`${shift.start} – ${shift.end}`, helpers.driverName(shift.driverId), activeSwap ? swapLabel : '', ...conflicts].filter(Boolean).join('\n')
   return <button
     type="button"
     className={`shift-card compact-shift calendar-shift-card ${lineClass} status-${shift.status}`}
@@ -1307,6 +1315,7 @@ function ShiftMini({ shift, data, helpers, setSelected }) {
     <span className="calendar-shift-time">{shift.start} – {shift.end}</span>
     <span className="calendar-shift-driver">{driverLabel}</span>
     {conflicts.length > 0 && <span className="calendar-shift-conflict">{conflictLabel}</span>}
+    {!conflicts.length && activeSwap && <span className="calendar-shift-swap">{swapLabel}</span>}
   </button>
 }
 function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) {
@@ -1850,7 +1859,7 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
       makeNotice({ title: 'Kolega přijal výměnu', body: `${currentDriver?.name || 'Kolega'} přijal nabídku směny ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetRole: 'admin', type: 'swap-accepted', shiftId: shift.id }),
       makeNotice({ title: 'Kolega přijal tvoji nabídku', body: `${currentDriver?.name || 'Kolega'} chce převzít tvoji směnu ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetDriverId: request.driverId, type: 'swap-accepted', shiftId: shift.id }),
     ]
-    commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'accepted', acceptedByDriverId: currentDriver?.id, acceptedAt: new Date().toISOString() }, `${currentDriver?.name || 'Kolega'} chce směnu převzít.`) : r) }, notices), `${currentDriver?.name || 'Řidič'} přijal nabídku výměny směny.`)
+    commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'accepted', acceptedByDriverId: currentDriver?.id, acceptedAt: new Date().toISOString() }, `${currentDriver?.name || 'Kolega'} chce směnu převzít.`) : r), shifts: prev.shifts.map((s) => s.id === request.shiftId ? { ...s, swapRequestStatus: 'accepted' } : s) }, notices), `${currentDriver?.name || 'Řidič'} přijal nabídku výměny směny.`)
   }
   const applyForOpenShift = (shift) => {
     if (!currentDriver?.id) return alert('Řidičský profil není propojený.')
@@ -1864,7 +1873,7 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
       makeNotice({ title: 'Zájem o volnou směnu', body: `${currentDriver.name} se hlásí na ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetRole: 'admin', type: 'open-shift-interest', shiftId: shift.id }),
       makeNotice({ title: 'Zájem odeslán', body: `${formatDate(shift.date)} ${shift.start}–${shift.end} čeká na schválení dispečerem.`, targetDriverId: currentDriver.id, type: 'open-shift-interest-sent', shiftId: shift.id }),
     ]
-    commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])] }, notices), `${currentDriver.name} projevil zájem o volnou směnu.`)
+    commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver.name} projevil zájem o volnou směnu.`)
   }
   const decline = (shift) => { const reason = prompt('Důvod odmítnutí:', shift.declineReason || ''); if (reason !== null) setStatus(shift.id, 'declined', reason || '') }
   const scrollToDriverSection = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
