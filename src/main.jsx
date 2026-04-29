@@ -2256,11 +2256,58 @@ function History({ data }) {
   </>
 }
 
+
+const defaultDriverReminderCron = '0 18 * * 3'
+const weekdayCronMap = {
+  0: 'neděle',
+  1: 'pondělí',
+  2: 'úterý',
+  3: 'středa',
+  4: 'čtvrtek',
+  5: 'pátek',
+  6: 'sobota',
+}
+function parseDriverReminderCron(value = defaultDriverReminderCron) {
+  const parts = String(value || defaultDriverReminderCron).trim().split(/\s+/)
+  if (parts.length !== 5) return { minute: '0', hour: '18', weekday: '3' }
+  return { minute: parts[0], hour: parts[1], weekday: parts[4] }
+}
+function buildWeeklyCron(weekday = '3', timeValue = '18:00') {
+  const [hour = '18', minute = '00'] = String(timeValue || '18:00').split(':')
+  return `${Number(minute || 0)} ${Number(hour || 18)} * * ${weekday}`
+}
+function cronTimeValue(cron = defaultDriverReminderCron) {
+  const parsed = parseDriverReminderCron(cron)
+  return `${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`
+}
+function isValidSimpleWeeklyCron(value = '') {
+  const parts = String(value || '').trim().split(/\s+/)
+  if (parts.length !== 5) return false
+  const [minute, hour, dayOfMonth, month, weekday] = parts
+  const nMinute = Number(minute)
+  const nHour = Number(hour)
+  const nWeekday = Number(weekday)
+  return Number.isInteger(nMinute) && nMinute >= 0 && nMinute <= 59 &&
+    Number.isInteger(nHour) && nHour >= 0 && nHour <= 23 &&
+    dayOfMonth === '*' && month === '*' &&
+    Number.isInteger(nWeekday) && nWeekday >= 0 && nWeekday <= 6
+}
+function humanDriverReminderCron(value = defaultDriverReminderCron) {
+  if (!isValidSimpleWeeklyCron(value)) return 'Neplatný cron formát'
+  const parsed = parseDriverReminderCron(value)
+  return `Každou ${weekdayCronMap[Number(parsed.weekday)] || 'středu'} v ${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`
+}
+
 function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, reloadOnline, profile }) {
   const [name, setName] = useState(data.settings?.companyName || 'RBSHIFT')
   const [contact, setContact] = useState(data.settings?.companyContact || '')
   const [logoUrl, setLogoUrl] = useState(data.settings?.logoUrl || '')
   const [times, setTimes] = useState(configuredShiftTimes(data.settings))
+  const currentDriverReminderCron = data.settings?.driverReminderSchedule || defaultDriverReminderCron
+  const [driverReminderCron, setDriverReminderCron] = useState(currentDriverReminderCron)
+  const [driverReminderWeekday, setDriverReminderWeekday] = useState(parseDriverReminderCron(currentDriverReminderCron).weekday)
+  const [driverReminderTime, setDriverReminderTime] = useState(cronTimeValue(currentDriverReminderCron))
+  const [driverReminderStatus, setDriverReminderStatus] = useState('')
   const [notificationConfig, setNotificationConfig] = useState(() => ({
     push: data.settings?.notifications?.push !== false,
     email: data.settings?.notifications?.email === true,
@@ -2280,6 +2327,13 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
     setLogoUrl(data.settings?.logoUrl || '')
   }, [data.settings?.companyName, data.settings?.companyContact, data.settings?.logoUrl])
   useEffect(() => setTimes(configuredShiftTimes(data.settings)), [data.settings?.shiftTimes])
+  useEffect(() => {
+    const cron = data.settings?.driverReminderSchedule || defaultDriverReminderCron
+    const parsed = parseDriverReminderCron(cron)
+    setDriverReminderCron(cron)
+    setDriverReminderWeekday(parsed.weekday)
+    setDriverReminderTime(cronTimeValue(cron))
+  }, [data.settings?.driverReminderSchedule])
   useEffect(() => setNotificationConfig({
     push: data.settings?.notifications?.push !== false,
     email: data.settings?.notifications?.email === true,
@@ -2288,6 +2342,26 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
   const saveGeneral = () => commit((prev) => ({ ...prev, settings: { ...prev.settings, companyName: name, companyContact: contact, logoUrl } }), 'Upraveno obecné nastavení.')
   const saveTimes = () => commit((prev) => ({ ...prev, settings: { ...prev.settings, shiftTimes: times } }), 'Upraveno nastavení časů směn.')
   const saveNotifications = () => commit((prev) => ({ ...prev, settings: { ...prev.settings, notifications: notificationConfig } }), 'Upraveno nastavení notifikací.')
+  const applyDriverReminderPreset = () => {
+    const cron = buildWeeklyCron(driverReminderWeekday, driverReminderTime)
+    setDriverReminderCron(cron)
+  }
+  const saveDriverReminderSchedule = async () => {
+    const cron = String(driverReminderCron || '').trim()
+    if (!isValidSimpleWeeklyCron(cron)) return alert('Zadej cron ve formátu: minuta hodina * * den_v_týdnu. Například 0 18 * * 3.')
+    setDriverReminderStatus('Ukládám nastavení připomínky…')
+    commit((prev) => ({ ...prev, settings: { ...prev.settings, driverReminderSchedule: cron } }), 'Upraven čas připomínky volných směn řidičům.')
+    if (onlineMode && supabase?.rpc) {
+      const { error } = await supabase.rpc('refresh_driver_reminder_cron')
+      if (error) {
+        setDriverReminderStatus(`Uloženo, ale cron se nepodařilo obnovit automaticky: ${error.message}`)
+        return
+      }
+      setDriverReminderStatus('Uloženo a cron job byl obnoven.')
+      return
+    }
+    setDriverReminderStatus('Uloženo lokálně. Cron obnov v Supabase SQL: select public.refresh_driver_reminder_cron();')
+  }
   const requestWhatsappReset = () => commit((prev) => ({ ...prev, settings: { ...prev.settings, integrations: { ...(prev.settings?.integrations || {}), whatsappConfigured: false, whatsappKeyResetRequestedAt: new Date().toISOString() } } }), 'Vyžádán reset WhatsApp integrace.')
   return <><PageTitle title={title} />
     <div className="grid two">
@@ -2327,6 +2401,23 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
         </div>
       </div>
       <div className="card">
+        <div className="section-title"><h3>Připomínka volných směn</h3><span className="pill">{humanDriverReminderCron(driverReminderCron)}</span></div>
+        <div className="form two-col">
+          <Field label="Den v týdnu"><select value={driverReminderWeekday} onChange={(e) => setDriverReminderWeekday(e.target.value)}>{Object.entries(weekdayCronMap).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
+          <Field label="Čas"><input type="time" value={driverReminderTime} onChange={(e) => setDriverReminderTime(e.target.value)} /></Field>
+          <div className="field span2"><button className="ghost" onClick={applyDriverReminderPreset}>Převést na cron</button></div>
+          <Field label="Cron expression" className="span2"><input value={driverReminderCron} onChange={(e) => setDriverReminderCron(e.target.value)} placeholder="0 18 * * 3" /></Field>
+          <div className="field span2"><button className="primary" onClick={saveDriverReminderSchedule}>Uložit připomínku</button></div>
+        </div>
+        <div className="log" style={{ marginTop: 12 }}>
+          <b>Aktuální pravidlo</b><br />
+          <span className="muted">Job driver-signup-reminder upozorní aktivní řidiče na volné směny v příštích 14 dnech. Výchozí hodnota je každou středu v 18:00.</span>
+        </div>
+        {driverReminderStatus && <div className="alert warn" style={{ marginTop: 12 }}>{driverReminderStatus}</div>}
+      </div>
+    </div>
+    <div className="grid two" style={{ marginTop: 16 }}>
+      <div className="card">
         <div className="section-title"><h3>Integrace</h3></div>
         <div className="form">
           <Field label="WhatsApp API klíč"><input type="password" value={whatsappConfigured ? '••••••••••••' : ''} readOnly placeholder="není nastaveno" /></Field>
@@ -2337,17 +2428,17 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
           <div className="sync-line"><span className={onlineMode ? 'status-dot good' : 'status-dot warn'}></span><span className="muted">{onlineMode ? 'Supabase je připojený' : 'Aplikace běží bez online připojení'}</span></div>
         </div>
       </div>
-    </div>
-    <div className="card" style={{ marginTop: 16 }}>
-      <div className="section-title"><h3>O aplikaci</h3><span className="pill">v{VERSION}</span></div>
-      <div className="grid four">
-        <Kpi label="Verze" value={`v${VERSION}`} hint="aktuální build" />
-        <Kpi label="Build" value="React + Vite" hint="webová administrace" />
-        <Kpi label="Prostředí" value={onlineMode ? 'Online' : 'Lokální'} hint={onlineMode ? 'Supabase' : 'bez Supabase'} />
-        <Kpi label="Uživatel" value={profile?.role || 'admin'} hint="aktuální role" />
-      </div>
-      <div className="stack" style={{ marginTop: 14 }}>
-        <div className="log"><b>Changelog</b><br /><span className="muted">Fáze 2: sbalené chybějící obsazení, kompaktnější kalendář, mazání notifikací a vyčištěné nastavení.</span></div>
+      <div className="card">
+        <div className="section-title"><h3>O aplikaci</h3><span className="pill">v{VERSION}</span></div>
+        <div className="grid four">
+          <Kpi label="Verze" value={`v${VERSION}`} hint="aktuální build" />
+          <Kpi label="Build" value="React + Vite" hint="webová administrace" />
+          <Kpi label="Prostředí" value={onlineMode ? 'Online' : 'Lokální'} hint={onlineMode ? 'Supabase' : 'bez Supabase'} />
+          <Kpi label="Uživatel" value={profile?.role || 'admin'} hint="aktuální role" />
+        </div>
+        <div className="stack" style={{ marginTop: 14 }}>
+          <div className="log"><b>Changelog</b><br /><span className="muted">Přidáno nastavení připomínky volných směn pro řidiče.</span></div>
+        </div>
       </div>
     </div>
   </>
