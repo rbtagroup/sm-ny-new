@@ -65,8 +65,16 @@ export default async function handler(req, res) {
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
   const results = []
+  const deliveries = []
   for (const notice of notifications) {
     const recipients = (subscriptions || []).filter((sub) => matchesNotice(sub, notice))
+    deliveries.push({
+      noticeId: notice.id,
+      type: notice.type,
+      targetRole: notice.targetRole,
+      targetDriverId: notice.targetDriverId,
+      recipients: recipients.length,
+    })
     for (const sub of recipients) {
       try {
         await webpush.sendNotification(sub.subscription, JSON.stringify({
@@ -76,7 +84,7 @@ export default async function handler(req, res) {
           url: '/',
           shiftId: notice.shiftId,
           type: notice.type,
-          requireInteraction: ['new-shift', 'shift-change', 'swap-offer'].includes(notice.type),
+          requireInteraction: ['new-shift', 'shift-change', 'swap-offer', 'swap-accepted', 'open-shift-interest'].includes(notice.type),
         }))
         results.push({ id: sub.id, ok: true })
       } catch (err) {
@@ -91,5 +99,5 @@ export default async function handler(req, res) {
 
   const sent = results.filter((r) => r.ok).length
   const failed = results.filter((r) => !r.ok).length
-  return json(res, 200, { ok: true, notifications: notifications.length, sent, failed, results })
+  return json(res, 200, { ok: true, notifications: notifications.length, sent, failed, deliveries, results })
 }

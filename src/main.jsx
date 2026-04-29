@@ -295,19 +295,23 @@ function addedRows(prevList = [], nextList = []) {
 }
 async function sendPushForNotifications(notices) {
   const clean = (Array.isArray(notices) ? notices : [notices]).filter((n) => n?.title)
-  if (!clean.length || !isConfiguredSupabase || !import.meta.env.VITE_VAPID_PUBLIC_KEY) return
+  if (!clean.length) return { skipped: true, reason: 'no-notifications' }
+  if (!isConfiguredSupabase) return { skipped: true, reason: 'supabase-not-configured' }
+  if (!import.meta.env.VITE_VAPID_PUBLIC_KEY) return { skipped: true, reason: 'missing-vapid-public-key' }
   try {
     const res = await fetch('/api/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notifications: clean }),
     })
+    const payload = await res.json().catch(async () => ({ ok: false, error: await res.text().catch(() => res.statusText) }))
     if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      console.warn('RBSHIFT push send failed:', text || res.statusText)
+      console.warn('RBSHIFT push send failed:', payload?.error || res.statusText)
     }
+    return { status: res.status, ...payload }
   } catch (err) {
     console.warn('RBSHIFT push send unavailable:', err)
+    return { ok: false, error: err?.message || String(err) }
   }
 }
 async function syncChangedRows(prev, next, profile) {
@@ -1991,7 +1995,22 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
       setStatus(ok ? 'Testovací lokální notifikace odeslána.' : 'Notifikace nejsou povolené.')
     } catch (err) { setStatus(err?.message || 'Test notifikace selhal.') }
   }
-  const serverTest = () => {
+  const pushResultLabel = (result) => {
+    if (!result) return 'Server nevrátil žádnou odpověď.'
+    if (result.skipped) {
+      const labels = {
+        'no-notifications': 'není co odeslat',
+        'supabase-not-configured': 'chybí Supabase konfigurace ve frontendu',
+        'missing-vapid-public-key': 'chybí VITE_VAPID_PUBLIC_KEY ve Vercelu',
+      }
+      return `Server push přeskočen: ${labels[result.reason] || result.reason}.`
+    }
+    if (!result.ok) return `Server push selhal: ${result.error || `HTTP ${result.status || '?'}`}`
+    const recipients = (result.deliveries || []).reduce((sum, row) => sum + Number(row.recipients || 0), 0)
+    if (!recipients) return 'Server odpověděl OK, ale nenašel žádné aktivní zařízení pro tento účet/roli. Klikni nejdřív na Povolit notifikace na tomto zařízení.'
+    return `Server push OK: odesláno ${result.sent || 0}, selhalo ${result.failed || 0}, cílová zařízení ${recipients}.`
+  }
+  const serverTest = async () => {
     const notice = makeNotice({
       title: 'RBSHIFT server push test',
       body: 'Toto je ostrý test přes Vercel backend a uložené zařízení.',
@@ -1999,8 +2018,10 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
       targetRole: isDriver ? 'driver_all' : (profile?.role || 'admin'),
       type: 'push-test',
     })
+    setStatus('Odesílám server push test…')
     commit((prev) => addNotificationsToData(prev, notice), 'Odeslán test serverové push notifikace.')
-    setStatus('Serverový test byl vložen do notifikací. Pokud je Vercel backend a VAPID nastavený správně, přijde push na přihlášené zařízení.')
+    const result = await sendPushForNotifications([notice])
+    setStatus(pushResultLabel(result))
   }
   const supported = 'serviceWorker' in navigator && 'Notification' in window
   const pushSupported = 'PushManager' in window
