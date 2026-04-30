@@ -495,6 +495,18 @@ function durationLabel(minutesTotal) {
   const m = minutesTotal % 60
   return h + ' h ' + m + ' min'
 }
+function deviceLabelFromUserAgent(value = '') {
+  const ua = String(value || '')
+  if (/iPhone/i.test(ua)) return '📱 iPhone (Safari)'
+  if (/iPad/i.test(ua)) return '📱 iPad (Safari)'
+  if (/Android/i.test(ua) && /Firefox/i.test(ua)) return '📱 Android (Firefox)'
+  if (/Android/i.test(ua) && /Chrome/i.test(ua)) return '📱 Android (Chrome)'
+  if (/Macintosh/i.test(ua) && /Chrome/i.test(ua)) return '💻 Mac (Chrome)'
+  if (/Macintosh/i.test(ua) && /Safari/i.test(ua)) return '💻 Mac (Safari)'
+  if (/Windows/i.test(ua) && /Edg/i.test(ua)) return '💻 Windows (Edge)'
+  if (/Windows/i.test(ua) && /Chrome/i.test(ua)) return '💻 Windows (Chrome)'
+  return '📱 Neznámé zařízení'
+}
 function datetimeLocal(date = todayISO(), value = '07:00') { return `${date}T${value}` }
 function datePart(value) { return value ? String(value).slice(0, 10) : '' }
 function timePart(value) { return value ? String(value).slice(11, 16) : '' }
@@ -2011,7 +2023,7 @@ function DriverSettings({ data, commit, currentDriver, profile, onlineMode, sign
     </div>
     <div className="card"><div className="section-title"><h3>Notifikace</h3><span className="pill">{devices.length}</span></div><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} /></div>
     <details className="card collapse-card"><summary><span><b>Diagnostika</b><small>Zařízení a verze aplikace</small></span><span className="pill">{devices.length}</span></summary><div className="collapse-content stack">
-      {devices.map((d) => <div className="log" key={d.id}><b>{d.platform?.slice(0, 60) || 'Zařízení'}</b><br /><small className="muted">Aktivní push zařízení</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeDevice(d.id)}>Odhlásit zařízení</button></div></div>)}
+      {devices.map((d) => <div className="log" key={d.id}><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">Aktivní push zařízení</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeDevice(d.id)}>Odhlásit zařízení</button></div></div>)}
       {!devices.length && <div className="empty">Žádné aktivní push zařízení.</div>}
       <div className="log"><b>Verze app</b><br /><span className="muted">v{VERSION}</span></div>
       {syncState?.error && <div className="alert warn">{syncState.error}</div>}
@@ -2096,10 +2108,10 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
     <div className="ios-guide"><b>iPhone postup</b><ol><li>Otevři aplikaci v Safari.</li><li>Dej Sdílet → Přidat na plochu.</li><li>Spusť RBSHIFT z plochy.</li><li>Potom povol notifikace.</li></ol></div>
     <div className="device-list">
       <div className="section-title"><h3>Moje zařízení</h3><span className={activeDevices.length ? 'pill good' : 'pill warn'}>{activeDevices.length} aktivní</span></div>
-      {myDevices.map((d) => <div className="device-row" key={d.id}><div><b>{d.active === false ? 'Vypnuté zařízení' : 'Aktivní zařízení'}</b><br /><small className="muted">{d.platform ? d.platform.slice(0, 86) : 'bez názvu'}{d.endpoint ? ' · endpoint uložen' : ''}</small></div>{d.active !== false && <button className="danger" onClick={() => deactivateDevice(d.id)}>Odebrat</button>}</div>)}
+      {myDevices.map((d) => <div className="device-row" key={d.id}><div><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">{d.active === false ? 'Vypnuté zařízení' : 'Aktivní push zařízení'}</small></div>{d.active !== false && <button className="danger" onClick={() => deactivateDevice(d.id)}>Odebrat</button>}</div>)}
       {!myDevices.length && <div className="empty">Na tomto účtu zatím není uložené žádné zařízení.</div>}
     </div>
-    <p className="hintline">v5.4: zařízení se ukládá do Supabase, lze ho odebrat a řidič vidí stav notifikací přímo v mobilním režimu.</p>
+    <p className="hintline">Notifikace dostanete na všechna zařízení, kde je app aktivní.</p>
   </div>
 }
 
