@@ -1920,7 +1920,6 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
   const scrollToDriverSection = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const quickChips = [
     awaiting.length > 0 ? { key: 'awaiting', label: `⏳ ${awaiting.length} čeká`, kind: 'warn', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
-    unreadNotices.length > 0 ? { key: 'notices', label: `🔔 ${unreadNotices.length} nové`, kind: 'warn', onClick: onOpenNotifications } : null,
     openShifts.length > 0 ? { key: 'open', label: `➕ ${openShifts.length} volné`, kind: 'warn', onClick: () => scrollToDriverSection('driver-open-shifts-section') } : null,
     incomingSwaps.length > 0 ? { key: 'swaps', label: `↔ ${incomingSwaps.length} výměny`, kind: 'warn', onClick: () => scrollToDriverSection('driver-incoming-swaps-section') } : null,
   ].filter(Boolean)
