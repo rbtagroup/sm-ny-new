@@ -176,13 +176,13 @@ function shiftNoticeTarget(shift) {
 }
 function statusNoticeForShift(shift, status, helpers, reason = '') {
   const label = statusMap[status] || status
-  const body = `${formatDate(shift.date)} ${shift.start}–${shift.end} · ${helpers.vehicleName(shift.vehicleId)}${reason ? ` · důvod: ${reason}` : ''}`
+  const body = shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')
   return makeNotice({ title: `Stav směny: ${label}`, body, ...shiftNoticeTarget(shift), type: `shift-${status}`, shiftId: shift.id })
 }
 function cancellationNoticeForShift(shift, helpers, reason = '') {
   return makeNotice({
     title: 'Směna byla zrušena',
-    body: `${formatDate(shift.date)} ${shift.start}–${shift.end} · ${helpers.vehicleName(shift.vehicleId)}${reason ? ` · ${reason}` : ''}`,
+    body: shiftNoticeBody(shift, helpers, reason),
     ...shiftNoticeTarget(shift),
     type: 'shift-cancelled',
     shiftId: shift.id,
@@ -193,8 +193,8 @@ function cancelShiftData(data, shift, helpers, reason = 'Zrušeno dispečerem') 
   const relatedSwaps = (data.swapRequests || []).filter((r) => r.shiftId === shift.id && ['pending','accepted'].includes(r.status))
   const notices = [cancellationNoticeForShift(shift, helpers, reason)]
   relatedSwaps.forEach((r) => {
-    if (r.acceptedByDriverId && r.acceptedByDriverId !== shift.driverId) notices.push(makeNotice({ title: 'Výměna směny zrušena', body: `${formatDate(shift.date)} ${shift.start}–${shift.end}`, targetDriverId: r.acceptedByDriverId, type: 'swap-cancelled', shiftId: shift.id }))
-    if (r.targetDriverId && r.targetDriverId !== shift.driverId) notices.push(makeNotice({ title: 'Nabídka výměny zrušena', body: `${formatDate(shift.date)} ${shift.start}–${shift.end}`, targetDriverId: r.targetDriverId, type: 'swap-cancelled', shiftId: shift.id }))
+    if (r.acceptedByDriverId && r.acceptedByDriverId !== shift.driverId) notices.push(makeNotice({ title: 'Výměna směny zrušena', body: shiftNoticeBody(shift, helpers), targetDriverId: r.acceptedByDriverId, type: 'swap-cancelled', shiftId: shift.id }))
+    if (r.targetDriverId && r.targetDriverId !== shift.driverId) notices.push(makeNotice({ title: 'Nabídka výměny zrušena', body: shiftNoticeBody(shift, helpers), targetDriverId: r.targetDriverId, type: 'swap-cancelled', shiftId: shift.id }))
   })
   return addNotificationsToData({
     ...data,
@@ -457,6 +457,16 @@ function startOfWeek(date) {
 }
 function formatDate(date, weekday = true) {
   return new Intl.DateTimeFormat('cs-CZ', weekday ? { weekday: 'short', day: '2-digit', month: '2-digit' } : { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T12:00:00`))
+}
+function formatNoticeDate(date) {
+  const d = new Date(`${date}T12:00:00`)
+  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`
+}
+function shiftTypeName(shift) {
+  return shiftTypeMap[shift?.type] || 'Vlastní'
+}
+function shiftNoticeBody(shift, helpers, suffix = '') {
+  return [shiftTypeName(shift), `${formatNoticeDate(shift.date)} · ${shift.start}–${shift.end}`, helpers?.vehicleName?.(shift.vehicleId), suffix].filter(Boolean).join(' · ')
 }
 function intervalForShift(s) {
   const start = new Date(`${s.date}T${s.start || '00:00'}:00`).getTime()
@@ -1116,14 +1126,14 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     if (conflictMessages.length && !override) return alert('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
     if (editing) {
       const notice = normalizedForm.status === 'open'
-        ? makeNotice({ title: 'Volná směna upravena', body: `${normalizedForm.date} ${normalizedForm.start}–${normalizedForm.end}`, targetRole: 'driver_all', type: 'open-shift-change', shiftId: editing.id })
-        : makeNotice({ title: 'Změna směny', body: `${normalizedForm.date} ${normalizedForm.start}–${normalizedForm.end}`, targetDriverId: normalizedForm.driverId, type: 'shift-change', shiftId: editing.id })
+        ? makeNotice({ title: 'Volná směna upravena', body: shiftNoticeBody(normalizedForm, helpers), targetRole: 'driver_all', type: 'open-shift-change', shiftId: editing.id })
+        : makeNotice({ title: 'Změna směny', body: shiftNoticeBody(normalizedForm, helpers), targetDriverId: normalizedForm.driverId, type: 'shift-change', shiftId: editing.id })
       commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === editing.id ? { ...s, ...normalizedForm } : s) }, notice), `Upravena směna ${normalizedForm.date} ${normalizedForm.start}–${normalizedForm.end}.`)
     } else {
       const items = buildRepeats().map((item) => ({ id: uid('sh'), ...normalizeShiftForm(item) }))
       const notices = items.map((item) => item.status === 'open'
-        ? makeNotice({ title: 'Nová volná směna', body: `${formatDate(item.date)} ${item.start}–${item.end} · můžeš se přihlásit`, targetRole: 'driver_all', type: 'open-shift', shiftId: item.id })
-        : makeNotice({ title: 'Nová směna', body: `${item.date} ${item.start}–${item.end}`, targetDriverId: item.driverId, type: 'new-shift', shiftId: item.id }))
+        ? makeNotice({ title: 'Nová volná směna', body: shiftNoticeBody(item, helpers, 'můžeš se přihlásit'), targetRole: 'driver_all', type: 'open-shift', shiftId: item.id })
+        : makeNotice({ title: 'Nová směna', body: shiftNoticeBody(item, helpers), targetDriverId: item.driverId, type: 'new-shift', shiftId: item.id }))
       commit((prev) => addNotificationsToData({ ...prev, shifts: [...items, ...prev.shifts] }, notices), `Vytvořeno směn: ${items.length}.`)
     }
     setForm(blankShift(form.date, data.settings)); setRepeat('none'); setTemplate('custom'); setOverride(false); setEditing(null)
@@ -1352,8 +1362,8 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
     if (!confirmPastChange(fresh)) return
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, status, declineReason: reason } : s) }, statusNoticeForShift({ ...fresh, status, declineReason: reason }, status, helpers, reason)), `Detail směny: stav změněn na ${statusMap[status]}.`)
   }
-  const checkIn = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, adminNotice('Řidič nastoupil na směnu', `${helpers.driverName(fresh.driverId)} · ${formatDate(fresh.date)} ${fresh.start}–${fresh.end}`, 'attendance-start', fresh.id)), 'V detailu směny zaznamenán nástup.')
-  const checkOut = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, adminNotice('Řidič ukončil směnu', `${helpers.driverName(fresh.driverId)} · ${formatDate(fresh.date)} ${fresh.start}–${fresh.end}`, 'attendance-end', fresh.id)), 'V detailu směny zaznamenáno ukončení.')
+  const checkIn = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, adminNotice('Řidič nastoupil na směnu', `${helpers.driverName(fresh.driverId)} · ${shiftNoticeBody(fresh, helpers)}`, 'attendance-start', fresh.id)), 'V detailu směny zaznamenán nástup.')
+  const checkOut = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, adminNotice('Řidič ukončil směnu', `${helpers.driverName(fresh.driverId)} · ${shiftNoticeBody(fresh, helpers)}`, 'attendance-end', fresh.id)), 'V detailu směny zaznamenáno ukončení.')
   const hardDelete = () => {
     if (!confirmHardDeleteShift(fresh, helpers)) return
     commit((prev) => hardDeleteShiftData(prev, fresh), '')
@@ -1366,15 +1376,15 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
       const newDriverId = req.acceptedByDriverId || req.targetDriverId
       if (!newDriverId) return alert('U nabídky všem musí nejdřív některý kolega kliknout „Chci převzít směnu“.')
       const notices = req.targetMode === 'open'
-        ? [makeNotice({ title: 'Volná směna schválena a potvrzena', body: `${formatDate(fresh.date)} ${fresh.start}–${fresh.end} · ${helpers.vehicleName(fresh.vehicleId)}. Směna je rovnou potvrzená.`, targetDriverId: newDriverId, type: 'open-shift-approved', shiftId: fresh.id })]
+        ? [makeNotice({ title: 'Volná směna schválena a potvrzena', body: shiftNoticeBody(fresh, helpers, 'směna je rovnou potvrzená'), targetDriverId: newDriverId, type: 'open-shift-approved', shiftId: fresh.id })]
         : [
-          makeNotice({ title: 'Výměna směny schválena', body: `${formatDate(fresh.date)} ${fresh.start}–${fresh.end} byla převedena na řidiče ${helpers.driverName(newDriverId)}.`, targetDriverId: req.driverId, type: 'swap-approved', shiftId: fresh.id }),
-          makeNotice({ title: 'Převzal jsi směnu – potvrzeno', body: `${formatDate(fresh.date)} ${fresh.start}–${fresh.end} · ${helpers.vehicleName(fresh.vehicleId)}. Směna je rovnou potvrzená.`, targetDriverId: newDriverId, type: 'swap-approved', shiftId: fresh.id }),
+          makeNotice({ title: 'Výměna směny schválena', body: `${shiftNoticeBody(fresh, helpers)} · převedeno na ${helpers.driverName(newDriverId)}`, targetDriverId: req.driverId, type: 'swap-approved', shiftId: fresh.id }),
+          makeNotice({ title: 'Převzal jsi směnu – potvrzeno', body: shiftNoticeBody(fresh, helpers, 'směna je rovnou potvrzená'), targetDriverId: newDriverId, type: 'swap-approved', shiftId: fresh.id }),
         ]
       return commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === id ? appendSwapHistory({ ...r, status, resolvedAt: new Date().toISOString(), approvedDriverId: newDriverId }, `Admin schválil převzetí pro ${helpers.driverName(newDriverId)}. Směna byla automaticky potvrzena.`) : r), shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, driverId: newDriverId, status: 'confirmed', declineReason: '', swapRequestStatus: 'approved' } : s) }, notices), `${req.targetMode === 'open' ? 'Volná směna byla přidělena a potvrzena' : 'Výměna schválena, směna převedena a potvrzena pro'} ${helpers.driverName(newDriverId)}.`)
     }
-    const notices = [makeNotice({ title: 'Výměna směny zamítnuta', body: `${formatDate(fresh.date)} ${fresh.start}–${fresh.end}`, targetDriverId: req.driverId, type: 'swap-rejected', shiftId: fresh.id })]
-    if (req.acceptedByDriverId) notices.push(makeNotice({ title: 'Výměna nebyla schválena', body: `${formatDate(fresh.date)} ${fresh.start}–${fresh.end}`, targetDriverId: req.acceptedByDriverId, type: 'swap-rejected', shiftId: fresh.id }))
+    const notices = [makeNotice({ title: 'Výměna směny zamítnuta', body: shiftNoticeBody(fresh, helpers), targetDriverId: req.driverId, type: 'swap-rejected', shiftId: fresh.id })]
+    if (req.acceptedByDriverId) notices.push(makeNotice({ title: 'Výměna nebyla schválena', body: shiftNoticeBody(fresh, helpers), targetDriverId: req.acceptedByDriverId, type: 'swap-rejected', shiftId: fresh.id }))
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === id ? appendSwapHistory({ ...r, status, resolvedAt: new Date().toISOString(), rejectedReason: status === 'rejected' ? 'Zamítnuto adminem' : '' }, status === 'rejected' ? 'Admin zamítl výměnu.' : `Stav výměny změněn na ${swapStatusMap[status]}.`) : r), shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, swapRequestStatus: status } : s) }, notices), `Žádost o výměnu směny: ${swapStatusMap[status]}.`)
   }
   return <div className="card detail-panel">
@@ -1851,16 +1861,16 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
   const focus = running || todayShift || nextShift
   const setStatus = (id, status, reason = '', options = {}) => {
     const shift = data.shifts.find((s) => s.id === id)
-    const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}${reason ? ` · důvod: ${reason}` : ''}`, `driver-${status}`, id)] : []
+    const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')}`, `driver-${status}`, id)] : []
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, status, declineReason: reason } : s) }, notices), `${currentDriver?.name || 'Řidič'} změnil stav směny na ${statusMap[status]}.`, options)
   }
   const checkIn = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
-    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, shift ? adminNotice('Řidič nastoupil na směnu', `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}`, 'attendance-start', id) : null), `${currentDriver?.name || 'Řidič'} nastoupil na směnu.`)
+    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, shift ? adminNotice('Řidič nastoupil na směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-start', id) : null), `${currentDriver?.name || 'Řidič'} nastoupil na směnu.`)
   }
   const checkOut = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
-    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, shift ? adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}`, 'attendance-end', id) : null), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
+    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, shift ? adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-end', id) : null), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
   }
   const requestSwap = (shift) => {
     const colleagues = data.drivers.filter((d) => d.active && d.id !== currentDriver?.id)
@@ -1872,14 +1882,14 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
     if (normalized && !targetDriver && !['vsem', 'všem', 'all', '*'].includes(normalized)) return alert('Kolega nebyl nalezený. Zkus přesnější jméno nebo napiš VŠEM.')
     const request = { id: uid('swap'), shiftId: shift.id, driverId: currentDriver?.id, reason, status: 'pending', targetMode: targetDriver ? 'driver' : 'all', targetDriverId: targetDriver?.id || '', acceptedByDriverId: '', acceptedAt: '', createdAt: new Date().toISOString(), history: [{ at: new Date().toISOString(), text: targetDriver ? `Nabídnuto kolegovi ${targetDriver.name}.` : 'Nabídnuto všem kolegům.' }] }
     const targetIds = targetDriver ? [targetDriver.id] : colleagues.map((d) => d.id)
-    const notices = targetIds.map((id) => makeNotice({ title: 'Nabídka výměny směny', body: `${currentDriver?.name || 'Kolega'} nabízí směnu ${formatDate(shift.date)} ${shift.start}–${shift.end}.${reason ? ` Důvod: ${reason}` : ''}`, targetDriverId: id, type: 'swap-offer', shiftId: shift.id }))
-    notices.push(adminNotice('Nová žádost o výměnu směny', `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}`, 'swap-request', shift.id))
+    const notices = targetIds.map((id) => makeNotice({ title: 'Nabídka výměny směny', body: `${currentDriver?.name || 'Kolega'} nabízí: ${shiftNoticeBody(shift, helpers, reason ? `Důvod: ${reason}` : '')}`, targetDriverId: id, type: 'swap-offer', shiftId: shift.id }))
+    notices.push(adminNotice('Nová žádost o výměnu směny', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'swap-request', shift.id))
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver?.name || 'Řidič'} požádal o výměnu směny.`)
   }
   const cancelSwap = (shift) => {
     const activeReq = (data.swapRequests || []).find((r) => r.shiftId === shift.id && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
     if (!activeReq || !confirm('Zrušit žádost o výměnu?')) return
-    const notices = [adminNotice('Řidič zrušil žádost o výměnu', `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}`, 'swap-cancelled', shift.id)]
+    const notices = [adminNotice('Řidič zrušil žádost o výměnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'swap-cancelled', shift.id)]
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === activeReq.id ? appendSwapHistory({ ...r, status: 'cancelled', cancelledAt: new Date().toISOString() }, 'Řidič žádost zrušil.') : r), shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'cancelled' } : s) }, notices), `${currentDriver?.name || 'Řidič'} zrušil žádost o výměnu.`)
   }
   const incomingSwaps = (data.swapRequests || []).filter((r) => r.status === 'pending' && r.driverId !== currentDriver?.id && (r.targetMode === 'all' || r.targetDriverId === currentDriver?.id))
@@ -1890,8 +1900,8 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
     if (!shift) return alert('Směna už neexistuje.')
     if (!confirm(`Přijmout nabídku výměny ${formatDate(shift.date)} ${shift.start}–${shift.end}? Admin ji pak musí schválit.`)) return
     const notices = [
-      makeNotice({ title: 'Kolega přijal výměnu', body: `${currentDriver?.name || 'Kolega'} přijal nabídku směny ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetRole: 'admin', type: 'swap-accepted', shiftId: shift.id }),
-      makeNotice({ title: 'Kolega přijal tvoji nabídku', body: `${currentDriver?.name || 'Kolega'} chce převzít tvoji směnu ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetDriverId: request.driverId, type: 'swap-accepted', shiftId: shift.id }),
+      makeNotice({ title: 'Kolega přijal výměnu', body: `${currentDriver?.name || 'Kolega'} přijal: ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'swap-accepted', shiftId: shift.id }),
+      makeNotice({ title: 'Kolega přijal tvoji nabídku', body: `${currentDriver?.name || 'Kolega'} chce převzít: ${shiftNoticeBody(shift, helpers)}`, targetDriverId: request.driverId, type: 'swap-accepted', shiftId: shift.id }),
     ]
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'accepted', acceptedByDriverId: currentDriver?.id, acceptedAt: new Date().toISOString() }, `${currentDriver?.name || 'Kolega'} chce směnu převzít.`) : r), shifts: prev.shifts.map((s) => s.id === request.shiftId ? { ...s, swapRequestStatus: 'accepted' } : s) }, notices), `${currentDriver?.name || 'Řidič'} přijal nabídku výměny směny.`)
   }
@@ -1904,8 +1914,8 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
     if (!confirm(`Přihlásit se na volnou směnu ${formatDate(shift.date)} ${shift.start}–${shift.end}? Admin/dispečer musí přihlášení schválit.${availabilityWarning}`)) return
     const request = { id: uid('swap'), shiftId: shift.id, driverId: currentDriver.id, reason: 'Zájem o volnou směnu', status: 'pending', targetMode: 'open', targetDriverId: '', acceptedByDriverId: currentDriver.id, acceptedAt: new Date().toISOString(), createdAt: new Date().toISOString(), history: [{ at: new Date().toISOString(), text: `${currentDriver.name} projevil zájem o volnou směnu.` }] }
     const notices = [
-      makeNotice({ title: 'Zájem o volnou směnu', body: `${currentDriver.name} se hlásí na ${formatDate(shift.date)} ${shift.start}–${shift.end}.`, targetRole: 'admin', type: 'open-shift-interest', shiftId: shift.id }),
-      makeNotice({ title: 'Zájem odeslán', body: `${formatDate(shift.date)} ${shift.start}–${shift.end} čeká na schválení dispečerem.`, targetDriverId: currentDriver.id, type: 'open-shift-interest-sent', shiftId: shift.id }),
+      makeNotice({ title: 'Zájem o volnou směnu', body: `${currentDriver.name} se hlásí na: ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'open-shift-interest', shiftId: shift.id }),
+      makeNotice({ title: 'Zájem odeslán', body: `${shiftNoticeBody(shift, helpers)} · čeká na schválení dispečerem`, targetDriverId: currentDriver.id, type: 'open-shift-interest-sent', shiftId: shift.id }),
     ]
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver.name} projevil zájem o volnou směnu.`)
   }
@@ -2013,9 +2023,9 @@ function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
   const dayItems = (day) => [
     ...shifts.filter((s) => s.date === day).map((s) => {
       const type = dotTypeForShift(s)
-      return type ? { type, label: `${s.start}–${s.end} · ${statusMap[s.status] || s.status}` } : null
+      return type ? { type, label: `${shiftTypeName(s)} · ${s.start}–${s.end} · ${helpers.vehicleName(s.vehicleId)} · ${statusMap[s.status] || s.status}` } : null
     }).filter(Boolean),
-    ...openShifts.filter((s) => s.date === day).map((s) => ({ type: 'open', label: `${s.start}–${s.end} · volná směna` })),
+    ...openShifts.filter((s) => s.date === day).map((s) => ({ type: 'open', label: `${shiftTypeName(s)} · ${s.start}–${s.end} · ${helpers.vehicleName(s.vehicleId)} · volná směna` })),
   ].sort((a, b) => dotPriority[a.type] - dotPriority[b.type])
   const weekLabel = (index) => index === 0 ? 'Tento týden' : (index === 1 ? 'Příští týden' : `Týden ${index + 1}`)
   const Dot = ({ type }) => <span className={`driver-cal-dot ${type}`} aria-hidden="true"></span>
@@ -2043,7 +2053,7 @@ function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
     <div className="section-title"><h3>Kalendář 2 týdny</h3><button type="button" className="pill" onClick={() => setCalendarOpen(true)}>Zobrazit</button></div>
     {dayRows.map((days, rowIndex) => <WeekRow key={rowIndex} days={days} index={rowIndex} />)}
     <CalendarLegend showConflict={viewHasConflict(dayRows)} />
-    {selectedDay && <div className="alert good"><b>{formatDate(selectedDay)}</b><br />{dayItems(selectedDay).length ? dayItems(selectedDay).map((x, i) => <div key={i}>{x.label}</div>) : <span>Bez směn.</span>}</div>}
+    {selectedDay && <div className="alert good"><b>{formatNoticeDate(selectedDay)}</b><br />{dayItems(selectedDay).length ? dayItems(selectedDay).map((x, i) => <div key={i}>{x.label}</div>) : <span>Bez směn.</span>}</div>}
     {calendarOpen && <div className="modal-backdrop driver-calendar-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCalendarOpen(false) }}>
       <div className="modal-card card driver-calendar-modal" role="dialog" aria-modal="true" aria-label="Kalendář">
         <div className="section-title"><h3>Kalendář</h3><button className="ghost driver-calendar-modal-close" onClick={() => setCalendarOpen(false)} aria-label="Zavřít kalendář">✕</button></div>
