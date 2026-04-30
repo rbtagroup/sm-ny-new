@@ -728,7 +728,7 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 /* v5.4.9 TASK 1: driver PWA safe-area guard for iOS notch/Dynamic Island and Android status bar */
 .driver-app-shell .main{padding-top:calc(24px + env(safe-area-inset-top,0px));padding-right:max(24px,env(safe-area-inset-right,0px));padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));padding-left:max(24px,env(safe-area-inset-left,0px))}
 .driver-app-shell .sidebar{padding-right:max(22px,env(safe-area-inset-right,0px));padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(22px,env(safe-area-inset-left,0px))}
-.driver-priority-view{max-width:760px;margin:0 auto;display:grid;gap:14px}.driver-mobile-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:0}.driver-mobile-head div{display:grid;gap:2px;min-width:0}.driver-mobile-head span{color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}.driver-mobile-head b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.driver-mobile-head .ghost{padding:9px 12px;border-radius:14px}.driver-priority-view .driver-hero{margin-bottom:0}.driver-empty-focus{margin-bottom:0}.driver-quick-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none}.driver-quick-strip::-webkit-scrollbar{display:none}.quick-chip{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.055);color:var(--muted);padding:8px 10px;font-size:12px;font-weight:850;white-space:nowrap}.quick-chip.warn{color:#fff3c7;border-color:rgba(255,207,90,.45);background:rgba(255,207,90,.12)}.driver-open-shifts{margin-top:0}.driver-open-shifts summary{padding:14px 16px}.driver-open-shifts .collapse-content{padding:0 16px 16px}.driver-priority-view .driver-list-title{margin-top:4px}.driver-priority-view .driver-card-list{margin-top:0}
+.driver-priority-view{max-width:760px;margin:0 auto;display:grid;gap:14px}.driver-mobile-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:0}.driver-mobile-head div{display:grid;gap:2px;min-width:0}.driver-mobile-head span{color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}.driver-mobile-head b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.driver-mobile-head .ghost{padding:9px 12px;border-radius:14px}.driver-priority-view .driver-hero{margin-bottom:0}.driver-empty-focus{margin-bottom:0}.driver-quick-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none}.driver-quick-strip::-webkit-scrollbar{display:none}.quick-chip{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.055);color:var(--muted);padding:8px 10px;font-size:12px;font-weight:850;white-space:nowrap}.quick-chip.warn{color:#fff3c7;border-color:rgba(255,207,90,.45);background:rgba(255,207,90,.12)}.driver-open-shifts{margin-top:0}.driver-open-shifts summary{padding:14px 16px}.driver-open-shifts .collapse-content{padding:0 16px 16px}.driver-priority-view .driver-list-title{margin-top:4px}.driver-priority-view .driver-card-list{margin-top:0}.driver-shift-compact-card{width:100%;min-height:80px;padding:14px 16px;text-align:left;cursor:pointer}.driver-compact-main{display:flex;justify-content:space-between;align-items:center;gap:12px;min-width:0}.driver-compact-main>div:first-child{min-width:0}.driver-compact-title{display:block;color:#fff3c7;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.driver-shift-compact-card .muted{margin:5px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.driver-shift-status-row{display:flex;align-items:center;gap:8px;flex:0 0 auto}.driver-card-toggle{border:1px solid var(--line);background:rgba(255,255,255,.06);color:#fff3c7;border-radius:999px;min-width:34px;height:34px;display:inline-grid;place-items:center;font-weight:900;line-height:1;padding:0}.driver-card-toggle:hover{border-color:rgba(245,199,106,.55);background:rgba(245,199,106,.12)}
 @media (max-width:1000px){.driver-app-shell{display:flex;flex-direction:column}.driver-app-shell .main{order:1}.driver-app-shell .sidebar{order:2;position:relative;top:auto;height:auto;max-height:none;overflow:visible;border-right:0;border-top:1px solid var(--line);padding-top:14px;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}.driver-app-shell .brand{margin-bottom:10px}.driver-app-shell .nav{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.driver-app-shell .compact-sidebox{margin-top:10px}}
 /* v5.5.0 driver-only refactor: IA, bottom nav, safe-area, compact UX */
 .driver-shell-v2{min-height:100vh;min-height:100dvh;background:inherit;color:var(--text);padding-bottom:calc(82px + env(safe-area-inset-bottom,0px));overflow-x:hidden}
@@ -1809,6 +1809,7 @@ function Availability({ data, commit, currentDriver }) {
 }
 
 function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications }) {
+  const [expandedShiftId, setExpandedShiftId] = useState('')
   const shifts = sortByDateTime(data.shifts.filter((s) => s.driverId === currentDriver?.id && s.date >= todayISO() && s.status !== 'cancelled')).slice(0, 30)
   const openShifts = sortByDateTime((data.shifts || []).filter((s) => s.status === 'open' && !s.driverId && s.date >= todayISO())).slice(0, 30)
   const myOpenInterests = (data.swapRequests || []).filter((r) => r.targetMode === 'open' && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
@@ -1903,10 +1904,30 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
     </div>
   }
   const ShiftMobileCard = ({ s, focusCard = false }) => {
+    const isPendingAction = ['assigned', 'draft', 'pending'].includes(s.status)
+    const isInProgress = Boolean(s.actualStartAt && !s.actualEndAt) || s.status === 'in_progress'
+    const [startAt, endAt] = intervalForShift(s)
+    const now = Date.now()
+    const isStartWindow = startAt - now <= 60 * 60 * 1000 && endAt >= now
+    const shouldDefaultFull = focusCard || isPendingAction || isInProgress || isStartWindow || s.status !== 'confirmed'
+    const isExpanded = expandedShiftId === s.id
+    const compactCard = !shouldDefaultFull && !isExpanded
     const duration = actualDurationMinutes(s)
     const vehicle = helpers.vehicle(s.vehicleId)
+    if (compactCard) {
+      return <button type="button" className="card driver-shift-card driver-shift-compact-card" onClick={() => setExpandedShiftId(s.id)}>
+        <div className="driver-compact-main">
+          <div>
+            <span className="driver-compact-title">{formatDate(s.date)} · {s.start}–{s.end}</span>
+            <p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p>
+          </div>
+          <div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} /><span className="driver-card-toggle" aria-hidden="true">▾</span></div>
+        </div>
+      </button>
+    }
+    const canCollapse = !shouldDefaultFull
     return <div className={focusCard ? 'card driver-hero' : 'card driver-shift-card'}>
-      <div className="driver-shift-head"><div><span className="driver-date">{formatDate(s.date)}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><StatusPill status={s.status} helpers={helpers} /></div>
+      <div className="driver-shift-head"><div><span className="driver-date">{formatDate(s.date)}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} />{canCollapse && <button type="button" className="driver-card-toggle" aria-label="Sbalit směnu" onClick={() => setExpandedShiftId('')}>▴</button>}</div></div>
       {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
       {s.note && <p className="muted driver-note">{s.note}</p>}
       {(s.actualStartAt || s.actualEndAt) ? <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div> : <div className="driver-info-line">Začněte směnu kliknutím na „Nastoupil jsem“.</div>}
