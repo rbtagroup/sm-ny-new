@@ -934,7 +934,7 @@ function App({ session = null, profile = null, signOut = null }) {
 
   if (isDriver) return <div className="driver-shell-v2">
     <header className="driver-topbar-v2">
-      <div className="driver-topbar-brand">{(currentDriver?.avatarUrl || currentDriver?.avatar_url) ? <img className="driver-avatar-img" src={currentDriver.avatarUrl || currentDriver.avatar_url} alt={currentDriver?.name || 'Řidič'} /> : <div className="logo compact-logo">{driverInitials(currentDriver?.name || 'Řidič')}</div>}<div><strong>{currentDriver?.name || 'Řidič'}</strong><small>{onlineMode ? 'Online' : 'Demo'}</small></div></div>
+      <div className="driver-topbar-brand">{(currentDriver?.avatarUrl || currentDriver?.avatar_url) ? <img className="driver-avatar-img" src={currentDriver.avatarUrl || currentDriver.avatar_url} alt={currentDriver?.name || 'Řidič'} /> : <div className="logo compact-logo">{driverInitials(currentDriver?.name || 'Řidič')}</div>}<div><strong>{currentDriver?.name || 'Řidič'}</strong><small>Řidič</small></div></div>
       <span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online ●' : 'Demo'}</span>
     </header>
     <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>
