@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 
@@ -816,7 +816,7 @@ function useAppData(session, profile) {
     return () => { clearTimeout(timer); clearInterval(poll); supabase.removeChannel(ch) }
   }, [online, session?.user?.id])
 
-  const commit = (updater, text) => {
+  const commit = (updater, text, options = {}) => {
     setData((prev) => {
       const rawNext = typeof updater === 'function' ? updater(prev) : updater
       const audit = text ? [{ id: uid('log'), at: new Date().toISOString(), text }, ...(rawNext.audit || [])].slice(0, 250) : rawNext.audit
@@ -829,8 +829,16 @@ function useAppData(session, profile) {
           .then(() => {
             setSyncState({ loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() })
             sendPushForNotifications(pushNotices)
+            options.onSuccess?.()
           })
-          .catch((err) => setSyncState((s) => ({ ...s, saving: false, error: err.message || String(err) })))
+          .catch((err) => {
+            if (options.rollbackOnError) {
+              writeStore(prev)
+              setData(prev)
+            }
+            setSyncState((s) => ({ ...s, saving: false, error: err.message || String(err) }))
+            options.onError?.(err)
+          })
       }
       return next
     })
@@ -1810,7 +1818,15 @@ function Availability({ data, commit, currentDriver }) {
 
 function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications }) {
   const [expandedShiftId, setExpandedShiftId] = useState('')
-  const shifts = sortByDateTime(data.shifts.filter((s) => s.driverId === currentDriver?.id && s.date >= todayISO() && s.status !== 'cancelled')).slice(0, 30)
+  const [driverToast, setDriverToast] = useState('')
+  const driverToastTimer = useRef(null)
+  const hiddenDriverStatuses = new Set(['cancelled', 'declined', 'rejected'])
+  const showDriverToast = (message) => {
+    setDriverToast(message)
+    window.clearTimeout(driverToastTimer.current)
+    driverToastTimer.current = window.setTimeout(() => setDriverToast(''), 2600)
+  }
+  const shifts = sortByDateTime(data.shifts.filter((s) => s.driverId === currentDriver?.id && s.date >= todayISO() && !hiddenDriverStatuses.has(s.status))).slice(0, 30)
   const openShifts = sortByDateTime((data.shifts || []).filter((s) => s.status === 'open' && !s.driverId && s.date >= todayISO())).slice(0, 30)
   const myOpenInterests = (data.swapRequests || []).filter((r) => r.targetMode === 'open' && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
   const visibleNotices = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, true))
@@ -1820,10 +1836,10 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
   const todayShift = shifts.find((x) => x.date === todayISO())
   const nextShift = shifts.find((x) => x.date > todayISO()) || shifts[0]
   const focus = running || todayShift || nextShift
-  const setStatus = (id, status, reason = '') => {
+  const setStatus = (id, status, reason = '', options = {}) => {
     const shift = data.shifts.find((s) => s.id === id)
     const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${formatDate(shift.date)} ${shift.start}–${shift.end}${reason ? ` · důvod: ${reason}` : ''}`, `driver-${status}`, id)] : []
-    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, status, declineReason: reason } : s) }, notices), `${currentDriver?.name || 'Řidič'} změnil stav směny na ${statusMap[status]}.`)
+    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, status, declineReason: reason } : s) }, notices), `${currentDriver?.name || 'Řidič'} změnil stav směny na ${statusMap[status]}.`, options)
   }
   const checkIn = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
@@ -1880,7 +1896,15 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
     ]
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver.name} projevil zájem o volnou směnu.`)
   }
-  const decline = (shift) => { const reason = prompt('Důvod odmítnutí:', shift.declineReason || ''); if (reason !== null) setStatus(shift.id, 'declined', reason || '') }
+  const decline = (shift) => {
+    const reason = prompt('Důvod odmítnutí:', shift.declineReason || '')
+    if (reason === null) return
+    showDriverToast('Směna odmítnuta.')
+    setStatus(shift.id, 'declined', reason || '', {
+      rollbackOnError: true,
+      onError: () => showDriverToast('Nepodařilo se odmítnout, zkus to znovu.'),
+    })
+  }
   const scrollToDriverSection = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const quickChips = [
     awaiting.length > 0 ? { key: 'awaiting', label: `⏳ ${awaiting.length} čeká`, kind: 'warn', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
@@ -1939,6 +1963,7 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
   }
   const otherShifts = shifts.filter((s) => s.id !== focus?.id)
   return <div className="driver-view driver-mobile-view driver-priority-view">
+    {driverToast && <div className="planner-toast" role="status">{driverToast}</div>}
     {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty driver-empty-focus"><b>Žádná nadcházející směna</b><br /><span className="muted">Zkontroluj volné směny níže nebo počkej na přiřazení od dispečera.</span></div>}
     {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
     {awaiting.length > 0 && <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
