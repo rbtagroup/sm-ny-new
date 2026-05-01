@@ -1,5 +1,6 @@
 {
   "framework": "vite",
+  "installCommand": "npm ci --no-audit --no-fund",
   "rewrites": [
     {
       "source": "/:path((?!api/).*)",
