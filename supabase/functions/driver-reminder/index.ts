@@ -63,9 +63,9 @@ function cronWindowSkipReason(body: any) {
   if (body?.source !== 'pg_cron') return ''
   const expectedHour = Number(body?.expectedLocalHour)
   const expectedWeekday = String(body?.expectedLocalWeekday || '')
-  if (!Number.isFinite(expectedHour) || !expectedWeekday) return ''
+  if (!Number.isFinite(expectedHour)) return ''
   const local = localTimeParts()
-  if (local.weekday === expectedWeekday && local.hour === expectedHour) return ''
+  if (local.hour === expectedHour && (!expectedWeekday || local.weekday === expectedWeekday)) return ''
   return `outside-prague-window:${local.weekday}-${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`
 }
 

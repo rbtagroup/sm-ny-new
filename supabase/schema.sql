@@ -270,6 +270,40 @@ as $$
   ), false)
 $$;
 
+create or replace function public.rb_guard_notification_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if trim(lower(coalesce(public.current_role(), ''))) in ('admin', 'dispatcher') then
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+    or new.target_driver_id is distinct from old.target_driver_id
+    or new.target_role is distinct from old.target_role
+    or new.type is distinct from old.type
+    or new.shift_id is distinct from old.shift_id
+    or new.title is distinct from old.title
+    or new.body is distinct from old.body
+    or new.payload is distinct from old.payload
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'Only read_by can be updated on notifications.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists notifications_guard_update on public.notifications;
+create trigger notifications_guard_update
+before update on public.notifications
+for each row
+execute function public.rb_guard_notification_update();
+
 -- Profiles
 create policy "profiles_select_self_or_staff" on public.profiles for select using (id = auth.uid() or public.current_role() in ('dispatcher','admin'));
 create policy "profiles_insert_self_driver" on public.profiles for insert with check (id = auth.uid() and role = 'driver');
@@ -347,9 +381,11 @@ create policy "notifications_insert_signed" on public.notifications for insert w
 );
 create policy "notifications_update_visible" on public.notifications for update using (
   public.current_role() in ('dispatcher','admin')
+  or target_role in ('all','driver_all')
   or target_driver_id = public.current_driver_id()
 ) with check (
   public.current_role() in ('dispatcher','admin')
+  or target_role in ('all','driver_all')
   or target_driver_id = public.current_driver_id()
 );
 

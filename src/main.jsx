@@ -316,6 +316,13 @@ async function sendPushForNotifications(notices, accessToken = '') {
     return { ok: false, error: err?.message || String(err) }
   }
 }
+function pushDeliveryWarning(result) {
+  if (!result || result.reason === 'no-notifications') return ''
+  if (result.skipped) return result.reason || 'push přeskočen'
+  if (result.ok === false) return result.error || result.reason || 'neznámá chyba'
+  if (Number(result.failed || 0) > 0) return `${result.failed} zařízení nedostalo push`
+  return ''
+}
 async function syncChangedRows(prev, next, profile) {
   if (!supabase || !profile) return
   const isStaff = ['admin','dispatcher'].includes(profile.role)
@@ -329,6 +336,26 @@ async function syncChangedRows(prev, next, profile) {
     let changed = changedRows(prev[key], next[key])
     // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
     if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId)
+    if (!isStaff && key === 'notifications') {
+      const previousIds = new Set((prev.notifications || []).map((n) => n.id))
+      const insertedRows = changed.filter((row) => row.id && !previousIds.has(row.id)).map(toDb.notifications)
+      const readUpdates = changed.filter((row) => row.id && previousIds.has(row.id)).map(toDb.notifications)
+      if (insertedRows.length) {
+        const { error } = await supabase.from('notifications').insert(insertedRows)
+        if (error) {
+          errors.push(`notifications: ${error.message}`)
+          if (critical.has(key)) throw new Error(errors.join('\n'))
+        }
+      }
+      for (const row of readUpdates) {
+        const { error } = await supabase.from('notifications').update({ read_by: row.read_by || [] }).eq('id', row.id)
+        if (error) {
+          errors.push(`notifications: ${error.message}`)
+          if (critical.has(key)) throw new Error(errors.join('\n'))
+        }
+      }
+      continue
+    }
     const rows = changed.map(toDb[key]).filter((r) => r.id)
     if (rows.length) {
       const { error } = await supabase.from(tableName(key)).upsert(rows, { onConflict: 'id' })
@@ -850,9 +877,15 @@ function useAppData(session, profile) {
         setSyncState((s) => ({ ...s, saving: true, error: '' }))
         const pushNotices = addedRows(prev.notifications, next.notifications)
         syncChangedRows(prev, next, profile)
-          .then(() => {
-            setSyncState({ loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() })
-            sendPushForNotifications(pushNotices, session?.access_token || '')
+          .then(async () => {
+            const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, session?.access_token || '') : null
+            const warning = pushDeliveryWarning(pushResult)
+            setSyncState({
+              loading: false,
+              saving: false,
+              error: warning ? `Uloženo, ale push notifikace se nepodařilo doručit: ${warning}` : '',
+              lastSyncAt: new Date().toISOString(),
+            })
             options.onSuccess?.()
           })
           .catch((err) => {

@@ -1,47 +1,61 @@
--- RBSHIFT driver-signup-reminder
--- Spusť v Supabase SQL editoru po deployi Edge Function `driver-reminder`.
+-- RBSHIFT notification review fixes
+-- Spustit v Supabase SQL editoru po nasazení nové verze aplikace a Edge Function driver-reminder.
 --
--- Job:
--- - driver-signup-reminder
--- - default cron: každou středu v 18:00 => 0 18 * * 3
--- - cron expression se ukládá do app_settings.payload.driverReminderSchedule
---
--- Poznámka k timezone:
--- pg_cron běží v UTC. Pro výchozí středu 18:00 Europe/Prague se job
--- plánuje na oba možné UTC časy (zimní/letní čas) a Edge Function sama
--- pustí práci jen ve středu v 18:xx pražského času.
---
--- Před spuštěním nahraď:
--- - https://PROJECT_REF.supabase.co
--- - CHANGE_ME_LONG_RANDOM_SECRET
---
--- Stejnou hodnotu CHANGE_ME_LONG_RANDOM_SECRET nastav v Edge Function secrets:
--- npx supabase secrets set DRIVER_REMINDER_SECRET="CHANGE_ME_LONG_RANDOM_SECRET"
+-- Řeší:
+-- 1) globální notifikace all/driver_all lze řidičem označit jako přečtené/smazané
+--    bez možnosti měnit jejich obsah
+-- 2) refresh_driver_reminder_cron převádí jednoduchý lokální cron z UI na Europe/Prague
 
-create extension if not exists pg_cron with schema cron;
-create extension if not exists pg_net with schema net;
-create extension if not exists supabase_vault with schema vault;
+create or replace function public.rb_guard_notification_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.rb_is_staff() then
+    return new;
+  end if;
 
--- Aktuální notifications schema v projektu nemá payload.
--- Tento job ho potřebuje pro metadata notifikace, proto přidáváme kompatibilní jsonb sloupec.
-alter table public.notifications
-add column if not exists payload jsonb not null default '{}'::jsonb;
+  if new.id is distinct from old.id
+    or new.target_driver_id is distinct from old.target_driver_id
+    or new.target_role is distinct from old.target_role
+    or new.type is distinct from old.type
+    or new.shift_id is distinct from old.shift_id
+    or new.title is distinct from old.title
+    or new.body is distinct from old.body
+    or new.payload is distinct from old.payload
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'Only read_by can be updated on notifications.';
+  end if;
 
-insert into public.app_settings (id, payload)
-values ('default', jsonb_build_object('driverReminderSchedule', '0 18 * * 3'))
-on conflict (id) do update
-set
-  payload = public.app_settings.payload || jsonb_build_object('driverReminderSchedule', '0 18 * * 3'),
-  updated_at = now();
+  return new;
+end;
+$$;
 
-select vault.create_secret('https://PROJECT_REF.supabase.co', 'project_url')
-where not exists (select 1 from vault.decrypted_secrets where name = 'project_url');
+drop trigger if exists notifications_guard_update on public.notifications;
+create trigger notifications_guard_update
+before update on public.notifications
+for each row
+execute function public.rb_guard_notification_update();
 
-select vault.create_secret('CHANGE_ME_LONG_RANDOM_SECRET', 'driver_reminder_secret')
-where not exists (select 1 from vault.decrypted_secrets where name = 'driver_reminder_secret');
+drop policy if exists "notifications_update_visible" on public.notifications;
+create policy "notifications_update_visible"
+on public.notifications
+for update
+to authenticated
+using (
+  (select public.rb_is_staff())
+  or target_role in ('all', 'driver_all')
+  or target_driver_id = (select public.rb_current_driver_id())
+)
+with check (
+  (select public.rb_is_staff())
+  or target_role in ('all', 'driver_all')
+  or target_driver_id = (select public.rb_current_driver_id())
+);
 
--- Helper: kdykoliv se změní app_settings.payload.driverReminderSchedule,
--- stačí znovu zavolat select public.refresh_driver_reminder_cron();
 create or replace function public.refresh_driver_reminder_cron()
 returns text
 language plpgsql
@@ -146,4 +160,5 @@ begin
 end;
 $$;
 
+grant execute on function public.refresh_driver_reminder_cron() to authenticated;
 select public.refresh_driver_reminder_cron();

@@ -104,6 +104,40 @@ grant execute on function public.rb_is_staff() to authenticated;
 grant execute on function public.rb_current_driver_id() to authenticated;
 grant execute on function public.rb_can_driver_notify_driver(text, text, text) to authenticated;
 
+create or replace function public.rb_guard_notification_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.rb_is_staff() then
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+    or new.target_driver_id is distinct from old.target_driver_id
+    or new.target_role is distinct from old.target_role
+    or new.type is distinct from old.type
+    or new.shift_id is distinct from old.shift_id
+    or new.title is distinct from old.title
+    or new.body is distinct from old.body
+    or new.payload is distinct from old.payload
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'Only read_by can be updated on notifications.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists notifications_guard_update on public.notifications;
+create trigger notifications_guard_update
+before update on public.notifications
+for each row
+execute function public.rb_guard_notification_update();
+
 alter table public.notifications enable row level security;
 
 drop policy if exists "notifications_select_visible" on public.notifications;
@@ -152,10 +186,12 @@ for update
 to authenticated
 using (
   (select public.rb_is_staff())
+  or target_role in ('all', 'driver_all')
   or target_driver_id = (select public.rb_current_driver_id())
 )
 with check (
   (select public.rb_is_staff())
+  or target_role in ('all', 'driver_all')
   or target_driver_id = (select public.rb_current_driver_id())
 );
 
@@ -201,6 +237,16 @@ as $$
 declare
   cron_expr text;
   cron_schedule text;
+  cron_parts text[];
+  cron_minute text;
+  cron_hour text;
+  cron_dom text;
+  cron_month text;
+  cron_dow text;
+  expected_hour integer;
+  expected_weekday text;
+  summer_utc_hour integer;
+  winter_utc_hour integer;
 begin
   select coalesce(payload->>'driverReminderSchedule', '0 18 * * 3')
   into cron_expr
@@ -208,9 +254,54 @@ begin
   where id = 'default';
 
   cron_expr := coalesce(nullif(trim(cron_expr), ''), '0 18 * * 3');
+  cron_parts := string_to_array(regexp_replace(cron_expr, '\s+', ' ', 'g'), ' ');
+  if array_length(cron_parts, 1) <> 5 then
+    raise exception 'driverReminderSchedule must be a 5-field cron expression.';
+  end if;
+
+  cron_minute := cron_parts[1];
+  cron_hour := cron_parts[2];
+  cron_dom := cron_parts[3];
+  cron_month := cron_parts[4];
+  cron_dow := cron_parts[5];
+
+  if cron_minute !~ '^\d{1,2}$' or cron_hour !~ '^\d{1,2}$' then
+    raise exception 'driverReminderSchedule must use one fixed minute and one fixed local hour.';
+  end if;
+
+  expected_hour := cron_hour::integer;
+  if cron_minute::integer not between 0 and 59 or expected_hour not between 0 and 23 then
+    raise exception 'driverReminderSchedule contains an invalid minute or hour.';
+  end if;
+
+  expected_weekday := case trim(lower(cron_dow))
+    when '*' then ''
+    when '0' then 'Sun'
+    when '7' then 'Sun'
+    when 'sun' then 'Sun'
+    when '1' then 'Mon'
+    when 'mon' then 'Mon'
+    when '2' then 'Tue'
+    when 'tue' then 'Tue'
+    when '3' then 'Wed'
+    when 'wed' then 'Wed'
+    when '4' then 'Thu'
+    when 'thu' then 'Thu'
+    when '5' then 'Fri'
+    when 'fri' then 'Fri'
+    when '6' then 'Sat'
+    when 'sat' then 'Sat'
+    else null
+  end;
+  if expected_weekday is null then
+    raise exception 'driverReminderSchedule must use one weekday or *.';
+  end if;
+
+  summer_utc_hour := (expected_hour + 22) % 24;
+  winter_utc_hour := (expected_hour + 23) % 24;
   cron_schedule := case
-    when cron_expr = '0 18 * * 3' then '0 16,17 * * 3'
-    else cron_expr
+    when expected_hour < 2 then format('%s %s,%s %s %s *', cron_minute, summer_utc_hour, winter_utc_hour, cron_dom, cron_month)
+    else format('%s %s,%s %s %s %s', cron_minute, summer_utc_hour, winter_utc_hour, cron_dom, cron_month, cron_dow)
   end;
 
   if exists (select 1 from cron.job where jobname = 'rbshift-driver-signup-reminder') then
@@ -220,7 +311,7 @@ begin
   perform cron.schedule(
     'rbshift-driver-signup-reminder',
     cron_schedule,
-    $job$
+    format($job$
     select net.http_post(
       url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/driver-reminder',
       headers := jsonb_build_object(
@@ -230,12 +321,12 @@ begin
       body := jsonb_build_object(
         'job', 'driver-signup-reminder',
         'source', 'pg_cron',
-        'expectedLocalHour', 18,
-        'expectedLocalWeekday', 'Wed',
+        'expectedLocalHour', %s,
+        'expectedLocalWeekday', %L,
         'time', now()
       )
     ) as request_id;
-    $job$
+    $job$, expected_hour, expected_weekday)
   );
 
   return cron_expr;
