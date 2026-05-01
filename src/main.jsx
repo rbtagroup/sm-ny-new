@@ -788,6 +788,26 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 @media (max-width:640px){.driver-main-v2{padding-top:12px}.driver-shift-head h3{font-size:32px}.driver-week-grid{gap:4px}.driver-day{border-radius:12px;padding:7px 2px}.driver-day strong{font-size:15px}.driver-actions{grid-template-columns:1fr 1fr}.driver-bottom-nav{gap:4px}.driver-bottom-nav button b{font-size:10px}}
 @media (max-width:640px){.driver-mobile-head .ghost{width:auto}.driver-priority-view{gap:12px}.driver-shift-head h3{font-size:34px}.driver-actions{grid-template-columns:1fr 1fr}.driver-actions button{min-height:48px}.driver-mini-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.driver-mini-grid .kpi{padding:10px}.driver-mini-grid .kpi .value{font-size:20px}.driver-open-shifts summary{align-items:flex-start}.driver-app-shell .nav button{padding:10px 8px;font-size:13px}}
 
+/* v5.5.5 driver pilot display polish */
+.driver-section-kicker{margin:4px 2px -2px;color:#b9c6d8;font-size:12px;font-weight:950;letter-spacing:.10em;text-transform:uppercase}
+.driver-sync-banner{border:1px solid rgba(255,207,90,.42);border-radius:14px;padding:10px 12px;background:rgba(255,207,90,.11);color:#ffe6a6;font-size:13px;font-weight:850;line-height:1.35}
+.driver-sync-banner.saving{border-color:rgba(128,199,255,.36);background:rgba(128,199,255,.10);color:#dbeafe}
+.driver-sync-banner.warn{border-color:rgba(255,207,90,.48);background:rgba(255,207,90,.13);color:#ffe6a6}
+.driver-priority-view .driver-hero{border-color:rgba(245,199,106,.72);box-shadow:0 0 0 1px rgba(245,199,106,.16),var(--shadow);background:linear-gradient(180deg,rgba(245,199,106,.18),rgba(255,255,255,.045))}
+.driver-priority-view .driver-hero .driver-date{font-size:15px}
+.driver-priority-view .driver-hero .driver-shift-head h3{font-size:clamp(34px,8vw,48px)}
+.driver-priority-view .driver-shift-compact-card{border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.028));box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.driver-open-shifts-highlight{border-color:rgba(255,207,90,.72)!important;box-shadow:0 0 0 1px rgba(255,207,90,.16),var(--shadow)}
+.driver-open-shifts summary>.pill.warn{min-width:34px;height:34px;border-radius:999px;justify-content:center;padding:0 10px;color:#fff1bd}
+.notifications-card{padding-top:16px}
+.notification-groups{display:grid;gap:16px}
+.notification-group{display:grid;gap:8px}
+.notification-group-title{padding:0 2px;color:#b9c6d8;font-size:11px;font-weight:950;letter-spacing:.11em;text-transform:uppercase}
+.notification-row.notification-read{opacity:.58}
+.notification-row.notification-read:hover{opacity:.82}
+.notification-row.notification-unread{box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.notification-row p{margin:8px 0 0;line-height:1.42}
+
 
 /* TASK 3 role-based sidebar navigation */
 .sidebar-nav{display:grid;gap:20px}.nav-section{display:grid;gap:8px}.nav-section-title{padding:0 4px;color:var(--muted);font-size:11px;font-weight:950;letter-spacing:.12em}.sidebar-footer{margin-top:auto;padding:10px 4px 0;color:var(--muted);font-size:12px;display:grid;gap:5px}.sync-line{display:flex;align-items:center;gap:8px}.sidebar-footer small{display:block;color:var(--muted);line-height:1.35}.app-with-topbar .sidebar .sidebar-nav .nav{margin-top:0}
@@ -983,7 +1003,7 @@ function App({ session = null, profile = null, signOut = null }) {
       <span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online ●' : 'Demo'}</span>
     </header>
     <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>
-      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} onOpenNotifications={() => setPage('notifications')} />}
+      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} syncState={syncState} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} />}
       {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} session={session} onlineMode={onlineMode} signOut={signOut} syncState={syncState} />}
@@ -1873,7 +1893,7 @@ function Availability({ data, commit, currentDriver }) {
   </>
 }
 
-function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications }) {
+function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   const [expandedShiftId, setExpandedShiftId] = useState('')
   const [driverToast, setDriverToast] = useState('')
   const driverToastTimer = useRef(null)
@@ -2023,6 +2043,9 @@ function DriverHome({ data, helpers, commit, currentDriver, onOpenNotifications 
   const highlightOpenShifts = openShifts.length >= 4
   return <div className="driver-view driver-mobile-view driver-priority-view">
     {driverToast && <div className="planner-toast" role="status">{driverToast}</div>}
+    {syncState?.saving && <div className="driver-sync-banner saving" role="status">Ukládám změny…</div>}
+    {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{syncState.error}</div>}
+    {focus && <div className="driver-section-kicker">Aktuální směna</div>}
     {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty driver-empty-focus"><b>Žádná nadcházející směna</b><br /><span className="muted">Zkontroluj volné směny níže nebo počkej na přiřazení od dispečera.</span></div>}
     {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
     {awaiting.length > 0 && <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
@@ -2216,9 +2239,25 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
 }
 
 function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile, session }) {
-  const visible = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver))
+  const visible = (data.notifications || [])
+    .filter((n) => isNoticeVisible(n, currentDriver, isDriver))
+    .sort((a, b) => new Date(b.at || b.createdAt || 0).getTime() - new Date(a.at || a.createdAt || 0).getTime())
   const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver))
   const [undoDeleteIds, setUndoDeleteIds] = useState([])
+  const dateKey = (value) => {
+    const date = value ? new Date(value) : new Date()
+    return new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+  }
+  const todayKey = dateKey(new Date())
+  const yesterdayKey = dateKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+  const notificationGroups = [
+    ['Dnes', visible.filter((n) => dateKey(n.at || n.createdAt) === todayKey)],
+    ['Včera', visible.filter((n) => dateKey(n.at || n.createdAt) === yesterdayKey)],
+    ['Starší', visible.filter((n) => {
+      const key = dateKey(n.at || n.createdAt)
+      return key !== todayKey && key !== yesterdayKey
+    })],
+  ].filter(([, items]) => items.length)
   const markOne = (id) => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označena jako přečtená.')
   const queueUndo = (ids) => {
     const clean = [...new Set((ids || []).filter(Boolean))]
@@ -2251,18 +2290,24 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
       <button className="danger" onClick={clearRead}>Smazat přečtené</button>
     </PageTitle>
     {undoDeleteIds.length > 0 && <div className="toast-undo"><span>{undoDeleteIds.length === 1 ? 'Notifikace smazána.' : `${undoDeleteIds.length} notifikací smazáno.`}</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
-    <div className="card"><div className="section-title"><h3>Centrum upozornění</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div><div className="stack">
-      {visible.map((n) => {
-        const read = isNoticeRead(n, currentDriver, isDriver)
-        return <div className={read ? 'log notification-row' : 'alert warn notification-row'} key={n.id}>
-          <div className="split"><div><b>{n.title}</b><br /><small className="muted">{new Date(n.at).toLocaleString('cs-CZ')}</small></div>{!read && <span className="pill warn">nové</span>}</div>
-          <p>{n.body || 'Bez detailu'}</p>
-          <div className="row-actions notification-actions" style={{ marginTop: 8 }}>
-            {!read && <button onClick={() => markOne(n.id)}>Přečteno</button>}
-            <button className="danger-mini" onClick={() => deleteOne(n.id)}>Smazat</button>
+    <div className="card notifications-card"><div className="section-title"><h3>Centrum upozornění</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div><div className="notification-groups">
+      {notificationGroups.map(([label, items]) => <section className="notification-group" key={label}>
+        <div className="notification-group-title">{label}</div>
+        <div className="stack">
+          {items.map((n) => {
+            const read = isNoticeRead(n, currentDriver, isDriver)
+            const noticeAt = n.at || n.createdAt || new Date().toISOString()
+            return <div className={read ? 'log notification-row notification-read' : 'alert warn notification-row notification-unread'} key={n.id}>
+              <div className="split"><div><b>{n.title}</b><br /><small className="muted">{new Date(noticeAt).toLocaleString('cs-CZ')}</small></div>{!read && <span className="pill warn">nové</span>}</div>
+              <p>{n.body || 'Bez detailu'}</p>
+              <div className="row-actions notification-actions" style={{ marginTop: 8 }}>
+                {!read && <button onClick={() => markOne(n.id)}>Přečteno</button>}
+                <button className="danger-mini" onClick={() => deleteOne(n.id)}>Smazat</button>
+              </div>
+            </div>
+          })}
           </div>
-        </div>
-      })}
+      </section>)}
       {!visible.length && <div className="empty">Zatím žádné notifikace.</div>}
     </div></div>
     {!isDriver && <div className="stack" style={{ marginTop: 16 }}><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} /></div>}
