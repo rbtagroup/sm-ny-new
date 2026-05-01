@@ -1,5 +1,15 @@
-const CACHE_NAME = 'rbshift-pwa-v1.3.4-v5.3.1-live-sync-fix';
-const CORE_ASSETS = ['./', './index.html', './manifest.webmanifest'];
+const CACHE_NAME = 'rbshift-pwa-v1.3.18-brand-icons';
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
+  './icons/notification-icon-192.png',
+  './icons/notification-badge-96.png',
+  './icons/splash-logo.png',
+];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -33,8 +43,8 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'RBSHIFT';
   const options = {
     body: payload.body || 'Nové upozornění v plánovači směn.',
-    icon: './icons/icon-192.png',
-    badge: './icons/icon-192.png',
+    icon: './icons/notification-icon-192.png',
+    badge: './icons/notification-badge-96.png',
     tag: payload.tag || `rbshift-${Date.now()}`,
     data: { url: payload.url || './', shiftId: payload.shiftId || '' },
     requireInteraction: Boolean(payload.requireInteraction),

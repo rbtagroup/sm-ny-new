@@ -71,7 +71,7 @@ async function showBrowserNotification(title, body = '') {
   const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
   if (permission !== 'granted') return false
   const reg = await navigator.serviceWorker.ready
-  await reg.showNotification(title, { body, icon: './icons/icon-192.png', badge: './icons/icon-192.png', tag: `rbshift-${Date.now()}`, data: { url: './' } })
+  await reg.showNotification(title, { body, icon: './icons/notification-icon-192.png', badge: './icons/notification-badge-96.png', tag: `rbshift-${Date.now()}`, data: { url: './' } })
   return true
 }
 async function subscribeDeviceForPush(vapidPublicKey) {
