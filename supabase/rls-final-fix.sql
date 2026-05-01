@@ -93,6 +93,40 @@ alter table public.swap_requests
   add constraint swap_requests_target_mode_check
   check (target_mode in ('all','driver','open'));
 
+alter table public.notifications
+  add column if not exists payload jsonb not null default '{}'::jsonb;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.notifications
+    where left(type, 15) = 'daily-coverage:' and target_role = 'admin'
+    group by type, target_role
+    having count(*) > 1
+  ) then
+    create unique index if not exists notifications_daily_coverage_once
+      on public.notifications (type, target_role)
+      where left(type, 15) = 'daily-coverage:' and target_role = 'admin';
+  else
+    raise notice 'Skipping notifications_daily_coverage_once: existing duplicate daily-coverage notifications must be deduplicated first.';
+  end if;
+
+  if not exists (
+    select 1
+    from public.notifications
+    where left(type, 23) = 'driver-signup-reminder:' and target_driver_id is not null
+    group by type, target_driver_id
+    having count(*) > 1
+  ) then
+    create unique index if not exists notifications_driver_reminder_once
+      on public.notifications (type, target_driver_id)
+      where left(type, 23) = 'driver-signup-reminder:' and target_driver_id is not null;
+  else
+    raise notice 'Skipping notifications_driver_reminder_once: existing duplicate driver reminders must be deduplicated first.';
+  end if;
+end $$;
+
 
 
 -- ============================================================
@@ -305,6 +339,8 @@ using ((select public.rb_is_staff()));
 -- ============================================================
 
 drop policy if exists "notifications_select_visible" on public.notifications;
+drop policy if exists "notifications_insert_allowed" on public.notifications;
+drop policy if exists "notifications_update_visible" on public.notifications;
 drop policy if exists "notifications_select_authenticated" on public.notifications;
 drop policy if exists "notifications_insert_authenticated" on public.notifications;
 drop policy if exists "notifications_update_authenticated" on public.notifications;
@@ -318,24 +354,41 @@ drop policy if exists "notifications_delete" on public.notifications;
 
 alter table public.notifications enable row level security;
 
--- Uvolněno kvůli aktuálnímu upsert/select chování aplikace.
-create policy "notifications_select_authenticated"
+create policy "notifications_select_visible"
 on public.notifications
 for select
 to authenticated
-using (auth.uid() is not null);
+using (
+  (select public.rb_is_staff())
+  or target_role in ('all', 'driver_all')
+  or target_driver_id = (select public.rb_current_driver_id())
+);
 
-create policy "notifications_insert_authenticated"
+create policy "notifications_insert_allowed"
 on public.notifications
 for insert
 to authenticated
-with check (auth.uid() is not null);
+with check (
+  (select public.rb_is_staff())
+  or (
+    auth.uid() is not null
+    and (
+      target_role in ('admin', 'dispatcher')
+      or target_driver_id = (select public.rb_current_driver_id())
+      or (target_role = 'driver' and target_driver_id is not null)
+    )
+  )
+);
 
-create policy "notifications_update_authenticated"
+create policy "notifications_update_visible"
 on public.notifications
 for update
 to authenticated
-using (auth.uid() is not null)
+using (
+  (select public.rb_is_staff())
+  or target_role in ('all', 'driver_all')
+  or target_driver_id = (select public.rb_current_driver_id())
+)
 with check (auth.uid() is not null);
 
 create policy "notifications_delete_staff"

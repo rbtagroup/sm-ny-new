@@ -37,6 +37,40 @@ const matchesNotice = (subscription, notice) => {
   return role === 'admin' || role === 'dispatcher'
 }
 
+const bearerTokenFrom = (req) => {
+  const value = req.headers.authorization || req.headers.Authorization || ''
+  const match = String(value).match(/^Bearer\s+(.+)$/i)
+  return match?.[1] || ''
+}
+
+const internalSecretFrom = (req) => String(req.headers['x-rbshift-push-secret'] || req.headers['X-Rbshift-Push-Secret'] || '')
+
+const profileForToken = async (supabase, token) => {
+  if (!token) return null
+  const { data: userData, error: userError } = await supabase.auth.getUser(token)
+  if (userError || !userData?.user?.id) return null
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, role')
+    .eq('id', userData.user.id)
+    .maybeSingle()
+  if (profileError) throw profileError
+  return profile || null
+}
+
+const canSendNotice = (notice, profile, internalAuthorized) => {
+  if (internalAuthorized) return true
+  const role = String(profile?.role || '').toLowerCase()
+  if (role === 'admin' || role === 'dispatcher') return true
+  if (role !== 'driver') return false
+
+  // Řidič může spustit push jen pro tok, který appka reálně používá:
+  // upozornění dispečinku/adminům, vlastní test nebo konkrétního kolegu u výměny.
+  if (notice.targetRole === 'admin' || notice.targetRole === 'dispatcher') return true
+  if (notice.targetDriverId) return true
+  return false
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, error: 'Method not allowed' })
 
@@ -55,6 +89,22 @@ export default async function handler(req, res) {
   if (!notifications.length) return json(res, 400, { ok: false, error: 'No notifications supplied' })
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  const expectedInternalSecret = process.env.PUSH_DELIVERY_SECRET || process.env.SCHEDULER_SECRET || process.env.DRIVER_REMINDER_SECRET
+  const receivedInternalSecret = internalSecretFrom(req)
+  const internalAuthorized = Boolean(expectedInternalSecret && receivedInternalSecret && receivedInternalSecret === expectedInternalSecret)
+  let callerProfile = null
+  if (!internalAuthorized) {
+    try { callerProfile = await profileForToken(supabase, bearerTokenFrom(req)) } catch (err) {
+      return json(res, 500, { ok: false, error: err?.message || String(err) })
+    }
+    if (!callerProfile) return json(res, 401, { ok: false, error: 'Authentication required' })
+  }
+
+  const forbiddenNotice = notifications.find((notice) => !canSendNotice(notice, callerProfile, internalAuthorized))
+  if (forbiddenNotice) {
+    return json(res, 403, { ok: false, error: `Forbidden notification target: ${forbiddenNotice.targetRole || forbiddenNotice.targetDriverId}` })
+  }
+
   const { data: subscriptions, error } = await supabase
     .from('push_subscriptions')
     .select('id, profile_id, driver_id, role, endpoint, subscription, active')

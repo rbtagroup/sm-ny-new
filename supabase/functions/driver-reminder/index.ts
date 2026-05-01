@@ -28,6 +28,11 @@ function uid(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`
 }
 
+function driverReminderNoticeId(dateISO: string, driverId: string) {
+  const safeDriverId = String(driverId || '').replace(/[^a-zA-Z0-9_-]/g, '_')
+  return `ntf_driver_signup_${dateISO.replaceAll('-', '')}_${safeDriverId}`.slice(0, 160)
+}
+
 function localDateISO(date = new Date()) {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: TZ,
@@ -43,15 +48,48 @@ function addDaysISO(dateISO: string, days: number) {
   return date.toISOString().slice(0, 10)
 }
 
+function pushDeliveryEndpoint() {
+  const raw = Deno.env.get('PUSH_DELIVERY_URL') || Deno.env.get('APP_URL') || Deno.env.get('PUBLIC_APP_URL') || Deno.env.get('SITE_URL') || ''
+  if (!raw) return ''
+  const base = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`
+  return base.endsWith('/api/send-push') ? base : `${base.replace(/\/$/, '')}/api/send-push`
+}
+
+async function sendPushForNotifications(notifications: Record<string, unknown>[]) {
+  if (!notifications.length) return { skipped: true, reason: 'no-notifications' }
+  const endpoint = pushDeliveryEndpoint()
+  const secret = Deno.env.get('PUSH_DELIVERY_SECRET') || Deno.env.get('DRIVER_REMINDER_SECRET') || Deno.env.get('SCHEDULER_SECRET')
+  if (!endpoint) return { skipped: true, reason: 'missing-push-delivery-url' }
+  if (!secret) return { skipped: true, reason: 'missing-push-delivery-secret' }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-rbshift-push-secret': secret,
+      },
+      body: JSON.stringify({ notifications }),
+    })
+    const text = await response.text()
+    let payload: Record<string, unknown> = {}
+    try { payload = text ? JSON.parse(text) : {} } catch { payload = { raw: text } }
+    return { ok: response.ok, status: response.status, ...payload }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 async function insertDriverNotifications(
   supabase: ReturnType<typeof createClient>,
   rows: Record<string, unknown>[],
 ) {
-  if (!rows.length) return { inserted: 0, payloadColumnUsed: true }
+  if (!rows.length) return { inserted: 0, payloadColumnUsed: true, duplicateSkipped: false }
 
   const { error } = await supabase.from('notifications').insert(rows)
 
-  if (!error) return { inserted: rows.length, payloadColumnUsed: true }
+  if (!error) return { inserted: rows.length, payloadColumnUsed: true, duplicateSkipped: false }
+  if (error.code === '23505') return { inserted: 0, payloadColumnUsed: true, duplicateSkipped: true }
 
   const message = String(error.message || '')
   const missingPayloadColumn =
@@ -64,9 +102,10 @@ async function insertDriverNotifications(
   const fallbackRows = rows.map(({ payload: _payload, ...row }) => row)
   const { error: fallbackError } = await supabase.from('notifications').insert(fallbackRows)
 
+  if (fallbackError?.code === '23505') return { inserted: 0, payloadColumnUsed: false, duplicateSkipped: true }
   if (fallbackError) throw fallbackError
 
-  return { inserted: fallbackRows.length, payloadColumnUsed: false }
+  return { inserted: fallbackRows.length, payloadColumnUsed: false, duplicateSkipped: false }
 }
 
 async function runDriverSignupReminder(supabase: ReturnType<typeof createClient>, triggeredAt: string) {
@@ -183,7 +222,7 @@ async function runDriverSignupReminder(supabase: ReturnType<typeof createClient>
   }
 
   const rows = driversToNotify.map((driver) => ({
-    id: uid('ntf_driver_signup'),
+    id: driverReminderNoticeId(today, driver.id),
     target_driver_id: driver.id,
     target_role: 'driver',
     type: reminderType,
@@ -196,6 +235,9 @@ async function runDriverSignupReminder(supabase: ReturnType<typeof createClient>
   }))
 
   const insertResult = await insertDriverNotifications(supabase, rows)
+  const pushResult = insertResult.inserted > 0
+    ? await sendPushForNotifications(rows)
+    : { skipped: true, reason: insertResult.duplicateSkipped ? 'already-notified-race' : 'no-new-notifications' }
 
   const { error: auditError } = await supabase.from('audit_logs').insert({
     id: uid('log_driver_reminder'),
@@ -212,6 +254,8 @@ async function runDriverSignupReminder(supabase: ReturnType<typeof createClient>
       dateTo,
       triggeredAt,
       payloadColumnUsed: insertResult.payloadColumnUsed,
+      duplicateSkipped: insertResult.duplicateSkipped,
+      pushResult,
     },
     created_at: triggeredAt,
   })
@@ -230,6 +274,8 @@ async function runDriverSignupReminder(supabase: ReturnType<typeof createClient>
     weekStart: today,
     dateTo,
     payloadColumnUsed: insertResult.payloadColumnUsed,
+    duplicateSkipped: insertResult.duplicateSkipped,
+    pushResult,
   }
 }
 
@@ -244,7 +290,11 @@ Deno.serve(async (req) => {
     const expectedSecret = Deno.env.get('DRIVER_REMINDER_SECRET') || Deno.env.get('SCHEDULER_SECRET')
     const receivedSecret = req.headers.get('x-driver-reminder-secret') || req.headers.get('x-scheduler-secret')
 
-    if (expectedSecret && receivedSecret !== expectedSecret) {
+    if (!expectedSecret) {
+      return jsonResponse({ ok: false, error: 'Missing DRIVER_REMINDER_SECRET or SCHEDULER_SECRET.' }, 500)
+    }
+
+    if (receivedSecret !== expectedSecret) {
       return jsonResponse({ ok: false, error: 'Unauthorized driver reminder call.' }, 401)
     }
 

@@ -109,9 +109,18 @@ create table if not exists public.notifications (
   shift_id text references public.shifts(id) on delete set null,
   title text not null,
   body text,
+  payload jsonb not null default '{}'::jsonb,
   read_by jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
+
+create unique index if not exists notifications_daily_coverage_once
+  on public.notifications (type, target_role)
+  where left(type, 15) = 'daily-coverage:' and target_role = 'admin';
+
+create unique index if not exists notifications_driver_reminder_once
+  on public.notifications (type, target_driver_id)
+  where left(type, 23) = 'driver-signup-reminder:' and target_driver_id is not null;
 
 create table if not exists public.push_subscriptions (
   id text primary key,
@@ -230,7 +239,17 @@ create policy "notifications_select_visible" on public.notifications for select 
   or target_role in ('all','driver_all')
   or target_driver_id = public.current_driver_id()
 );
-create policy "notifications_insert_signed" on public.notifications for insert with check (auth.uid() is not null);
+create policy "notifications_insert_signed" on public.notifications for insert with check (
+  public.current_role() in ('dispatcher','admin')
+  or (
+    auth.uid() is not null
+    and (
+      target_role in ('admin','dispatcher')
+      or target_driver_id = public.current_driver_id()
+      or (target_role = 'driver' and target_driver_id is not null)
+    )
+  )
+);
 create policy "notifications_update_visible" on public.notifications for update using (
   public.current_role() in ('dispatcher','admin')
   or target_role in ('all','driver_all')

@@ -294,15 +294,16 @@ function addedRows(prevList = [], nextList = []) {
   const prevIds = new Set((prevList || []).map((x) => x.id))
   return (nextList || []).filter((x) => x?.id && !prevIds.has(x.id))
 }
-async function sendPushForNotifications(notices) {
+async function sendPushForNotifications(notices, accessToken = '') {
   const clean = (Array.isArray(notices) ? notices : [notices]).filter((n) => n?.title)
   if (!clean.length) return { skipped: true, reason: 'no-notifications' }
   if (!isConfiguredSupabase) return { skipped: true, reason: 'supabase-not-configured' }
   if (!import.meta.env.VITE_VAPID_PUBLIC_KEY) return { skipped: true, reason: 'missing-vapid-public-key' }
+  if (!accessToken) return { skipped: true, reason: 'missing-auth-token' }
   try {
     const res = await fetch('/api/send-push', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ notifications: clean }),
     })
     const payload = await res.json().catch(async () => ({ ok: false, error: await res.text().catch(() => res.statusText) }))
@@ -851,7 +852,7 @@ function useAppData(session, profile) {
         syncChangedRows(prev, next, profile)
           .then(() => {
             setSyncState({ loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() })
-            sendPushForNotifications(pushNotices)
+            sendPushForNotifications(pushNotices, session?.access_token || '')
             options.onSuccess?.()
           })
           .catch((err) => {
@@ -950,9 +951,9 @@ function App({ session = null, profile = null, signOut = null }) {
     </header>
     <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>
       {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} onOpenNotifications={() => setPage('notifications')} />}
-      {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} />}
+      {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} />}
-      {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} onlineMode={onlineMode} signOut={signOut} syncState={syncState} />}
+      {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} session={session} onlineMode={onlineMode} signOut={signOut} syncState={syncState} />}
     </main>
     <nav className="driver-bottom-nav" aria-label="Řidičská navigace">
       {nav.map(([key, label, Icon]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span className="driver-nav-icon"><Icon size={24} strokeWidth={2} />{key === 'notifications' && unreadForCurrent > 0 && <em>{unreadForCurrent}</em>}</span><b>{label}</b></button>)}
@@ -989,7 +990,7 @@ function App({ session = null, profile = null, signOut = null }) {
       {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} />}
       {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} />}
       {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} />}
-      {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} />}
+      {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} />}
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
       {page === 'drivers' && <Drivers data={data} commit={commit} />}
       {page === 'vehicles' && <Vehicles data={data} commit={commit} />}
@@ -2064,7 +2065,7 @@ function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
   </div>
 }
 
-function DriverSettings({ data, commit, currentDriver, profile, onlineMode, signOut, syncState }) {
+function DriverSettings({ data, commit, currentDriver, profile, session, onlineMode, signOut, syncState }) {
   const devices = (data.pushSubscriptions || []).filter((p) => p.active !== false && p.driverId === currentDriver?.id)
   const removeDevice = (id) => safeDelete('push zařízení') && commit((prev) => ({ ...prev, pushSubscriptions: (prev.pushSubscriptions || []).map((p) => p.id === id ? { ...p, active: false } : p) }), 'Push zařízení bylo odhlášeno.')
   return <div className="driver-settings-view">
@@ -2072,7 +2073,7 @@ function DriverSettings({ data, commit, currentDriver, profile, onlineMode, sign
     <div className="card"><div className="section-title"><h3>Účet</h3><span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online' : 'Demo'}</span></div>
       <div className="compact-list"><div className="log"><b>{currentDriver?.name || profile?.full_name || 'Řidič'}</b><br /><span className="muted">{currentDriver?.email || profile?.email || 'Email nezadaný'}</span>{currentDriver?.phone && <><br /><span className="muted">{currentDriver.phone}</span></>}</div></div>
     </div>
-    <div className="card"><div className="section-title"><h3>Notifikace</h3><span className="pill">{devices.length}</span></div><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} /></div>
+    <div className="card"><div className="section-title"><h3>Notifikace</h3><span className="pill">{devices.length}</span></div><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} session={session} /></div>
     <details className="card collapse-card"><summary><span><b>Diagnostika</b><small>Zařízení a verze aplikace</small></span><span className="pill">{devices.length}</span></summary><div className="collapse-content stack">
       {devices.map((d) => <div className="log" key={d.id}><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">Aktivní push zařízení</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeDevice(d.id)}>Odhlásit zařízení</button></div></div>)}
       {!devices.length && <div className="empty">Žádné aktivní push zařízení.</div>}
@@ -2082,7 +2083,7 @@ function DriverSettings({ data, commit, currentDriver, profile, onlineMode, sign
     <div className="card"><button className="danger" onClick={signOut}>Odhlásit</button></div>
   </div>
 }
-function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
+function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session }) {
   const [permission, setPermission] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'))
   const [status, setStatus] = useState('')
   const [isStandalone, setIsStandalone] = useState(() => Boolean(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone === true))
@@ -2126,6 +2127,7 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
         'no-notifications': 'není co odeslat',
         'supabase-not-configured': 'chybí Supabase konfigurace ve frontendu',
         'missing-vapid-public-key': 'chybí VITE_VAPID_PUBLIC_KEY ve Vercelu',
+        'missing-auth-token': 'uživatel není přihlášený k ostrému backendu',
       }
       return `Server push přeskočen: ${labels[result.reason] || result.reason}.`
     }
@@ -2139,12 +2141,12 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
       title: 'RBSHIFT server push test',
       body: 'Toto je ostrý test přes Vercel backend a uložené zařízení.',
       targetDriverId: isDriver ? currentDriver?.id || '' : '',
-      targetRole: isDriver ? 'driver_all' : (profile?.role || 'admin'),
+      targetRole: isDriver ? 'driver' : (profile?.role || 'admin'),
       type: 'push-test',
     })
     setStatus('Odesílám server push test…')
     commit((prev) => addNotificationsToData(prev, notice), 'Odeslán test serverové push notifikace.')
-    const result = await sendPushForNotifications([notice])
+    const result = await sendPushForNotifications([notice], session?.access_token || '')
     setStatus(pushResultLabel(result))
   }
   const supported = 'serviceWorker' in navigator && 'Notification' in window
@@ -2180,7 +2182,7 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile }) {
   </div>
 }
 
-function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile }) {
+function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile, session }) {
   const visible = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver))
   const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver))
   const [undoDeleteIds, setUndoDeleteIds] = useState([])
@@ -2230,7 +2232,7 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
       })}
       {!visible.length && <div className="empty">Zatím žádné notifikace.</div>}
     </div></div>
-    {!isDriver && <div className="stack" style={{ marginTop: 16 }}><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} /></div>}
+    {!isDriver && <div className="stack" style={{ marginTop: 16 }}><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} /></div>}
   </>
 }
 

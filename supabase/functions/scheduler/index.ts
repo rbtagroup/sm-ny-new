@@ -14,6 +14,7 @@ type ShiftRow = {
   start_time: string
   end_time: string
   status: string
+  driver_id: string | null
 }
 
 const DEFAULT_COVERAGE_SLOTS: CoverageSlot[] = [
@@ -47,6 +48,15 @@ function addDaysISO(dateISO: string, days: number) {
 
 function uid(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`
+}
+
+function dailyCoverageNoticeId(dateISO: string) {
+  return `ntf_daily_coverage_${dateISO.replaceAll('-', '')}`
+}
+
+function isCoverageShift(shift: ShiftRow) {
+  const status = String(shift.status || '').toLowerCase()
+  return Boolean(shift.driver_id) && ['assigned', 'confirmed', 'in_progress', 'pending'].includes(status)
 }
 
 function timeMinutes(value = '00:00') {
@@ -91,6 +101,38 @@ function normalizeSlots(payload: any): CoverageSlot[] {
     .filter((slot) => slot.minDrivers && slot.start && slot.end)
 }
 
+function pushDeliveryEndpoint() {
+  const raw = Deno.env.get('PUSH_DELIVERY_URL') || Deno.env.get('APP_URL') || Deno.env.get('PUBLIC_APP_URL') || Deno.env.get('SITE_URL') || ''
+  if (!raw) return ''
+  const base = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`
+  return base.endsWith('/api/send-push') ? base : `${base.replace(/\/$/, '')}/api/send-push`
+}
+
+async function sendPushForNotifications(notifications: Record<string, unknown>[]) {
+  if (!notifications.length) return { skipped: true, reason: 'no-notifications' }
+  const endpoint = pushDeliveryEndpoint()
+  const secret = Deno.env.get('PUSH_DELIVERY_SECRET') || Deno.env.get('SCHEDULER_SECRET')
+  if (!endpoint) return { skipped: true, reason: 'missing-push-delivery-url' }
+  if (!secret) return { skipped: true, reason: 'missing-push-delivery-secret' }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-rbshift-push-secret': secret,
+      },
+      body: JSON.stringify({ notifications }),
+    })
+    const text = await response.text()
+    let payload: Record<string, unknown> = {}
+    try { payload = text ? JSON.parse(text) : {} } catch { payload = { raw: text } }
+    return { ok: response.ok, status: response.status, ...payload }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 async function runDailyCoverage(supabase: ReturnType<typeof createClient>, startedAt: string) {
   const today = localDateISO()
   const dateTo = addDaysISO(today, 6)
@@ -107,19 +149,19 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
 
   const { data: shifts, error: shiftsError } = await supabase
     .from('shifts')
-    .select('id, shift_date, start_time, end_time, status')
+    .select('id, shift_date, start_time, end_time, status, driver_id')
     .gte('shift_date', today)
     .lte('shift_date', dateTo)
-    .not('status', 'in', '("cancelled","declined")')
 
   if (shiftsError) throw shiftsError
 
-  const activeShifts = (shifts || []) as ShiftRow[]
+  const rawShifts = (shifts || []) as ShiftRow[]
+  const coverageShifts = rawShifts.filter(isCoverageShift)
   const days = Array.from({ length: 7 }, (_, index) => addDaysISO(today, index))
 
   const gaps = days.flatMap((day) =>
     coverageSlots.map((slot) => {
-      const planned = activeShifts.filter((shift) =>
+      const planned = coverageShifts.filter((shift) =>
         shift.shift_date === day &&
         overlapsTimeWindow(String(shift.start_time).slice(0, 5), String(shift.end_time).slice(0, 5), slot.start, slot.end)
       ).length
@@ -138,33 +180,44 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
   ).filter((row) => row.missing > 0)
 
   const runKey = `daily-coverage:${today}`
-  const title = gaps.length ? `Chybí obsazení: ${gaps.length} kontrol` : 'Pokrytí směn je v pořádku'
-  const body = gaps.length
-    ? gaps.slice(0, 12).map((gap) => `${formatDate(gap.day)} · ${gap.slotName} ${gap.start}–${gap.end}: chybí ${gap.missing}`).join('\n')
-    : `Kontrola ${today}–${dateTo}: bez chybějícího obsazení.`
-
-  const { data: existingNotice, error: existingError } = await supabase
-    .from('notifications')
-    .select('id')
-    .eq('target_role', 'admin')
-    .eq('type', runKey)
-    .maybeSingle()
-
-  if (existingError) throw existingError
-
   let notificationCreated = false
-  if (!existingNotice) {
-    const { error: noticeError } = await supabase.from('notifications').insert({
-      id: uid('ntf_scheduler'),
+  let pushResult: Record<string, unknown> = { skipped: true, reason: 'no-missing-coverage' }
+  let skippedReason = ''
+
+  if (gaps.length) {
+    const title = `Chybí obsazení: ${gaps.length} kontrol`
+    const body = gaps.slice(0, 12).map((gap) => `${formatDate(gap.day)} · ${gap.slotName} ${gap.start}–${gap.end}: chybí ${gap.missing}`).join('\n')
+    const notice = {
+      id: dailyCoverageNoticeId(today),
       target_role: 'admin',
       type: runKey,
       title,
       body,
       read_by: [],
       created_at: startedAt,
-    })
-    if (noticeError) throw noticeError
-    notificationCreated = true
+    }
+
+    const { data: existingNotice, error: existingError } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('target_role', 'admin')
+      .eq('type', runKey)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingError) throw existingError
+
+    if (existingNotice) {
+      skippedReason = 'already-notified'
+    } else {
+      const { error: noticeError } = await supabase.from('notifications').insert(notice)
+      if (noticeError && noticeError.code !== '23505') throw noticeError
+      notificationCreated = !noticeError
+      skippedReason = noticeError ? 'already-notified-race' : ''
+      if (notificationCreated) pushResult = await sendPushForNotifications([notice])
+    }
+  } else {
+    skippedReason = 'no-missing-coverage'
   }
 
   const { error: auditError } = await supabase.from('audit_logs').insert({
@@ -177,6 +230,11 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
       dateTo,
       gapsCount: gaps.length,
       notificationCreated,
+      skipped: !notificationCreated,
+      skippedReason,
+      pushResult,
+      rawShiftsChecked: rawShifts.length,
+      coverageShiftsChecked: coverageShifts.length,
       gaps: gaps.slice(0, 50),
     },
     created_at: startedAt,
@@ -191,9 +249,13 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
     today,
     dateTo,
     coverageSlots: coverageSlots.length,
-    shiftsChecked: activeShifts.length,
+    rawShiftsChecked: rawShifts.length,
+    shiftsChecked: coverageShifts.length,
     gapsCount: gaps.length,
     notificationCreated,
+    skipped: !notificationCreated,
+    skippedReason,
+    pushResult,
     gaps: gaps.slice(0, 20),
   }
 }
@@ -209,7 +271,11 @@ Deno.serve(async (req) => {
     const expectedSecret = Deno.env.get('SCHEDULER_SECRET')
     const receivedSecret = req.headers.get('x-scheduler-secret')
 
-    if (expectedSecret && receivedSecret !== expectedSecret) {
+    if (!expectedSecret) {
+      return jsonResponse({ ok: false, error: 'Missing SCHEDULER_SECRET.' }, 500)
+    }
+
+    if (receivedSecret !== expectedSecret) {
       return jsonResponse({ ok: false, error: 'Unauthorized scheduler call.' }, 401)
     }
 
