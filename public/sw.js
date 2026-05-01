@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rbshift-pwa-v1.3.18-brand-icons';
+const CACHE_NAME = 'rbshift-pwa-v1.3.18-brand-icons-safe-area';
 const CORE_ASSETS = [
   './',
   './index.html',
