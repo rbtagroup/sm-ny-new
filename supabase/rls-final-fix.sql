@@ -139,6 +139,43 @@ $$;
 
 grant execute on function public.rb_can_driver_notify_driver(text, text, text) to authenticated;
 
+create or replace function public.rb_push_subscription_matches_profile(
+  subscription_profile_id uuid,
+  subscription_driver_id text,
+  subscription_role text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((
+    select case
+      when trim(lower(p.role)) = 'driver' then
+        trim(lower(subscription_role)) = 'driver'
+        and subscription_driver_id is not null
+        and exists (
+          select 1
+          from public.drivers d
+          where d.id = subscription_driver_id
+            and d.profile_id = p.id
+            and d.active is not false
+        )
+      when trim(lower(p.role)) in ('admin', 'dispatcher') then
+        trim(lower(subscription_role)) = trim(lower(p.role))
+        and subscription_driver_id is null
+      else false
+    end
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.id = subscription_profile_id
+    limit 1
+  ), false)
+$$;
+
+grant execute on function public.rb_push_subscription_matches_profile(uuid, text, text) to authenticated;
+
 
 -- ============================================================
 -- 1B) KOMPATIBILITA PRO VOLNÉ SMĚNY v5.4.1
@@ -501,8 +538,8 @@ on public.push_subscriptions
 for insert
 to authenticated
 with check (
-  profile_id = auth.uid()
-  or (select public.rb_is_staff())
+  (select public.rb_is_staff())
+  or public.rb_push_subscription_matches_profile(profile_id, driver_id, role)
 );
 
 create policy "push_subscriptions_update_own_or_staff"
@@ -514,8 +551,8 @@ using (
   or (select public.rb_is_staff())
 )
 with check (
-  profile_id = auth.uid()
-  or (select public.rb_is_staff())
+  (select public.rb_is_staff())
+  or public.rb_push_subscription_matches_profile(profile_id, driver_id, role)
 );
 
 create policy "push_subscriptions_delete_staff"

@@ -237,6 +237,39 @@ as $$
   ), false)
 $$;
 
+create or replace function public.push_subscription_matches_profile(
+  subscription_profile_id uuid,
+  subscription_driver_id text,
+  subscription_role text
+)
+returns boolean
+language sql
+stable
+as $$
+  select coalesce((
+    select case
+      when trim(lower(p.role)) = 'driver' then
+        trim(lower(subscription_role)) = 'driver'
+        and subscription_driver_id is not null
+        and exists (
+          select 1
+          from public.drivers d
+          where d.id = subscription_driver_id
+            and d.profile_id = p.id
+            and d.active is not false
+        )
+      when trim(lower(p.role)) in ('admin', 'dispatcher') then
+        trim(lower(subscription_role)) = trim(lower(p.role))
+        and subscription_driver_id is null
+      else false
+    end
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.id = subscription_profile_id
+    limit 1
+  ), false)
+$$;
+
 -- Profiles
 create policy "profiles_select_self_or_staff" on public.profiles for select using (id = auth.uid() or public.current_role() in ('dispatcher','admin'));
 create policy "profiles_insert_self_driver" on public.profiles for insert with check (id = auth.uid() and role = 'driver');
@@ -322,8 +355,8 @@ create policy "notifications_update_visible" on public.notifications for update 
 
 -- Push subscriptions
 create policy "push_select_own_or_staff" on public.push_subscriptions for select using (public.current_role() in ('dispatcher','admin') or profile_id = auth.uid());
-create policy "push_insert_own" on public.push_subscriptions for insert with check (profile_id = auth.uid() or public.current_role() in ('dispatcher','admin'));
-create policy "push_update_own_or_staff" on public.push_subscriptions for update using (profile_id = auth.uid() or public.current_role() in ('dispatcher','admin')) with check (profile_id = auth.uid() or public.current_role() in ('dispatcher','admin'));
+create policy "push_insert_own" on public.push_subscriptions for insert with check (public.current_role() in ('dispatcher','admin') or public.push_subscription_matches_profile(profile_id, driver_id, role));
+create policy "push_update_own_or_staff" on public.push_subscriptions for update using (profile_id = auth.uid() or public.current_role() in ('dispatcher','admin')) with check (public.current_role() in ('dispatcher','admin') or public.push_subscription_matches_profile(profile_id, driver_id, role));
 
 -- Audit / settings
 create policy "audit_select_staff" on public.audit_logs for select using (public.current_role() in ('dispatcher','admin'));
