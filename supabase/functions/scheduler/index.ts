@@ -40,6 +40,30 @@ function localDateISO(date = new Date()) {
   }).format(date)
 }
 
+function localTimeParts(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: TZ,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  )
+  return {
+    weekday: String(parts.weekday || ''),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  }
+}
+
+function cronWindowSkipReason(body: any, expectedHour: number) {
+  if (body?.source !== 'pg_cron') return ''
+  const local = localTimeParts()
+  if (local.hour === expectedHour) return ''
+  return `outside-prague-window:${local.weekday}-${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`
+}
+
 function addDaysISO(dateISO: string, days: number) {
   const [y, m, d] = dateISO.split('-').map(Number)
   const date = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0))
@@ -209,11 +233,13 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
 
     if (existingNotice) {
       skippedReason = 'already-notified'
+      pushResult = { skipped: true, reason: 'already-notified' }
     } else {
       const { error: noticeError } = await supabase.from('notifications').insert(notice)
       if (noticeError && noticeError.code !== '23505') throw noticeError
       notificationCreated = !noticeError
       skippedReason = noticeError ? 'already-notified-race' : ''
+      if (noticeError) pushResult = { skipped: true, reason: 'already-notified-race' }
       if (notificationCreated) pushResult = await sendPushForNotifications([notice])
     }
   } else {
@@ -295,6 +321,29 @@ Deno.serve(async (req) => {
 
     if (job !== 'daily-coverage') {
       return jsonResponse({ ok: false, error: `Unknown scheduler job: ${job}` }, 400)
+    }
+
+    const skipReason = cronWindowSkipReason(body, 7)
+    if (skipReason) {
+      const { error: auditError } = await supabase.from('audit_logs').insert({
+        id: uid('log_scheduler'),
+        action: 'Scheduler daily-coverage skipped outside Prague window.',
+        payload: {
+          job: 'daily-coverage',
+          skipped: true,
+          skippedReason: skipReason,
+          source: body?.source || '',
+          localTime: localTimeParts(),
+        },
+        created_at: startedAt,
+      })
+      if (auditError) throw auditError
+      return jsonResponse({
+        ok: true,
+        job: 'daily-coverage',
+        skipped: true,
+        skippedReason: skipReason,
+      })
     }
 
     const result = await runDailyCoverage(supabase, startedAt)

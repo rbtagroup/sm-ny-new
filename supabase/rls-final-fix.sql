@@ -78,6 +78,67 @@ grant execute on function public.rb_is_admin() to authenticated;
 grant execute on function public.rb_is_staff() to authenticated;
 grant execute on function public.rb_current_driver_id() to authenticated;
 
+create or replace function public.rb_can_driver_notify_driver(
+  notice_type text,
+  notice_shift_id text,
+  notice_target_driver_id text
+)
+returns boolean
+language sql
+stable
+set search_path = public
+as $$
+  with me as (
+    select public.rb_current_driver_id() as driver_id
+  )
+  select coalesce((
+    select exists (
+      select 1
+      from me
+      where me.driver_id is not null
+        and notice_target_driver_id is not null
+        and notice_target_driver_id <> me.driver_id
+        and exists (
+          select 1
+          from public.drivers target_driver
+          where target_driver.id = notice_target_driver_id
+            and target_driver.active is not false
+        )
+        and (
+          (
+            notice_type = 'swap-offer'
+            and exists (
+              select 1
+              from public.swap_requests sr
+              join public.shifts sh on sh.id = sr.shift_id
+              where sr.shift_id = notice_shift_id
+                and sh.driver_id = me.driver_id
+                and sr.driver_id = me.driver_id
+                and sr.status = 'pending'
+                and (
+                  sr.target_mode = 'all'
+                  or sr.target_driver_id = notice_target_driver_id
+                )
+            )
+          )
+          or (
+            notice_type = 'swap-accepted'
+            and exists (
+              select 1
+              from public.swap_requests sr
+              where sr.shift_id = notice_shift_id
+                and sr.status = 'accepted'
+                and sr.accepted_by_driver_id = me.driver_id
+                and sr.driver_id = notice_target_driver_id
+            )
+          )
+        )
+    )
+  ), false)
+$$;
+
+grant execute on function public.rb_can_driver_notify_driver(text, text, text) to authenticated;
+
 
 -- ============================================================
 -- 1B) KOMPATIBILITA PRO VOLNÉ SMĚNY v5.4.1
@@ -373,9 +434,12 @@ with check (
   or (
     auth.uid() is not null
     and (
-      target_role in ('admin', 'dispatcher')
+      (target_driver_id is null and target_role in ('admin', 'dispatcher'))
       or target_driver_id = (select public.rb_current_driver_id())
-      or (target_role = 'driver' and target_driver_id is not null)
+      or (
+        target_role = 'driver'
+        and public.rb_can_driver_notify_driver(type, shift_id, target_driver_id)
+      )
     )
   )
 );
@@ -386,10 +450,12 @@ for update
 to authenticated
 using (
   (select public.rb_is_staff())
-  or target_role in ('all', 'driver_all')
   or target_driver_id = (select public.rb_current_driver_id())
 )
-with check (auth.uid() is not null);
+with check (
+  (select public.rb_is_staff())
+  or target_driver_id = (select public.rb_current_driver_id())
+);
 
 create policy "notifications_delete_staff"
 on public.notifications

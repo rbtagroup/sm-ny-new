@@ -178,6 +178,65 @@ as $$
   select id from public.drivers where profile_id = auth.uid() limit 1
 $$;
 
+create or replace function public.can_driver_notify_driver(
+  notice_type text,
+  notice_shift_id text,
+  notice_target_driver_id text
+)
+returns boolean
+language sql
+stable
+set search_path = public
+as $$
+  with me as (
+    select public.current_driver_id() as driver_id
+  )
+  select coalesce((
+    select exists (
+      select 1
+      from me
+      where me.driver_id is not null
+        and notice_target_driver_id is not null
+        and notice_target_driver_id <> me.driver_id
+        and exists (
+          select 1
+          from public.drivers target_driver
+          where target_driver.id = notice_target_driver_id
+            and target_driver.active is not false
+        )
+        and (
+          (
+            notice_type = 'swap-offer'
+            and exists (
+              select 1
+              from public.swap_requests sr
+              join public.shifts sh on sh.id = sr.shift_id
+              where sr.shift_id = notice_shift_id
+                and sh.driver_id = me.driver_id
+                and sr.driver_id = me.driver_id
+                and sr.status = 'pending'
+                and (
+                  sr.target_mode = 'all'
+                  or sr.target_driver_id = notice_target_driver_id
+                )
+            )
+          )
+          or (
+            notice_type = 'swap-accepted'
+            and exists (
+              select 1
+              from public.swap_requests sr
+              where sr.shift_id = notice_shift_id
+                and sr.status = 'accepted'
+                and sr.accepted_by_driver_id = me.driver_id
+                and sr.driver_id = notice_target_driver_id
+            )
+          )
+        )
+    )
+  ), false)
+$$;
+
 -- Profiles
 create policy "profiles_select_self_or_staff" on public.profiles for select using (id = auth.uid() or public.current_role() in ('dispatcher','admin'));
 create policy "profiles_insert_self_driver" on public.profiles for insert with check (id = auth.uid() and role = 'driver');
@@ -244,17 +303,22 @@ create policy "notifications_insert_signed" on public.notifications for insert w
   or (
     auth.uid() is not null
     and (
-      target_role in ('admin','dispatcher')
+      (target_driver_id is null and target_role in ('admin','dispatcher'))
       or target_driver_id = public.current_driver_id()
-      or (target_role = 'driver' and target_driver_id is not null)
+      or (
+        target_role = 'driver'
+        and public.can_driver_notify_driver(type, shift_id, target_driver_id)
+      )
     )
   )
 );
 create policy "notifications_update_visible" on public.notifications for update using (
   public.current_role() in ('dispatcher','admin')
-  or target_role in ('all','driver_all')
   or target_driver_id = public.current_driver_id()
-) with check (auth.uid() is not null);
+) with check (
+  public.current_role() in ('dispatcher','admin')
+  or target_driver_id = public.current_driver_id()
+);
 
 -- Push subscriptions
 create policy "push_select_own_or_staff" on public.push_subscriptions for select using (public.current_role() in ('dispatcher','admin') or profile_id = auth.uid());

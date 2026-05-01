@@ -6,6 +6,11 @@
 -- 2) uloží URL projektu a scheduler secret do Vaultu
 -- 3) naplánuje denní kontrolu pokrytí na 07:00 Europe/Prague
 --
+-- Poznámka k timezone:
+-- pg_cron běží v UTC. Job proto volá funkci v obou možných UTC časech
+-- pro 07:00 v Praze (zimní/letní čas). Edge Function sama pustí práci
+-- jen když je lokálně v Praze skutečně 07:xx.
+--
 -- Před spuštěním nahraď:
 -- - https://PROJECT_REF.supabase.co
 -- - CHANGE_ME_LONG_RANDOM_SECRET
@@ -28,7 +33,7 @@ where exists (select 1 from cron.job where jobname = 'rbshift-daily-coverage');
 
 select cron.schedule(
   'rbshift-daily-coverage',
-  '0 7 * * *',
+  '0 5,6 * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/scheduler',
@@ -39,6 +44,7 @@ select cron.schedule(
     body := jsonb_build_object(
       'job', 'daily-coverage',
       'source', 'pg_cron',
+      'expectedLocalHour', 7,
       'time', now()
     )
   ) as request_id;

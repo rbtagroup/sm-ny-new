@@ -42,6 +42,33 @@ function localDateISO(date = new Date()) {
   }).format(date)
 }
 
+function localTimeParts(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: TZ,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  )
+  return {
+    weekday: String(parts.weekday || ''),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  }
+}
+
+function cronWindowSkipReason(body: any) {
+  if (body?.source !== 'pg_cron') return ''
+  const expectedHour = Number(body?.expectedLocalHour)
+  const expectedWeekday = String(body?.expectedLocalWeekday || '')
+  if (!Number.isFinite(expectedHour) || !expectedWeekday) return ''
+  const local = localTimeParts()
+  if (local.weekday === expectedWeekday && local.hour === expectedHour) return ''
+  return `outside-prague-window:${local.weekday}-${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`
+}
+
 function addDaysISO(dateISO: string, days: number) {
   const [y, m, d] = dateISO.split('-').map(Number)
   const date = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0))
@@ -315,6 +342,30 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     })
+
+    const skipReason = cronWindowSkipReason(body)
+    if (skipReason) {
+      const { error: auditError } = await supabase.from('audit_logs').insert({
+        id: uid('log_driver_reminder'),
+        action: 'driver-signup-reminder-sent',
+        payload: {
+          job: 'driver-signup-reminder',
+          skipped: true,
+          reason: skipReason,
+          source: body?.source || '',
+          localTime: localTimeParts(),
+          triggeredAt,
+        },
+        created_at: triggeredAt,
+      })
+      if (auditError) throw auditError
+      return jsonResponse({
+        ok: true,
+        job: 'driver-signup-reminder',
+        skipped: true,
+        reason: skipReason,
+      })
+    }
 
     const result = await runDriverSignupReminder(supabase, triggeredAt)
     return jsonResponse(result)

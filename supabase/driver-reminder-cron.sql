@@ -6,6 +6,11 @@
 -- - default cron: každou středu v 18:00 => 0 18 * * 3
 -- - cron expression se ukládá do app_settings.payload.driverReminderSchedule
 --
+-- Poznámka k timezone:
+-- pg_cron běží v UTC. Pro výchozí středu 18:00 Europe/Prague se job
+-- plánuje na oba možné UTC časy (zimní/letní čas) a Edge Function sama
+-- pustí práci jen ve středu v 18:xx pražského času.
+--
 -- Před spuštěním nahraď:
 -- - https://PROJECT_REF.supabase.co
 -- - CHANGE_ME_LONG_RANDOM_SECRET
@@ -26,11 +31,7 @@ insert into public.app_settings (id, payload)
 values ('default', jsonb_build_object('driverReminderSchedule', '0 18 * * 3'))
 on conflict (id) do update
 set
-  payload = case
-    when public.app_settings.payload ? 'driverReminderSchedule'
-      then public.app_settings.payload
-    else public.app_settings.payload || jsonb_build_object('driverReminderSchedule', '0 18 * * 3')
-  end,
+  payload = public.app_settings.payload || jsonb_build_object('driverReminderSchedule', '0 18 * * 3'),
   updated_at = now();
 
 select vault.create_secret('https://PROJECT_REF.supabase.co', 'project_url')
@@ -48,6 +49,7 @@ security definer
 as $$
 declare
   cron_expr text;
+  cron_schedule text;
 begin
   select coalesce(payload->>'driverReminderSchedule', '0 18 * * 3')
   into cron_expr
@@ -55,6 +57,10 @@ begin
   where id = 'default';
 
   cron_expr := coalesce(nullif(trim(cron_expr), ''), '0 18 * * 3');
+  cron_schedule := case
+    when cron_expr = '0 18 * * 3' then '0 16,17 * * 3'
+    else cron_expr
+  end;
 
   if exists (select 1 from cron.job where jobname = 'rbshift-driver-signup-reminder') then
     perform cron.unschedule('rbshift-driver-signup-reminder');
@@ -62,7 +68,7 @@ begin
 
   perform cron.schedule(
     'rbshift-driver-signup-reminder',
-    cron_expr,
+    cron_schedule,
     $job$
     select net.http_post(
       url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/driver-reminder',
@@ -73,6 +79,8 @@ begin
       body := jsonb_build_object(
         'job', 'driver-signup-reminder',
         'source', 'pg_cron',
+        'expectedLocalHour', 18,
+        'expectedLocalWeekday', 'Wed',
         'time', now()
       )
     ) as request_id;

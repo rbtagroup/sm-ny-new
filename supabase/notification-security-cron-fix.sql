@@ -1,22 +1,17 @@
--- RBSHIFT notification hardening
--- Spustit v Supabase SQL editoru po nasazení nové verze funkcí.
+-- RBSHIFT notification security + Prague-local cron fix
+-- Spustit v Supabase SQL editoru po nasazení nové verze:
+-- - api/send-push.js na Vercel
+-- - Edge Functions scheduler a driver-reminder
+--
 -- Řeší:
--- - payload sloupec pro systémové notifikace
--- - idempotenci daily-coverage a driver-reminder notifikací
--- - užší RLS policies pro notifications
+-- 1) řidič nemůže posílat libovolné notifikace jiným řidičům
+-- 2) řidič nemůže upravovat globální notifikace
+-- 3) daily-coverage běží v 07:00 Europe/Prague
+-- 4) driver-reminder běží ve středu v 18:00 Europe/Prague
 
-create or replace function public.rb_current_role()
-returns text
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select p.role
-  from public.profiles p
-  where p.id = auth.uid()
-  limit 1
-$$;
+create extension if not exists pg_cron with schema cron;
+create extension if not exists pg_net with schema net;
+create extension if not exists supabase_vault with schema vault;
 
 create or replace function public.rb_is_staff()
 returns boolean
@@ -45,10 +40,6 @@ as $$
   where d.profile_id = auth.uid()
   limit 1
 $$;
-
-grant execute on function public.rb_current_role() to authenticated;
-grant execute on function public.rb_is_staff() to authenticated;
-grant execute on function public.rb_current_driver_id() to authenticated;
 
 create or replace function public.rb_can_driver_notify_driver(
   notice_type text,
@@ -109,41 +100,9 @@ as $$
   ), false)
 $$;
 
+grant execute on function public.rb_is_staff() to authenticated;
+grant execute on function public.rb_current_driver_id() to authenticated;
 grant execute on function public.rb_can_driver_notify_driver(text, text, text) to authenticated;
-
-alter table public.notifications
-  add column if not exists payload jsonb not null default '{}'::jsonb;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from public.notifications
-    where left(type, 15) = 'daily-coverage:' and target_role = 'admin'
-    group by type, target_role
-    having count(*) > 1
-  ) then
-    create unique index if not exists notifications_daily_coverage_once
-      on public.notifications (type, target_role)
-      where left(type, 15) = 'daily-coverage:' and target_role = 'admin';
-  else
-    raise notice 'Skipping notifications_daily_coverage_once: existing duplicate daily-coverage notifications must be deduplicated first.';
-  end if;
-
-  if not exists (
-    select 1
-    from public.notifications
-    where left(type, 23) = 'driver-signup-reminder:' and target_driver_id is not null
-    group by type, target_driver_id
-    having count(*) > 1
-  ) then
-    create unique index if not exists notifications_driver_reminder_once
-      on public.notifications (type, target_driver_id)
-      where left(type, 23) = 'driver-signup-reminder:' and target_driver_id is not null;
-  else
-    raise notice 'Skipping notifications_driver_reminder_once: existing duplicate driver reminders must be deduplicated first.';
-  end if;
-end $$;
 
 alter table public.notifications enable row level security;
 
@@ -199,3 +158,90 @@ with check (
   (select public.rb_is_staff())
   or target_driver_id = (select public.rb_current_driver_id())
 );
+
+-- daily-coverage: 07:00 Europe/Prague.
+-- pg_cron běží v UTC, proto voláme v 05:00 i 06:00 UTC.
+-- Edge Function pustí práci jen tehdy, když je v Praze lokálně 07:xx.
+select cron.unschedule('rbshift-daily-coverage')
+where exists (select 1 from cron.job where jobname = 'rbshift-daily-coverage');
+
+select cron.schedule(
+  'rbshift-daily-coverage',
+  '0 5,6 * * *',
+  $$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/scheduler',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-scheduler-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'scheduler_secret')
+    ),
+    body := jsonb_build_object(
+      'job', 'daily-coverage',
+      'source', 'pg_cron',
+      'expectedLocalHour', 7,
+      'time', now()
+    )
+  ) as request_id;
+  $$
+);
+
+-- driver-reminder: středa 18:00 Europe/Prague.
+insert into public.app_settings (id, payload)
+values ('default', jsonb_build_object('driverReminderSchedule', '0 18 * * 3'))
+on conflict (id) do update
+set
+  payload = public.app_settings.payload || jsonb_build_object('driverReminderSchedule', '0 18 * * 3'),
+  updated_at = now();
+
+create or replace function public.refresh_driver_reminder_cron()
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  cron_expr text;
+  cron_schedule text;
+begin
+  select coalesce(payload->>'driverReminderSchedule', '0 18 * * 3')
+  into cron_expr
+  from public.app_settings
+  where id = 'default';
+
+  cron_expr := coalesce(nullif(trim(cron_expr), ''), '0 18 * * 3');
+  cron_schedule := case
+    when cron_expr = '0 18 * * 3' then '0 16,17 * * 3'
+    else cron_expr
+  end;
+
+  if exists (select 1 from cron.job where jobname = 'rbshift-driver-signup-reminder') then
+    perform cron.unschedule('rbshift-driver-signup-reminder');
+  end if;
+
+  perform cron.schedule(
+    'rbshift-driver-signup-reminder',
+    cron_schedule,
+    $job$
+    select net.http_post(
+      url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/driver-reminder',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-driver-reminder-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'driver_reminder_secret')
+      ),
+      body := jsonb_build_object(
+        'job', 'driver-signup-reminder',
+        'source', 'pg_cron',
+        'expectedLocalHour', 18,
+        'expectedLocalWeekday', 'Wed',
+        'time', now()
+      )
+    ) as request_id;
+    $job$
+  );
+
+  return cron_expr;
+end;
+$$;
+
+grant execute on function public.refresh_driver_reminder_cron() to authenticated;
+
+select public.refresh_driver_reminder_cron();

@@ -55,19 +55,81 @@ const profileForToken = async (supabase, token) => {
     .eq('id', userData.user.id)
     .maybeSingle()
   if (profileError) throw profileError
-  return profile || null
+  if (!profile) return null
+  if (String(profile.role || '').toLowerCase() !== 'driver') return { ...profile, driverId: '' }
+
+  const { data: driver, error: driverError } = await supabase
+    .from('drivers')
+    .select('id')
+    .eq('profile_id', profile.id)
+    .maybeSingle()
+  if (driverError) throw driverError
+
+  return { ...profile, driverId: driver?.id || '' }
 }
 
-const canSendNotice = (notice, profile, internalAuthorized) => {
+const SWAP_DRIVER_NOTICE_TYPES = new Set(['swap-offer', 'swap-accepted'])
+
+const canSendSwapNotice = async (supabase, notice, callerDriverId) => {
+  if (!callerDriverId || !notice.targetDriverId || !notice.shiftId || !SWAP_DRIVER_NOTICE_TYPES.has(notice.type)) return false
+  if (notice.targetDriverId === callerDriverId) return true
+
+  const { data: targetDriver, error: targetError } = await supabase
+    .from('drivers')
+    .select('id, active')
+    .eq('id', notice.targetDriverId)
+    .maybeSingle()
+  if (targetError) throw targetError
+  if (!targetDriver || targetDriver.active === false) return false
+
+  const { data: requests, error: requestError } = await supabase
+    .from('swap_requests')
+    .select('driver_id, target_mode, target_driver_id, accepted_by_driver_id, status')
+    .eq('shift_id', notice.shiftId)
+    .in('status', ['pending', 'accepted'])
+    .order('created_at', { ascending: false })
+    .limit(20)
+  if (requestError) throw requestError
+
+  if (notice.type === 'swap-offer') {
+    const { data: shift, error: shiftError } = await supabase
+      .from('shifts')
+      .select('driver_id')
+      .eq('id', notice.shiftId)
+      .maybeSingle()
+    if (shiftError) throw shiftError
+
+    return Boolean(
+      shift?.driver_id === callerDriverId &&
+      (requests || []).some((request) =>
+        request.driver_id === callerDriverId &&
+        request.status === 'pending' &&
+        (request.target_mode === 'all' || request.target_driver_id === notice.targetDriverId),
+      ),
+    )
+  }
+
+  if (notice.type === 'swap-accepted') {
+    return (requests || []).some((request) =>
+      request.status === 'accepted' &&
+      request.accepted_by_driver_id === callerDriverId &&
+      request.driver_id === notice.targetDriverId,
+    )
+  }
+
+  return false
+}
+
+const canSendNotice = async (supabase, notice, profile, internalAuthorized) => {
   if (internalAuthorized) return true
   const role = String(profile?.role || '').toLowerCase()
   if (role === 'admin' || role === 'dispatcher') return true
   if (role !== 'driver') return false
 
-  // Řidič může spustit push jen pro tok, který appka reálně používá:
-  // upozornění dispečinku/adminům, vlastní test nebo konkrétního kolegu u výměny.
-  if (notice.targetRole === 'admin' || notice.targetRole === 'dispatcher') return true
-  if (notice.targetDriverId) return true
+  // Řidič může posílat běžné notifikace jen dispečinku/adminům.
+  if (!notice.targetDriverId && (notice.targetRole === 'admin' || notice.targetRole === 'dispatcher')) return true
+  if (notice.targetDriverId === profile?.driverId) return true
+  if (notice.targetDriverId) return canSendSwapNotice(supabase, notice, profile?.driverId || '')
   return false
 }
 
@@ -100,9 +162,14 @@ export default async function handler(req, res) {
     if (!callerProfile) return json(res, 401, { ok: false, error: 'Authentication required' })
   }
 
-  const forbiddenNotice = notifications.find((notice) => !canSendNotice(notice, callerProfile, internalAuthorized))
-  if (forbiddenNotice) {
-    return json(res, 403, { ok: false, error: `Forbidden notification target: ${forbiddenNotice.targetRole || forbiddenNotice.targetDriverId}` })
+  try {
+    for (const notice of notifications) {
+      if (!(await canSendNotice(supabase, notice, callerProfile, internalAuthorized))) {
+        return json(res, 403, { ok: false, error: `Forbidden notification target: ${notice.targetRole || notice.targetDriverId}` })
+      }
+    }
+  } catch (err) {
+    return json(res, 500, { ok: false, error: err?.message || String(err) })
   }
 
   const { data: subscriptions, error } = await supabase
