@@ -1112,7 +1112,27 @@ function App({ session = null, profile = null, signOut = null }) {
   const currentDriver = onlineMode && isDriver ? ownDriver : (data.drivers.find((d) => d.id === currentDriverId) || data.drivers[0])
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => null)
+    if (!('serviceWorker' in navigator)) return
+    let reloading = false
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      // Když je nový SW v 'waiting' stavu, požádej ho, ať okamžitě převezme řízení.
+      const promote = (sw) => sw && sw.postMessage('SKIP_WAITING')
+      if (reg.waiting) promote(reg.waiting)
+      reg.addEventListener('updatefound', () => {
+        const installing = reg.installing
+        if (!installing) return
+        installing.addEventListener('statechange', () => {
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) promote(installing)
+        })
+      })
+    }).catch(() => null)
+    // Po převzetí řízení novým SW jednou přenačti stránku, aby se odebraly
+    // staré assety z paměti a načetly se nové z dist/.
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return
+      reloading = true
+      window.location.reload()
+    })
   }, [])
   useEffect(() => {
     if (isDriver && !['driver', 'notifications', 'availability', 'driverSettings'].includes(page)) setPage('driver')
