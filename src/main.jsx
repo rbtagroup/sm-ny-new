@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 import { Bell, Clock, House, Settings as SettingsIcon } from 'lucide-react'
 
-const VERSION = '1.3.18-v5.5.3-driver-fixes-3-6'
+const VERSION = '1.3.19-vycetka'
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
@@ -90,6 +90,8 @@ const statusMap = { open: 'Volná směna', draft: 'Návrh', assigned: 'Čeká na
 const statusToneMap = { open: 'warn', draft: 'waiting', assigned: 'waiting', pending: 'waiting', confirmed: 'good', in_progress: 'good', declined: 'bad', completed: 'good', cancelled: 'bad' }
 const roleMap = { admin: 'Admin', dispatcher: 'Dispečer', driver: 'Řidič' }
 const shiftTypeMap = { day: 'Denní', night: 'Noční', backup: 'Záloha', transfer: 'Převoz', custom: 'Vlastní' }
+const settlementStatusMap = { draft: 'Rozpracováno', submitted: 'Čeká na schválení', approved: 'Schváleno', returned: 'Vráceno k opravě' }
+const settlementToneMap = { draft: 'warn', submitted: 'waiting', approved: 'good', returned: 'bad' }
 const repeatMap = { none: 'Neopakovat', daily7: '7 dnů za sebou', workweek: 'Po–Pá', weekend: 'So–Ne' }
 const defaultShiftTimes = { dayStart: '07:00', dayEnd: '19:00', nightStart: '19:00', nightEnd: '07:00', eventStart: '18:00', eventEnd: '03:00' }
 const defaultShiftTemplates = [
@@ -137,11 +139,12 @@ function shiftTemplateValue(key, settings = {}) {
 }
 const swapStatusMap = { pending: 'Nabídnuto', accepted: 'Přijato kolegou', approved: 'Schváleno', rejected: 'Zamítnuto', cancelled: 'Zrušeno řidičem' }
 const weekdayMap = { 1: 'Po', 2: 'Út', 3: 'St', 4: 'Čt', 5: 'Pá', 6: 'So', 0: 'Ne' }
-const pageTitleMap = { planner: 'Plán směn', dashboard: 'Dashboard', audit: 'Audit provozu', notifications: 'Notifikace', shifts: 'Seznam směn', drivers: 'Řidiči', vehicles: 'Vozidla', availability: 'Dostupnost', shiftTemplates: 'Šablony směn', history: 'Historie změn', settings: 'Nastavení' }
+const pageTitleMap = { planner: 'Plán směn', dashboard: 'Dashboard', audit: 'Audit provozu', settlements: 'Výčetky', notifications: 'Notifikace', shifts: 'Seznam směn', drivers: 'Řidiči', vehicles: 'Vozidla', availability: 'Dostupnost', shiftTemplates: 'Šablony směn', history: 'Historie změn', settings: 'Nastavení' }
 
 const dispatcherNavItems = [
   ['planner', 'Plán směn'],
   ['dashboard', 'Dashboard'],
+  ['settlements', 'Výčetky'],
   ['notifications', 'Notifikace'],
   ['audit', 'Audit provozu']
 ]
@@ -236,15 +239,16 @@ const supabase = isConfiguredSupabase ? createClient(import.meta.env.VITE_SUPABA
 
 
 const ONLINE_TABLES = [
-  'drivers', 'vehicles', 'shifts', 'absences', 'availability', 'serviceBlocks', 'swapRequests', 'notifications', 'pushSubscriptions', 'audit'
+  'drivers', 'vehicles', 'shifts', 'settlements', 'absences', 'availability', 'serviceBlocks', 'swapRequests', 'notifications', 'pushSubscriptions', 'audit'
 ]
-const tableName = (key) => ({ serviceBlocks: 'service_blocks', swapRequests: 'swap_requests', pushSubscriptions: 'push_subscriptions', audit: 'audit_logs' }[key] || key)
+const tableName = (key) => ({ serviceBlocks: 'service_blocks', swapRequests: 'swap_requests', pushSubscriptions: 'push_subscriptions', settlements: 'shift_settlements', audit: 'audit_logs' }[key] || key)
 const normalizeId = (id, prefix = 'id') => id || uid(prefix)
 const stripUndefined = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined))
 const toDb = {
   drivers: (d) => stripUndefined({ id: normalizeId(d.id, 'drv'), profile_id: d.profileId || d.profile_id || null, name: d.name || '', phone: d.phone || null, email: d.email || null, active: d.active !== false, note: d.note || null }),
   vehicles: (v) => stripUndefined({ id: normalizeId(v.id, 'car'), name: v.name || '', plate: v.plate || '', active: v.active !== false, note: v.note || null }),
   shifts: (s) => stripUndefined({ id: normalizeId(s.id, 'sh'), shift_date: s.date, start_time: s.start || '00:00', end_time: s.end || '00:00', driver_id: s.driverId || null, vehicle_id: s.vehicleId || null, type: s.type || 'day', status: s.status || 'assigned', note: s.note || null, instruction: s.instruction || null, decline_reason: s.declineReason || null, actual_start_at: s.actualStartAt || null, actual_end_at: s.actualEndAt || null, swap_request_status: s.swapRequestStatus || null }),
+  settlements: (s) => stripUndefined({ id: normalizeId(s.id, 'set'), shift_id: s.shiftId, driver_id: s.driverId || null, vehicle_id: s.vehicleId || null, status: s.status || 'draft', inputs: s.inputs || {}, metrics: s.metrics || {}, config: s.config || {}, note: s.note || null, submitted_at: s.submittedAt || null, approved_at: s.approvedAt || null, approved_by: s.approvedBy || null, returned_reason: s.returnedReason || null, created_at: s.createdAt || new Date().toISOString(), updated_at: s.updatedAt || new Date().toISOString() }),
   absences: (a) => stripUndefined({ id: normalizeId(a.id, 'abs'), driver_id: a.driverId, from_date: a.from, to_date: a.to, reason: a.reason || null }),
   availability: (a) => stripUndefined({ id: normalizeId(a.id, 'av'), driver_id: a.driverId, weekday: a.fromAt ? null : (a.date ? null : Number(a.weekday || 0)), avail_date: a.fromAt ? null : (a.date || null), from_at: a.fromAt || null, to_at: a.toAt || null, start_time: a.start || timePart(a.fromAt) || '00:00', end_time: a.end || timePart(a.toAt) || '23:59', note: a.note || null }),
   serviceBlocks: (b) => stripUndefined({ id: normalizeId(b.id, 'srv'), vehicle_id: b.vehicleId, from_date: b.from, to_date: b.to, reason: b.reason || null }),
@@ -257,6 +261,7 @@ const fromDb = {
   drivers: (d) => ({ id: d.id, profileId: d.profile_id || '', name: d.name || '', phone: d.phone || '', email: d.email || '', active: d.active !== false, note: d.note || '' }),
   vehicles: (v) => ({ id: v.id, name: v.name || '', plate: v.plate || '', active: v.active !== false, note: v.note || '' }),
   shifts: (s) => ({ id: s.id, date: s.shift_date, start: String(s.start_time || '').slice(0,5), end: String(s.end_time || '').slice(0,5), driverId: s.driver_id || '', vehicleId: s.vehicle_id || '', type: s.type || 'day', status: s.status || 'assigned', note: s.note || '', instruction: s.instruction || '', declineReason: s.decline_reason || '', actualStartAt: s.actual_start_at || '', actualEndAt: s.actual_end_at || '', swapRequestStatus: s.swap_request_status || '' }),
+  settlements: (s) => ({ id: s.id, shiftId: s.shift_id || '', driverId: s.driver_id || '', vehicleId: s.vehicle_id || '', status: s.status || 'draft', inputs: s.inputs || {}, metrics: s.metrics || {}, config: s.config || {}, note: s.note || '', submittedAt: s.submitted_at || '', approvedAt: s.approved_at || '', approvedBy: s.approved_by || '', returnedReason: s.returned_reason || '', createdAt: s.created_at || '', updatedAt: s.updated_at || '' }),
   absences: (a) => ({ id: a.id, driverId: a.driver_id, from: a.from_date, to: a.to_date, reason: a.reason || '' }),
   availability: (a) => ({ id: a.id, driverId: a.driver_id, weekday: a.weekday === null || a.weekday === undefined ? '' : Number(a.weekday), date: a.avail_date || '', fromAt: a.from_at ? String(a.from_at).slice(0,16) : '', toAt: a.to_at ? String(a.to_at).slice(0,16) : '', start: String(a.start_time || '').slice(0,5), end: String(a.end_time || '').slice(0,5), note: a.note || '' }),
   serviceBlocks: (b) => ({ id: b.id, vehicleId: b.vehicle_id, from: b.from_date, to: b.to_date, reason: b.reason || '' }),
@@ -275,6 +280,7 @@ async function loadDataFromSupabase() {
     const tn = tableName(key)
     const { data: rows, error } = await supabase.from(tn).select('*').order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
     if (error) {
+      if (key === 'settlements' && /does not exist|schema cache/i.test(error.message || '')) { output[key] = []; continue }
       if (key === 'audit') { output[key] = []; continue }
       errors.push(`${tn}: ${error.message}`); continue
     }
@@ -328,14 +334,15 @@ async function syncChangedRows(prev, next, profile) {
   const isStaff = ['admin','dispatcher'].includes(profile.role)
   const currentDriver = !isStaff ? (next.drivers || []).find((d) => d.profileId === profile.id || (d.email && profile.email && d.email.toLowerCase() === profile.email.toLowerCase())) : null
   const currentDriverId = currentDriver?.id || ''
-  const allowedForDriver = new Set(['shifts','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
+  const allowedForDriver = new Set(['shifts','settlements','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
   const errors = []
-  const critical = new Set(['shifts','swapRequests','notifications','pushSubscriptions'])
+  const critical = new Set(['shifts','settlements','swapRequests','notifications','pushSubscriptions'])
   for (const key of ONLINE_TABLES) {
     if (!isStaff && !allowedForDriver.has(key)) continue
     let changed = changedRows(prev[key], next[key])
     // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
     if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId)
+    if (!isStaff && key === 'settlements') changed = changed.filter((row) => row.driverId === currentDriverId)
     if (!isStaff && key === 'notifications') {
       const previousIds = new Set((prev.notifications || []).map((n) => n.id))
       const insertedRows = changed.filter((row) => row.id && !previousIds.has(row.id)).map(toDb.notifications)
@@ -424,6 +431,7 @@ function seed() {
       { id: 'av_milan_6', driverId: 'drv_milan', weekday: 6, start: '18:00', end: '06:00', note: 'Noční' },
     ],
     serviceBlocks: [],
+    settlements: [],
     swapRequests: [],
     notifications: [],
     pushSubscriptions: [],
@@ -452,6 +460,7 @@ function readStore() {
       absences: parsed.absences || [],
       availability: (parsed.availability || base.availability || []).map((a) => ({ fromAt: '', toAt: '', ...a })),
       serviceBlocks: parsed.serviceBlocks || [],
+      settlements: (parsed.settlements || []).map((s) => ({ inputs: {}, metrics: {}, config: {}, note: '', submittedAt: '', approvedAt: '', approvedBy: '', returnedReason: '', ...s })),
       swapRequests: (parsed.swapRequests || []).map((r) => ({ targetMode: 'all', targetDriverId: '', acceptedByDriverId: '', acceptedAt: '', resolvedAt: '', approvedDriverId: '', rejectedReason: '', cancelledAt: '', history: [], ...r })),
       notifications: parsed.notifications || [],
       pushSubscriptions: parsed.pushSubscriptions || [],
@@ -552,6 +561,124 @@ function timePart(value) { return value ? String(value).slice(11, 16) : '' }
 function formatDateTime(value) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
+}
+const settlementConfigDefaults = { commRate: 30, baseFull: 1000, baseHalf: 500, minTrzbaPerKm: 15, iacKmPerRide: 33, shkmKmPerRide: 7 }
+const settlementInputDefaults = { driver: '', shift: 'den', rz: '', kmStart: '', kmEnd: '', trzba: '', pristavne: '', palivo: '', myti: '', kartou: '', fakturou: '', jine: '', cashActual: '', iacCount: '', shkmCount: '', note: '' }
+function settlementNumber(value) {
+  const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+function settlementShiftCode(shift = {}) {
+  const planned = plannedDurationMinutes(shift)
+  if (planned > 0 && planned <= 6 * 60) return 'pul'
+  if (shift.type === 'night') return 'noc'
+  return 'den'
+}
+function settlementShiftLabel(code) {
+  return ({ den: 'Denní', noc: 'Noční', odpo: 'Odpolední', pul: '1/2 směna' }[code] || shiftTypeMap[code] || code || '—')
+}
+function settlementDefaultInputs(shift, data, helpers, existing = {}) {
+  const driver = (data.drivers || []).find((d) => d.id === shift?.driverId)
+  const vehicle = helpers.vehicle?.(shift?.vehicleId)
+  return {
+    ...settlementInputDefaults,
+    driver: driver?.name || helpers.driverName?.(shift?.driverId) || '',
+    shift: settlementShiftCode(shift),
+    rz: vehicle?.plate || '',
+    ...(existing || {}),
+  }
+}
+function normalizeSettlementInputs(inputs = {}) {
+  return {
+    driver: String(inputs.driver || '').trim(),
+    shift: inputs.shift || 'den',
+    rz: String(inputs.rz || '').trim(),
+    kmStart: settlementNumber(inputs.kmStart),
+    kmEnd: settlementNumber(inputs.kmEnd),
+    trzba: settlementNumber(inputs.trzba),
+    pristavne: settlementNumber(inputs.pristavne),
+    palivo: settlementNumber(inputs.palivo),
+    myti: settlementNumber(inputs.myti),
+    kartou: settlementNumber(inputs.kartou),
+    fakturou: settlementNumber(inputs.fakturou),
+    jine: settlementNumber(inputs.jine),
+    cashActual: settlementNumber(inputs.cashActual),
+    hasCashActual: String(inputs.cashActual ?? '').trim() !== '',
+    iacCount: settlementNumber(inputs.iacCount),
+    shkmCount: settlementNumber(inputs.shkmCount),
+  }
+}
+function computeSettlementMetrics(inputs = {}, config = {}) {
+  const cfg = { ...settlementConfigDefaults, ...(config || {}) }
+  const values = normalizeSettlementInputs(inputs)
+  const kmReal = Math.max(0, values.kmEnd - values.kmStart)
+  const iacKm = values.iacCount * cfg.iacKmPerRide
+  const shkmKm = values.shkmCount * cfg.shkmKmPerRide
+  const invoiceKm = iacKm + shkmKm
+  const chargedKm = Math.max(0, kmReal - invoiceKm)
+  const minTrzba = chargedKm * cfg.minTrzbaPerKm
+  const netto = values.trzba - values.pristavne
+  const nonCash = values.kartou + values.fakturou
+  const costs = values.palivo + values.myti + values.jine
+  const fixedPayout = values.shift === 'pul' ? cfg.baseHalf : cfg.baseFull
+  const commissionRate = cfg.commRate / 100
+  const threshold = commissionRate > 0 ? fixedPayout / commissionRate : Number.POSITIVE_INFINITY
+  const usesPercentage = netto > threshold
+  const vyplata = netto > 0 ? Math.round(usesPercentage ? netto * commissionRate : fixedPayout) : 0
+  const doplatek = Math.max(0, minTrzba - values.trzba)
+  const delta = values.trzba - minTrzba
+  const kOdevzdani = values.trzba - values.palivo - values.myti - values.kartou - values.fakturou - values.jine - vyplata
+  const settlement = kOdevzdani + doplatek
+  const cashExpected = settlement + vyplata
+  const cashDiff = values.hasCashActual ? values.cashActual - cashExpected : 0
+  return {
+    ...values,
+    config: cfg,
+    shiftLabel: settlementShiftLabel(values.shift),
+    kmReal,
+    chargedKm,
+    invoiceKm,
+    iacKm,
+    shkmKm,
+    minTrzba,
+    netto,
+    nonCash,
+    costs,
+    usesPercentage,
+    payoutMode: usesPercentage ? `Provize ${cfg.commRate} %` : `Fix ${money(fixedPayout)}`,
+    vyplata,
+    doplatek,
+    delta,
+    kOdevzdani,
+    settlement,
+    cashExpected,
+    cashDiff,
+    nedoplatek: doplatek > 0,
+  }
+}
+function validateSettlementInputs(inputs = {}, config = {}) {
+  const values = normalizeSettlementInputs(inputs)
+  const errors = []
+  if (!values.driver) errors.push('Vyplň jméno řidiče.')
+  if (values.kmStart < 0) errors.push('Počáteční km nemohou být záporné.')
+  if (values.kmEnd < 0) errors.push('Konečné km nemohou být záporné.')
+  if (values.kmEnd < values.kmStart) errors.push('Konečný stav tachometru je menší než počáteční.')
+  if (values.trzba <= 0) errors.push('Tržba musí být větší než 0.')
+  ;['pristavne','palivo','myti','kartou','fakturou','jine','cashActual','iacCount','shkmCount'].forEach((key) => {
+    if (values[key] < 0) errors.push(`${key} nesmí být záporné.`)
+  })
+  ;['iacCount','shkmCount'].forEach((key) => {
+    if (!Number.isInteger(values[key])) errors.push(`${key} musí být celé číslo.`)
+  })
+  const metrics = computeSettlementMetrics(inputs, config)
+  if (metrics.invoiceKm > metrics.kmReal) errors.push(`Smluvní km (${metrics.invoiceKm.toLocaleString('cs-CZ')}) jsou vyšší než najeté km (${metrics.kmReal.toLocaleString('cs-CZ')}).`)
+  return [...new Set(errors)]
+}
+function settlementForShift(data, shiftId) {
+  return (data.settlements || []).find((s) => s.shiftId === shiftId)
+}
+function canOpenSettlement(shift) {
+  return Boolean(shift?.actualEndAt || shift?.status === 'completed')
 }
 
 function driverInitials(name = '') {
@@ -808,6 +935,11 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 .notification-row.notification-unread{box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 .notification-row p{margin:8px 0 0;line-height:1.42}
 
+/* Výčetka integration prototype */
+.settlement-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;padding:12px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.04)}
+.settlement-modal-head div{display:grid;gap:3px;min-width:0}.settlement-modal-head span:not(.pill){color:var(--muted);font-size:13px}.settlement-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.72fr);gap:16px;align-items:start}.settlement-form{align-content:start}.settlement-result{position:sticky;top:8px;display:grid;gap:12px}.settlement-hero-result{padding:16px;border:1px solid rgba(245,199,106,.42);border-radius:20px;background:linear-gradient(180deg,rgba(245,199,106,.16),rgba(255,255,255,.045));display:grid;gap:4px}.settlement-hero-result span,.settlement-result-grid span,.settlement-summary span{color:var(--muted);font-size:12px;font-weight:850}.settlement-hero-result b{font-size:34px;line-height:1;letter-spacing:-.04em}.settlement-hero-result small{color:#fff3c7}.settlement-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.settlement-result-grid div,.settlement-summary div{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.04);padding:10px;display:grid;gap:3px}.settlement-result-grid b,.settlement-summary b{font-size:16px}.settlement-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px;min-width:230px}.settlement-summary.muted{display:block;min-width:0;margin-top:0}.settlement-actions{justify-content:stretch}.settlement-actions button{flex:1}.settlement-inline-card .settlement-summary{max-width:520px}.settlement-driver-strip{display:grid;gap:8px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.04);padding:10px}.settlement-driver-strip .settlement-summary{min-width:0;margin-top:0}.settlement-table .ghost{width:auto}
+@media (max-width:900px){.settlement-layout{grid-template-columns:1fr}.settlement-result{position:relative;top:auto}.settlement-summary{grid-template-columns:1fr;min-width:0}.settlement-hero-result b{font-size:30px}}
+
 
 /* TASK 3 role-based sidebar navigation */
 .sidebar-nav{display:grid;gap:20px}.nav-section{display:grid;gap:8px}.nav-section-title{padding:0 4px;color:var(--muted);font-size:11px;font-weight:950;letter-spacing:.12em}.sidebar-footer{margin-top:auto;padding:10px 4px 0;color:var(--muted);font-size:12px;display:grid;gap:5px}.sync-line{display:flex;align-items:center;gap:8px}.sidebar-footer small{display:block;color:var(--muted);line-height:1.35}.app-with-topbar .sidebar .sidebar-nav .nav{margin-top:0}
@@ -875,7 +1007,7 @@ function useAppData(session, profile) {
       clearTimeout(timer)
       timer = setTimeout(() => reloadOnline(true), 450)
     }
-    const realtimeTables = ['drivers', 'vehicles', 'shifts', 'absences', 'availability', 'service_blocks', 'swap_requests', 'notifications', 'push_subscriptions', 'audit_logs', 'app_settings']
+    const realtimeTables = ['drivers', 'vehicles', 'shifts', 'shift_settlements', 'absences', 'availability', 'service_blocks', 'swap_requests', 'notifications', 'push_subscriptions', 'audit_logs', 'app_settings']
     const ch = supabase.channel(`rbshift-live-${session?.user?.id || 'user'}`)
     realtimeTables.forEach((table) => {
       ch.on('postgres_changes', { event: '*', schema: 'public', table }, reloadSoon)
@@ -1042,6 +1174,7 @@ function App({ session = null, profile = null, signOut = null }) {
     <main className="main">
       {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} />}
       {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} />}
+      {page === 'settlements' && <Settlements data={data} helpers={helpers} commit={commit} />}
       {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} />}
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
@@ -1141,6 +1274,118 @@ function SideDrawer({ title, open, onClose, children }) {
   </div>
 }
 function ConflictBox({ messages }) { return <div className="stack">{messages?.length ? messages.map((m, i) => <div key={i} className="alert bad">{m}</div>) : <div className="alert good">Bez kolize.</div>}</div> }
+function SettlementStatusPill({ settlement }) {
+  const status = settlement?.status || 'missing'
+  if (status === 'missing') return <span className="pill warn">Bez výčetky</span>
+  return <span className={`pill ${settlementToneMap[status] || 'warn'}`}>{settlementStatusMap[status] || status}</span>
+}
+function SettlementSummary({ settlement }) {
+  if (!settlement) return <div className="settlement-summary muted">Výčetka zatím není založená.</div>
+  const metrics = settlement.metrics || computeSettlementMetrics(settlement.inputs || {}, settlement.config || {})
+  return <div className="settlement-summary">
+    <div><span>K odevzdání</span><b>{money(metrics.settlement)}</b></div>
+    <div><span>Výplata</span><b>{money(metrics.vyplata)}</b></div>
+    <div><span>Km</span><b>{Math.round(metrics.kmReal || 0).toLocaleString('cs-CZ')}</b></div>
+  </div>
+}
+function SettlementFormModal({ data, helpers, commit, shift, currentDriver = null, isDriver = false, onClose }) {
+  const existing = settlementForShift(data, shift?.id)
+  const [inputs, setInputs] = useState(() => settlementDefaultInputs(shift, data, helpers, existing?.inputs))
+  const [config] = useState(() => ({ ...settlementConfigDefaults, ...(existing?.config || {}) }))
+  const readOnly = existing?.status === 'approved' || (isDriver && existing?.status === 'submitted')
+  const metrics = useMemo(() => computeSettlementMetrics(inputs, config), [inputs, config])
+  const errors = useMemo(() => validateSettlementInputs(inputs, config), [inputs, config])
+  useEffect(() => setInputs(settlementDefaultInputs(shift, data, helpers, existing?.inputs)), [shift?.id, existing?.id])
+  const setValue = (key, value) => setInputs((prev) => ({ ...prev, [key]: value }))
+  const upsertSettlement = (status, returnedReason = '') => {
+    if (!shift?.id) return
+    if (['submitted','approved'].includes(status) && errors.length) return alert(errors[0])
+    const now = new Date().toISOString()
+    const nextSettlement = {
+      id: existing?.id || uid('set'),
+      shiftId: shift.id,
+      driverId: shift.driverId || currentDriver?.id || '',
+      vehicleId: shift.vehicleId || '',
+      status,
+      inputs,
+      metrics,
+      config,
+      note: inputs.note || '',
+      submittedAt: status === 'submitted' ? (existing?.submittedAt || now) : (existing?.submittedAt || ''),
+      approvedAt: status === 'approved' ? now : (status === 'returned' ? '' : (existing?.approvedAt || '')),
+      approvedBy: status === 'approved' ? 'admin' : (status === 'returned' ? '' : (existing?.approvedBy || '')),
+      returnedReason,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    }
+    const notices = []
+    if (status === 'submitted') notices.push(adminNotice('Řidič odeslal výčetku', `${helpers.driverName(shift.driverId)} · ${shiftNoticeBody(shift, helpers)} · k odevzdání ${money(metrics.settlement)}`, 'settlement-submitted', shift.id))
+    if (status === 'approved') notices.push(makeNotice({ title: 'Výčetka schválena', body: `${shiftNoticeBody(shift, helpers)} · k odevzdání ${money(metrics.settlement)}`, targetDriverId: shift.driverId, type: 'settlement-approved', shiftId: shift.id }))
+    if (status === 'returned') notices.push(makeNotice({ title: 'Výčetka vrácena k opravě', body: `${shiftNoticeBody(shift, helpers)}${returnedReason ? ` · ${returnedReason}` : ''}`, targetDriverId: shift.driverId, type: 'settlement-returned', shiftId: shift.id }))
+    commit((prev) => addNotificationsToData({
+      ...prev,
+      settlements: [nextSettlement, ...(prev.settlements || []).filter((s) => s.id !== nextSettlement.id)],
+    }, notices), status === 'submitted' ? 'Řidič odeslal výčetku.' : status === 'approved' ? 'Výčetka schválena.' : status === 'returned' ? 'Výčetka vrácena k opravě.' : 'Výčetka uložena.')
+    if (status !== 'draft') onClose?.()
+  }
+  const returnSettlement = () => {
+    const reason = prompt('Důvod vrácení řidiči:', existing?.returnedReason || '')
+    if (reason === null) return
+    upsertSettlement('returned', reason || 'Prosím oprav výčetku.')
+  }
+  const fieldProps = { disabled: readOnly }
+  return <Modal title={`Výčetka · ${formatDate(shift.date)} ${shift.start}–${shift.end}`} onClose={onClose}>
+    <div className="settlement-modal-head">
+      <div><b>{helpers.driverName(shift.driverId)}</b><span>{helpers.vehicleName(shift.vehicleId)} · {shiftTypeName(shift)}</span></div>
+      <SettlementStatusPill settlement={existing} />
+    </div>
+    {existing?.returnedReason && <div className="alert warn"><b>Vráceno k opravě:</b><br />{existing.returnedReason}</div>}
+    {readOnly && isDriver && existing?.status === 'submitted' && <div className="alert good">Výčetka je odeslaná a čeká na schválení dispečerem.</div>}
+    <div className="settlement-layout">
+      <form className="form two-col settlement-form" onSubmit={(e) => e.preventDefault()}>
+        <Field label="Řidič"><input value={inputs.driver} onChange={(e) => setValue('driver', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Směna"><select value={inputs.shift} onChange={(e) => setValue('shift', e.target.value)} disabled={readOnly}>{Object.entries({ den: 'Denní', noc: 'Noční', odpo: 'Odpolední', pul: '1/2 směna' }).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
+        <Field label="RZ"><input value={inputs.rz} onChange={(e) => setValue('rz', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Počáteční km"><input inputMode="decimal" value={inputs.kmStart} onChange={(e) => setValue('kmStart', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Konečné km"><input inputMode="decimal" value={inputs.kmEnd} onChange={(e) => setValue('kmEnd', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Tržba"><input inputMode="decimal" value={inputs.trzba} onChange={(e) => setValue('trzba', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Přístavné"><input inputMode="decimal" value={inputs.pristavne} onChange={(e) => setValue('pristavne', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Palivo"><input inputMode="decimal" value={inputs.palivo} onChange={(e) => setValue('palivo', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Mytí"><input inputMode="decimal" value={inputs.myti} onChange={(e) => setValue('myti', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Kartou"><input inputMode="decimal" value={inputs.kartou} onChange={(e) => setValue('kartou', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Fakturou"><input inputMode="decimal" value={inputs.fakturou} onChange={(e) => setValue('fakturou', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Jiné náklady"><input inputMode="decimal" value={inputs.jine} onChange={(e) => setValue('jine', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Hotovost u sebe"><input inputMode="decimal" value={inputs.cashActual} onChange={(e) => setValue('cashActual', e.target.value)} {...fieldProps} /></Field>
+        <Field label="IAC počet"><input inputMode="numeric" value={inputs.iacCount} onChange={(e) => setValue('iacCount', e.target.value)} {...fieldProps} /></Field>
+        <Field label="SHKM počet"><input inputMode="numeric" value={inputs.shkmCount} onChange={(e) => setValue('shkmCount', e.target.value)} {...fieldProps} /></Field>
+        <Field label="Poznámka" className="span2"><textarea value={inputs.note || ''} onChange={(e) => setValue('note', e.target.value)} {...fieldProps} /></Field>
+      </form>
+      <aside className="settlement-result">
+        <div className="settlement-hero-result"><span>K odevzdání</span><b>{money(metrics.settlement)}</b><small>{metrics.payoutMode}</small></div>
+        <div className="settlement-result-grid">
+          <div><span>Výplata</span><b>{money(metrics.vyplata)}</b></div>
+          <div><span>Doplatek</span><b>{money(metrics.doplatek)}</b></div>
+          <div><span>Čistá tržba</span><b>{money(metrics.netto)}</b></div>
+          <div><span>Najeto km</span><b>{Math.round(metrics.kmReal || 0).toLocaleString('cs-CZ')}</b></div>
+          <div><span>Smluvní km</span><b>{Math.round(metrics.invoiceKm || 0).toLocaleString('cs-CZ')}</b></div>
+          <div><span>Hotovost rozdíl</span><b>{metrics.hasCashActual ? money(metrics.cashDiff) : '—'}</b></div>
+        </div>
+        {errors.length > 0 && <div className="alert warn">{errors[0]}</div>}
+        <div className="actions settlement-actions">
+          {isDriver && existing?.status !== 'approved' && existing?.status !== 'submitted' && <>
+            <button className="ghost" type="button" onClick={() => upsertSettlement('draft')}>Uložit rozpracované</button>
+            <button className="primary" type="button" onClick={() => upsertSettlement('submitted')}>Odeslat výčetku</button>
+          </>}
+          {!isDriver && existing?.status !== 'approved' && <>
+            <button className="ghost" type="button" onClick={() => upsertSettlement(existing?.status || 'draft')}>Uložit</button>
+            <button className="primary" type="button" onClick={() => upsertSettlement('approved')}>Schválit</button>
+            {existing && <button className="danger" type="button" onClick={returnSettlement}>Vrátit k opravě</button>}
+          </>}
+        </div>
+      </aside>
+    </div>
+  </Modal>
+}
 
 const blankShift = (date = todayISO(), settings = {}) => { const firstTemplate = normalizeShiftTemplates(settings).find((tpl) => tpl.active); const preset = firstTemplate ? shiftTemplateValue(firstTemplate.id, settings) : null; const t = configuredShiftTimes(settings); return ({ date, start: preset?.start || t.dayStart, end: preset?.end || t.dayEnd, driverId: '', vehicleId: '', type: preset?.type || 'day', status: 'assigned', note: '', instruction: '', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }) }
 function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, onSaved, onCancel, onDirtyChange, variant = 'card' }) {
@@ -1408,9 +1653,11 @@ function ShiftMini({ shift, data, helpers, setSelected }) {
   </button>
 }
 function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) {
+  const [settlementOpen, setSettlementOpen] = useState(false)
   const fresh = data.shifts.find((s) => s.id === shift.id) || shift
   const conflicts = helpers.conflictMessages(fresh)
   const swaps = (data.swapRequests || []).filter((r) => r.shiftId === fresh.id)
+  const settlement = settlementForShift(data, fresh.id)
   const duration = actualDurationMinutes(fresh)
   const setStatus = (status, reason = fresh.declineReason || '') => {
     if (!confirmPastChange(fresh)) return
@@ -1441,7 +1688,8 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
     if (req.acceptedByDriverId) notices.push(makeNotice({ title: 'Výměna nebyla schválena', body: shiftNoticeBody(fresh, helpers), targetDriverId: req.acceptedByDriverId, type: 'swap-rejected', shiftId: fresh.id }))
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === id ? appendSwapHistory({ ...r, status, resolvedAt: new Date().toISOString(), rejectedReason: status === 'rejected' ? 'Zamítnuto adminem' : '' }, status === 'rejected' ? 'Admin zamítl výměnu.' : `Stav výměny změněn na ${swapStatusMap[status]}.`) : r), shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, swapRequestStatus: status } : s) }, notices), `Žádost o výměnu směny: ${swapStatusMap[status]}.`)
   }
-  return <div className="card detail-panel">
+  return <>
+  <div className="card detail-panel">
     <div className="section-title"><h3>Detail směny</h3><button className="ghost" onClick={() => setSelected(null)}>Zavřít</button></div>
     <div className="grid three">
       <Kpi label="Datum" value={formatDate(fresh.date)} hint={`${fresh.start}–${fresh.end}`} />
@@ -1455,6 +1703,11 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
       <Kpi label="Konec" value={fresh.actualEndAt ? new Date(fresh.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} hint={fresh.actualEndAt ? new Date(fresh.actualEndAt).toLocaleDateString('cs-CZ') : 'nezadáno'} />
       <Kpi label="Reálný čas" value={durationLabel(duration)} hint="check-in / check-out" />
     </div>
+    {(canOpenSettlement(fresh) || settlement) && <div className="card-soft settlement-inline-card">
+      <div className="split"><div><b>Výčetka</b><br /><small className="muted">Navázaná na ukončenou směnu</small></div><SettlementStatusPill settlement={settlement} /></div>
+      <SettlementSummary settlement={settlement} />
+      <div className="row-actions" style={{ marginTop: 10 }}><button onClick={() => setSettlementOpen(true)}>{settlement ? 'Otevřít výčetku' : 'Založit výčetku'}</button></div>
+    </div>}
     {fresh.declineReason && <div className="alert bad"><b>Důvod odmítnutí:</b><br />{fresh.declineReason}</div>}
     {swaps.length > 0 && <div className="card-soft"><h4>Žádosti / zájemci</h4><div className="stack">{swaps.map((r) => <div className="alert warn" key={r.id}><b>{r.targetMode === 'open' ? 'Zájem o volnou směnu' : swapStatusMap[r.status]}</b> · {new Date(r.createdAt).toLocaleString('cs-CZ')}<br />Od: {helpers.driverName(r.driverId)} · Komu: {r.targetMode === 'open' ? 'volná směna' : (r.targetMode === 'driver' ? helpers.driverName(r.targetDriverId) : 'všem kolegům')}{r.acceptedByDriverId && <><br />Přijal: <b>{helpers.driverName(r.acceptedByDriverId)}</b></>}{r.approvedDriverId && <><br />Schválený řidič: <b>{helpers.driverName(r.approvedDriverId)}</b></>}{r.rejectedReason && <><br />Důvod zamítnutí: {r.rejectedReason}</>}<br />{r.reason || 'Bez důvodu'}{r.history?.length ? <div className="swap-history">{r.history.map((h, i) => <small key={i}>{new Date(h.at).toLocaleString('cs-CZ')} · {h.text}</small>)}</div> : null}{['pending','accepted'].includes(r.status) && <div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => resolveSwap(r.id, 'approved')}>Schválit a potvrdit</button><button onClick={() => resolveSwap(r.id, 'rejected')}>Zamítnout</button></div>}</div>)}</div></div>}
     <div style={{ marginTop: 12 }}><ConflictBox messages={conflicts} /></div>
@@ -1462,6 +1715,7 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
       <button className="primary" onClick={() => setStatus('confirmed')}>Potvrdit</button>
       <button className="ghost" onClick={checkIn}>Nástup</button>
       <button className="ghost" onClick={checkOut}>Ukončit</button>
+      <button className="ghost" onClick={() => setSettlementOpen(true)} disabled={!canOpenSettlement(fresh) && !settlement}>Výčetka</button>
       <button className="ghost" onClick={() => setStatus('completed')}>Dokončeno</button>
       <button className="danger" onClick={() => { const reason = prompt('Důvod odmítnutí:', fresh.declineReason || ''); setStatus('declined', reason || '') }}>Odmítnout</button>
       <button className="ghost" onClick={() => confirmPastChange(fresh) && setEditing(fresh)}>Upravit</button>
@@ -1469,6 +1723,8 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
       <button className="danger" onClick={hardDelete}>Smazat natrvalo</button>
     </div>
   </div>
+  {settlementOpen && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={fresh} isDriver={false} onClose={() => setSettlementOpen(false)} />}
+  </>
 }
 
 function Dashboard({ data, helpers, commit }) {
@@ -1527,6 +1783,45 @@ function Dashboard({ data, helpers, commit }) {
 }
 function QuickShift({ shift, helpers }) {
   return <div className="quick-item"><div><strong>{formatDate(shift.date)} {shift.start}–{shift.end}</strong><small>{helpers.driverName(shift.driverId)} · {helpers.vehicleName(shift.vehicleId)}</small></div><StatusPill status={shift.status} helpers={helpers} /></div>
+}
+
+function Settlements({ data, helpers, commit }) {
+  const [selectedShiftId, setSelectedShiftId] = useState('')
+  const rows = sortByDateTime((data.shifts || []).filter((s) => canOpenSettlement(s) || settlementForShift(data, s.id))).map((shift) => {
+    const settlement = settlementForShift(data, shift.id)
+    return { shift, settlement }
+  })
+  const waiting = rows.filter((row) => row.settlement?.status === 'submitted').length
+  const missing = rows.filter((row) => !row.settlement).length
+  const approved = rows.filter((row) => row.settlement?.status === 'approved').length
+  const selectedShift = (data.shifts || []).find((s) => s.id === selectedShiftId)
+  return <>
+    <PageTitle title="Výčetky směn" subtitle="Samostatný integrační prototyp výčetky navázaný na docházku.">
+      <span className="pill waiting">{waiting} čeká</span>
+      <span className="pill warn">{missing} chybí</span>
+      <span className="pill good">{approved} schváleno</span>
+    </PageTitle>
+    <div className="card">
+      <div className="section-title"><h3>Přehled výčetek</h3><span className="pill">{rows.length}</span></div>
+      <div className="table-wrap settlement-table">
+        <table className="table">
+          <thead><tr><th>Směna</th><th>Řidič</th><th>Auto</th><th>Stav</th><th>Souhrn</th><th></th></tr></thead>
+          <tbody>
+            {rows.map(({ shift, settlement }) => <tr key={shift.id}>
+              <td><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br /><small>{shiftTypeName(shift)}</small></td>
+              <td>{helpers.driverName(shift.driverId)}</td>
+              <td>{helpers.vehicleName(shift.vehicleId)}</td>
+              <td><SettlementStatusPill settlement={settlement} /></td>
+              <td><SettlementSummary settlement={settlement} /></td>
+              <td><button className="ghost" type="button" onClick={() => setSelectedShiftId(shift.id)}>{settlement ? 'Otevřít' : 'Založit'}</button></td>
+            </tr>)}
+            {!rows.length && <tr><td colSpan="6"><div className="empty">Zatím nejsou ukončené směny pro výčetku.</div></td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {selectedShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={selectedShift} isDriver={false} onClose={() => setSelectedShiftId('')} />}
+  </>
 }
 
 function OperationalAudit({ data, helpers, commit }) {
@@ -1895,6 +2190,7 @@ function Availability({ data, commit, currentDriver }) {
 
 function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   const [expandedShiftId, setExpandedShiftId] = useState('')
+  const [settlementShiftId, setSettlementShiftId] = useState('')
   const [driverToast, setDriverToast] = useState('')
   const driverToastTimer = useRef(null)
   const hiddenDriverStatuses = new Set(['cancelled', 'declined', 'rejected'])
@@ -1925,6 +2221,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   const checkOut = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, shift ? adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-end', id) : null), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
+    if (shift) setSettlementShiftId(id)
   }
   const requestSwap = (shift) => {
     const colleagues = data.drivers.filter((d) => d.active && d.id !== currentDriver?.id)
@@ -1993,10 +2290,13 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     const canCheckIn = !shift.actualStartAt && !['declined','cancelled','completed'].includes(shift.status)
     const canCheckOut = Boolean(shift.actualStartAt && !shift.actualEndAt)
     const canSwap = !['cancelled','completed'].includes(shift.status) && !['pending','accepted'].includes(shift.swapRequestStatus)
+    const settlement = settlementForShift(data, shift.id)
+    const canSettlement = canOpenSettlement(shift) || settlement
     return <div className={compact ? 'driver-actions driver-actions-compact' : 'driver-actions'}>
       {canConfirm && <button className="primary" onClick={() => setStatus(shift.id, 'confirmed')}>Potvrdit</button>}
       {canCheckIn && <button className="primary soft-primary driver-primary-action" onClick={() => checkIn(shift.id)}>Nastoupil jsem</button>}
       {canCheckOut && <button className="primary" onClick={() => checkOut(shift.id)}>Ukončit směnu</button>}
+      {canSettlement && <button className="ghost" onClick={() => setSettlementShiftId(shift.id)}>{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button>}
       {canSwap && <button className="ghost" onClick={() => requestSwap(shift)}>Výměna</button>}
       {['pending','accepted'].includes(shift.swapRequestStatus) && <button className="danger" onClick={() => cancelSwap(shift)}>Zrušit výměnu</button>}
       {canDecline && <button className="danger" onClick={() => decline(shift)}>Odmítnout</button>}
@@ -2015,6 +2315,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     const duration = actualDurationMinutes(s)
     const vehicle = helpers.vehicle(s.vehicleId)
     const conflictMessages = helpers.conflictMessages(s).filter((message) => !(message === 'Není vybrané vozidlo.' && !vehicle))
+    const settlement = settlementForShift(data, s.id)
     if (compactCard) {
       return <button type="button" className="card driver-shift-card driver-shift-compact-card" onClick={() => setExpandedShiftId(s.id)}>
         <div className="driver-compact-main">
@@ -2033,6 +2334,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
       {s.note && <p className="muted driver-note">{s.note}</p>}
       {(s.actualStartAt || s.actualEndAt) && <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div>}
       {showStartPrompt && <div className="driver-info-line">Začněte směnu kliknutím na „Nastoupil jsem“.</div>}
+      {settlement && <div className="settlement-driver-strip"><SettlementStatusPill settlement={settlement} /><SettlementSummary settlement={settlement} /></div>}
       {conflictMessages.length > 0 && <ConflictBox messages={conflictMessages} />}
       {['pending','accepted'].includes(s.swapRequestStatus) && <div className="alert warn">Žádost o výměnu je odeslaná a čeká na admina.</div>}
       {s.declineReason && <p className="muted">Důvod odmítnutí: {s.declineReason}</p>}
@@ -2041,6 +2343,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   }
   const otherShifts = shifts.filter((s) => s.id !== focus?.id)
   const highlightOpenShifts = openShifts.length >= 4
+  const settlementShift = data.shifts.find((s) => s.id === settlementShiftId)
   return <div className="driver-view driver-mobile-view driver-priority-view">
     {driverToast && <div className="planner-toast" role="status">{driverToast}</div>}
     {syncState?.saving && <div className="driver-sync-banner saving" role="status">Ukládám změny…</div>}
@@ -2054,6 +2357,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     <div className="section-title driver-list-title"><h3>Moje další směny</h3><span className="pill">{otherShifts.length}</span></div>
     <div className="driver-card-list">{otherShifts.map((s) => <ShiftMobileCard s={s} key={s.id} />)}{!otherShifts.length && <div className="empty">Nemáš další plánované směny.</div>}</div>
     <DriverTwoWeekCalendar shifts={shifts} openShifts={openShifts} helpers={helpers} />
+    {settlementShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={settlementShift} currentDriver={currentDriver} isDriver onClose={() => setSettlementShiftId('')} />}
   </div>
 }
 function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
