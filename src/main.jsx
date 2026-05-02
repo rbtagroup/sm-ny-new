@@ -278,7 +278,12 @@ async function loadDataFromSupabase() {
   const errors = []
   for (const key of ONLINE_TABLES) {
     const tn = tableName(key)
-    const { data: rows, error } = await supabase.from(tn).select('*').order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
+    let q = supabase.from(tn).select('*').order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
+    if (key === 'notifications') {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+      q = q.gte('created_at', cutoff)
+    }
+    const { data: rows, error } = await q
     if (error) {
       if (key === 'settlements' && /does not exist|schema cache/i.test(error.message || '')) { output[key] = []; continue }
       if (key === 'audit') { output[key] = []; continue }
@@ -867,11 +872,25 @@ function download(filename, content, type = 'application/json') {
   URL.revokeObjectURL(url)
 }
 async function copyText(text) {
+  const execCopy = () => {
+    const el = document.createElement('textarea')
+    el.value = text
+    el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;pointer-events:none'
+    document.body.appendChild(el)
+    el.focus()
+    el.select()
+    try { document.execCommand('copy') } finally { document.body.removeChild(el) }
+  }
   try {
-    await navigator.clipboard.writeText(text)
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      execCopy()
+    }
     alert('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.')
   } catch {
-    prompt('Zkopíruj text ručně:', text)
+    try { execCopy(); alert('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.') }
+    catch { prompt('Zkopíruj text ručně:', text) }
   }
 }
 
@@ -976,6 +995,7 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 /* TASK 5 compact KPI bar */
 .planner-kpi-bar{display:flex;align-items:center;gap:10px;min-height:54px;max-height:60px;margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035));box-shadow:var(--shadow);overflow-x:auto}.planner-kpi-context,.planner-kpi-item,.planner-kpi-reset{height:34px;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:0 11px;background:rgba(255,255,255,.045);color:var(--text);white-space:nowrap}.planner-kpi-context{color:#f7dfac;background:rgba(245,199,106,.09);border-color:rgba(245,199,106,.28)}.planner-kpi-item{transition:.18s ease}.planner-kpi-item b{font-weight:950}.planner-kpi-item span,.planner-kpi-reset{font-size:12px;color:var(--muted);font-weight:850}.planner-kpi-item:not(.passive):hover,.planner-kpi-reset:hover{border-color:rgba(245,199,106,.55);transform:translateY(-1px)}.planner-kpi-item.passive{cursor:default}.planner-kpi-item.danger{color:#ffdede;border-color:rgba(255,107,107,.45);background:rgba(255,107,107,.10)}.planner-kpi-item.danger span{color:#ffdede}.planner-kpi-item.danger.active{box-shadow:0 0 0 3px rgba(255,107,107,.14)}.planner-kpi-item.missing{color:#fff3c7;border-color:rgba(255,207,90,.42);background:rgba(255,207,90,.10)}.planner-kpi-item.missing span{color:#fff3c7}.planner-kpi-item.missing button{border:0;background:transparent;color:var(--gold);font-weight:950;padding:0 0 0 5px}.planner-kpi-reset{background:rgba(245,199,106,.08);color:#f7dfac}.planner-kpi-detail{margin:-2px 0 16px}.missing-coverage-table{max-height:50vh}.missing-coverage-table .table{min-width:720px}.audit-table-scroll{max-height:50vh;overflow:auto}
 @media (max-width:900px){.planner-kpi-bar{max-height:none;flex-wrap:wrap}.planner-kpi-context,.planner-kpi-item,.planner-kpi-reset{height:32px}.week-block-title{top:0}}
+@media (max-width:640px){.week-block-title{flex-direction:column;align-items:flex-start;gap:4px}.shift-card .mini-actions button{min-height:40px;flex:1}.day{overflow:visible}}
 `
 function installStyles() {
   if (document.getElementById('rbshift-style')) return
@@ -989,6 +1009,7 @@ function useAppData(session, profile) {
   const online = Boolean(isConfiguredSupabase && session?.user && profile)
   const [data, setData] = useState(readStore)
   const [syncState, setSyncState] = useState({ loading: online, saving: false, error: '', lastSyncAt: '' })
+  const pendingSyncs = useRef(0)
 
   const reloadOnline = async (silent = false) => {
     if (!online) return
@@ -1017,11 +1038,15 @@ function useAppData(session, profile) {
     realtimeTables.forEach((table) => {
       ch.on('postgres_changes', { event: '*', schema: 'public', table }, reloadSoon)
     })
+    let rtConnected = false
     ch.subscribe((status) => {
+      rtConnected = status === 'SUBSCRIBED'
       if (status === 'SUBSCRIBED') reloadSoon()
     })
-    const poll = setInterval(() => reloadOnline(true), 8000)
-    return () => { clearTimeout(timer); clearInterval(poll); supabase.removeChannel(ch) }
+    const poll = setInterval(() => { if (!rtConnected) reloadOnline(true) }, 30000)
+    const handleOnline = () => reloadOnline(true)
+    window.addEventListener('online', handleOnline)
+    return () => { clearTimeout(timer); clearInterval(poll); window.removeEventListener('online', handleOnline); supabase.removeChannel(ch) }
   }, [online, session?.user?.id])
 
   const commit = (updater, text, options = {}) => {
@@ -1031,25 +1056,28 @@ function useAppData(session, profile) {
       const next = { ...rawNext, audit }
       writeStore(next)
       if (online) {
+        pendingSyncs.current += 1
         setSyncState((s) => ({ ...s, saving: true, error: '' }))
         const pushNotices = addedRows(prev.notifications, next.notifications)
         syncChangedRows(prev, next, profile)
           .then(async () => {
             const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, session?.access_token || '') : null
             const warning = pushDeliveryWarning(pushResult)
-            setSyncState({
-              loading: false,
-              saving: false,
-              error: warning ? `Uloženo, ale push notifikace se nepodařilo doručit: ${warning}` : '',
-              lastSyncAt: new Date().toISOString(),
-            })
+            pendingSyncs.current -= 1
+            if (pendingSyncs.current === 0) {
+              setSyncState({
+                loading: false,
+                saving: false,
+                error: warning ? `Uloženo, ale push notifikace se nepodařilo doručit: ${warning}` : '',
+                lastSyncAt: new Date().toISOString(),
+              })
+            }
             options.onSuccess?.()
           })
           .catch((err) => {
-            if (options.rollbackOnError) {
-              writeStore(prev)
-              setData(prev)
-            }
+            pendingSyncs.current -= 1
+            writeStore(prev)
+            setData(prev)
             setSyncState((s) => ({ ...s, saving: false, error: err.message || String(err) }))
             options.onError?.(err)
           })
@@ -1327,6 +1355,7 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
   const existing = settlementForShift(data, shift?.id)
   const [inputs, setInputs] = useState(() => settlementDefaultInputs(shift, data, helpers, existing?.inputs))
   const [config] = useState(() => ({ ...settlementConfigDefaults, ...(existing?.config || {}) }))
+  const [saving, setSaving] = useState(false)
   const readOnly = existing?.status === 'approved' || (isDriver && existing?.status === 'submitted')
   const metrics = useMemo(() => computeSettlementMetrics(inputs, config), [inputs, config])
   const errors = useMemo(() => validateSettlementInputs(inputs, config), [inputs, config])
@@ -1335,6 +1364,7 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
   const upsertSettlement = (status, returnedReason = '') => {
     if (!shift?.id) return
     if (['submitted','approved'].includes(status) && errors.length) return alert(errors[0])
+    setSaving(true)
     const now = new Date().toISOString()
     const nextSettlement = {
       id: existing?.id || uid('set'),
@@ -1359,8 +1389,11 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
     if (status === 'returned') notices.push(makeNotice({ title: 'Výčetka vrácena k opravě', body: `${shiftNoticeBody(shift, helpers)}${returnedReason ? ` · ${returnedReason}` : ''}`, targetDriverId: shift.driverId, type: 'settlement-returned', shiftId: shift.id }))
     commit((prev) => addNotificationsToData({
       ...prev,
-      settlements: [nextSettlement, ...(prev.settlements || []).filter((s) => s.id !== nextSettlement.id)],
-    }, notices), status === 'submitted' ? 'Řidič odeslal výčetku.' : status === 'approved' ? 'Výčetka schválena.' : status === 'returned' ? 'Výčetka vrácena k opravě.' : 'Výčetka uložena.')
+      settlements: [nextSettlement, ...(prev.settlements || []).filter((s) => s.id !== nextSettlement.id && s.shiftId !== nextSettlement.shiftId)],
+    }, notices), status === 'submitted' ? 'Řidič odeslal výčetku.' : status === 'approved' ? 'Výčetka schválena.' : status === 'returned' ? 'Výčetka vrácena k opravě.' : 'Výčetka uložena.', {
+      onSuccess: () => setSaving(false),
+      onError: () => setSaving(false),
+    })
     if (status !== 'draft') onClose?.()
   }
   const returnSettlement = () => {
@@ -1408,13 +1441,13 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
         {errors.length > 0 && <div className="alert warn">{errors[0]}</div>}
         <div className="actions settlement-actions">
           {isDriver && existing?.status !== 'approved' && existing?.status !== 'submitted' && <>
-            <button className="ghost" type="button" onClick={() => upsertSettlement('draft')}>Uložit rozpracované</button>
-            <button className="primary" type="button" onClick={() => upsertSettlement('submitted')}>Odeslat výčetku</button>
+            <button className="ghost" type="button" onClick={() => upsertSettlement('draft')} disabled={saving}>{saving ? 'Ukládám…' : 'Uložit rozpracované'}</button>
+            <button className="primary" type="button" onClick={() => upsertSettlement('submitted')} disabled={saving}>{saving ? 'Odesílám…' : 'Odeslat výčetku'}</button>
           </>}
           {!isDriver && existing?.status !== 'approved' && <>
-            <button className="ghost" type="button" onClick={() => upsertSettlement(existing?.status || 'draft')}>Uložit</button>
-            <button className="primary" type="button" onClick={() => upsertSettlement('approved')}>Schválit</button>
-            {existing && <button className="danger" type="button" onClick={returnSettlement}>Vrátit k opravě</button>}
+            <button className="ghost" type="button" onClick={() => upsertSettlement(existing?.status || 'draft')} disabled={saving}>{saving ? 'Ukládám…' : 'Uložit'}</button>
+            <button className="primary" type="button" onClick={() => upsertSettlement('approved')} disabled={saving}>{saving ? 'Schvaluji…' : 'Schválit'}</button>
+            {existing && <button className="danger" type="button" onClick={returnSettlement} disabled={saving}>Vrátit k opravě</button>}
           </>}
         </div>
       </aside>
@@ -2583,6 +2616,10 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
     .sort((a, b) => new Date(b.at || b.createdAt || 0).getTime() - new Date(a.at || a.createdAt || 0).getTime())
   const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver))
   const [undoDeleteIds, setUndoDeleteIds] = useState([])
+  const [undoBuffer, setUndoBuffer] = useState([])
+  const isPersonalNotice = (n) =>
+    (n?.targetDriverId && currentDriver?.id && n.targetDriverId === currentDriver.id) ||
+    (n?.targetRole === 'admin' && !isDriver)
   const dateKey = (value) => {
     const date = value ? new Date(value) : new Date()
     return new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
@@ -2598,30 +2635,59 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
     })],
   ].filter(([, items]) => items.length)
   const markOne = (id) => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označena jako přečtená.')
-  const queueUndo = (ids) => {
+  const queueUndo = (ids, notices = []) => {
     const clean = [...new Set((ids || []).filter(Boolean))]
     if (!clean.length) return
     setUndoDeleteIds(clean)
-    setTimeout(() => setUndoDeleteIds((current) => clean.every((id) => current.includes(id)) ? [] : current), 5000)
+    setUndoBuffer(notices)
+    setTimeout(() => {
+      setUndoDeleteIds((current) => clean.every((id) => current.includes(id)) ? [] : current)
+      setUndoBuffer([])
+    }, 5000)
   }
   const deleteOne = (id) => {
-    if (!visible.some((n) => n.id === id)) return
-    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Notifikace skryta.')
-    queueUndo([id])
+    const notice = visible.find((n) => n.id === id)
+    if (!notice) return
+    if (isPersonalNotice(notice)) {
+      commit((prev) => ({ ...prev, notifications: (prev.notifications || []).filter((n) => n.id !== id) }), 'Notifikace smazána.')
+      queueUndo([id], [notice])
+    } else {
+      commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Notifikace skryta.')
+      queueUndo([id])
+    }
   }
   const undoDelete = () => {
     if (!undoDeleteIds.length) return
     const ids = new Set(undoDeleteIds)
-    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => ids.has(n.id) ? unmarkNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Smazání notifikace vráceno zpět.')
+    if (undoBuffer.length) {
+      commit((prev) => ({
+        ...prev,
+        notifications: [
+          ...undoBuffer.filter((n) => !(prev.notifications || []).some((x) => x.id === n.id)),
+          ...(prev.notifications || []).map((n) => ids.has(n.id) ? unmarkNoticeDeleted(n, currentDriver, isDriver) : n),
+        ],
+      }), 'Smazání notifikace vráceno zpět.')
+    } else {
+      commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => ids.has(n.id) ? unmarkNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Smazání notifikace vráceno zpět.')
+    }
     setUndoDeleteIds([])
+    setUndoBuffer([])
   }
   const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => isNoticeVisible(n, currentDriver, isDriver) ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označeny jako přečtené.')
   const clearRead = () => {
-    const ids = visible.filter((n) => isNoticeRead(n, currentDriver, isDriver)).map((n) => n.id)
-    if (!ids.length || !safeDelete('smazání přečtených notifikací')) return
-    const idSet = new Set(ids)
-    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => idSet.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Přečtené notifikace skryty.')
-    queueUndo(ids)
+    const toDelete = visible.filter((n) => isNoticeRead(n, currentDriver, isDriver))
+    if (!toDelete.length || !safeDelete('smazání přečtených notifikací')) return
+    const personal = toDelete.filter(isPersonalNotice)
+    const broadcast = toDelete.filter((n) => !isPersonalNotice(n))
+    const personalIds = new Set(personal.map((n) => n.id))
+    const broadcastIds = new Set(broadcast.map((n) => n.id))
+    commit((prev) => ({
+      ...prev,
+      notifications: (prev.notifications || [])
+        .filter((n) => !personalIds.has(n.id))
+        .map((n) => broadcastIds.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver) : n),
+    }), 'Přečtené notifikace smazány.')
+    queueUndo(toDelete.map((n) => n.id), personal)
   }
   return <>
     <PageTitle title="Notifikace">
