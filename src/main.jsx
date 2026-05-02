@@ -685,6 +685,20 @@ function settlementForShift(data, shiftId) {
 function canOpenSettlement(shift) {
   return Boolean(shift?.actualEndAt || shift?.status === 'completed')
 }
+function settlementNeedsDriverAction(settlement) {
+  return !settlement || ['draft', 'returned'].includes(settlement.status)
+}
+function settlementIsClosed(settlement) {
+  return ['submitted', 'approved'].includes(settlement?.status)
+}
+function shiftNeedsSettlementAction(shift, settlement) {
+  return canOpenSettlement(shift) && settlementNeedsDriverAction(settlement)
+}
+function shiftIsInStartWindow(shift, now = Date.now()) {
+  if (!shift || shift.status !== 'confirmed' || shift.actualStartAt) return false
+  const [startAt, endAt] = intervalForShift(shift)
+  return now >= startAt - 60 * 60 * 1000 && now <= Math.max(endAt, startAt + 30 * 60 * 1000)
+}
 
 function driverInitials(name = '') {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
@@ -2262,21 +2276,35 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   const [driverToast, setDriverToast] = useState('')
   const driverToastTimer = useRef(null)
   const hiddenDriverStatuses = new Set(['cancelled', 'declined', 'rejected'])
+  const settlementActionCutoff = new Date(`${addDays(todayISO(), -1)}T00:00:00`).getTime()
   const showDriverToast = (message) => {
     setDriverToast(message)
     window.clearTimeout(driverToastTimer.current)
     driverToastTimer.current = window.setTimeout(() => setDriverToast(''), 2600)
   }
-  const shifts = sortByDateTime(data.shifts.filter((s) => s.driverId === currentDriver?.id && s.date >= todayISO() && !hiddenDriverStatuses.has(s.status))).slice(0, 30)
+  const nowTs = Date.now()
+  const driverShiftIsDashboardVisible = (shift) => {
+    if (shift.driverId !== currentDriver?.id || hiddenDriverStatuses.has(shift.status)) return false
+    const settlement = settlementForShift(data, shift.id)
+    if (canOpenSettlement(shift) && settlementIsClosed(settlement)) return false
+    const [, endAt] = intervalForShift(shift)
+    if (shiftNeedsSettlementAction(shift, settlement)) {
+      const actualEndAt = shift.actualEndAt ? new Date(shift.actualEndAt).getTime() : 0
+      return Math.max(endAt, actualEndAt) >= settlementActionCutoff
+    }
+    return shift.date >= todayISO() || endAt >= nowTs
+  }
+  const shifts = sortByDateTime(data.shifts.filter(driverShiftIsDashboardVisible)).slice(0, 30)
   const openShifts = sortByDateTime((data.shifts || []).filter((s) => s.status === 'open' && !s.driverId && s.date >= todayISO())).slice(0, 30)
   const myOpenInterests = (data.swapRequests || []).filter((r) => r.targetMode === 'open' && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
   const visibleNotices = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, true))
   const unreadNotices = visibleNotices.filter((n) => !isNoticeRead(n, currentDriver, true))
-  const awaiting = shifts.filter((s) => s.status === 'assigned' || s.status === 'draft')
-  const running = shifts.find((s) => s.actualStartAt && !s.actualEndAt)
-  const todayShift = shifts.find((x) => x.date === todayISO())
-  const nextShift = shifts.find((x) => x.date > todayISO()) || shifts[0]
-  const focus = running || todayShift || nextShift
+  const awaiting = shifts.filter((s) => s.status === 'assigned' || s.status === 'draft' || s.status === 'pending')
+  const running = shifts.find((s) => (s.actualStartAt && !s.actualEndAt) || s.status === 'in_progress')
+  const settlementActionShift = shifts.find((s) => shiftNeedsSettlementAction(s, settlementForShift(data, s.id)))
+  const todayAwaiting = awaiting.find((s) => s.date === todayISO())
+  const startWindowShift = shifts.find((s) => shiftIsInStartWindow(s, nowTs))
+  const focus = running || settlementActionShift || todayAwaiting || startWindowShift
   const setStatus = (id, status, reason = '', options = {}) => {
     const shift = data.shifts.find((s) => s.id === id)
     const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')}`, `driver-${status}`, id)] : []
@@ -2417,7 +2445,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     {syncState?.saving && <div className="driver-sync-banner saving" role="status">Ukládám změny…</div>}
     {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{syncState.error}</div>}
     {focus && <div className="driver-section-kicker">Aktuální směna</div>}
-    {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty driver-empty-focus"><b>Žádná nadcházející směna</b><br /><span className="muted">Zkontroluj volné směny níže nebo počkej na přiřazení od dispečera.</span></div>}
+    {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
     {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
     {awaiting.length > 0 && <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
     {openShifts.length > 0 && <details id="driver-open-shifts-section" className={`card driver-offers collapse-card driver-open-shifts ${highlightOpenShifts ? 'driver-open-shifts-highlight' : ''}`}><summary><span><b>Zobrazit volné směny ({openShifts.length})</b><small>Nabídky, na které se můžeš přihlásit</small></span><span className="pill warn">{openShifts.length}</span></summary><div className="collapse-content"><div className="stack">{openShifts.map((shift) => { const interested = myOpenInterests.some((r) => r.shiftId === shift.id); return <div className="alert warn" key={shift.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />{helpers.vehicleName(shift.vehicleId)} · {shift.note || 'Volná směna k obsazení'}<br />{shift.instruction && <small>Instrukce: {shift.instruction}</small>}<div className="row-actions" style={{ marginTop: 8 }}>{interested ? <span className="pill good">Zájem odeslán</span> : <button onClick={() => applyForOpenShift(shift)}>Mám zájem</button>}</div></div> })}</div></div></details>}
