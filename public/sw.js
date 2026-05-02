@@ -1,10 +1,13 @@
+
+Copy
+
 // Cache name musí být unikátní pro každý deploy. Placeholder __BUILD_ID__
 // nahradí Vite plugin při buildu (viz vite.config.js → replaceBuildId()).
 // Sentinel je sestaven ze dvou částí, aby ho plugin nenahradil zároveň s BUILD_ID.
 const BUILD_ID = '__BUILD_ID__';
 const PLACEHOLDER = '__BUILD' + '_ID__';
 const CACHE_NAME = `rbshift-pwa-${BUILD_ID === PLACEHOLDER ? Date.now() : BUILD_ID}`;
-
+ 
 const CORE_ASSETS = [
   './manifest.webmanifest',
   './icons/icon-192.png',
@@ -14,15 +17,15 @@ const CORE_ASSETS = [
   './icons/notification-badge-96.png',
   './icons/splash-logo.png',
 ];
-
+ 
 // Pomocné helpery
 const isNavigationRequest = (req) =>
   req.mode === 'navigate' || (req.method === 'GET' && req.headers.get('accept')?.includes('text/html'));
-
+ 
 const isHashedAsset = (url) => /\/assets\/.+\.[a-f0-9]{8,}\.(js|css|woff2?|png|jpg|svg)$/i.test(url.pathname);
-
+ 
 const isSameOrigin = (url) => url.origin === self.location.origin;
-
+ 
 // INSTALL: předcache jen ikony a manifest. index.html schválně NE — chceme ho
 // vždy ze sítě, aby řidiči po deployi neviděli starý HTML s odkazy na již
 // neexistující ./assets/index-XXX.js.
@@ -34,7 +37,7 @@ self.addEventListener('install', (event) => {
       .catch(() => null)
   );
 });
-
+ 
 // ACTIVATE: smaž všechny staré cache (jiný název = jiný build)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -43,34 +46,22 @@ self.addEventListener('activate', (event) => {
       .then(() => self.clients.claim())
   );
 });
-
+ 
 // FETCH: tři strategie podle typu requestu
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
-
+ 
   const url = new URL(req.url);
-
+ 
   // 1) Cross-origin (Supabase API, push gateway atd.) — vůbec se do toho nemícháme
   if (!isSameOrigin(url)) return;
-
-  // 2) Navigační requesty (HTML) — NETWORK ONLY.
-  //    Žádný fallback na cached index.html, protože by odkazoval na neexistující
-  //    JS bundle z předchozího deploye = bílá obrazovka.
-  if (isNavigationRequest(req)) {
-    event.respondWith(
-      fetch(req).catch(
-        () => new Response(
-          '<!doctype html><meta charset="utf-8"><title>RBSHIFT — offline</title>' +
-          '<style>body{background:#0b1220;color:#e5e7eb;font:16px system-ui;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:24px}</style>' +
-          '<div><h1>Offline</h1><p>Nelze se připojit. Zkus to za chvíli znovu.</p></div>',
-          { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-        )
-      )
-    );
-    return;
-  }
-
+ 
+  // 2) Navigační requesty (HTML) — NEZASAHUJEME, necháme prohlížeč.
+  //    Žádný fallback ani offline page přes SW. Vercel hostuje statické HTML,
+  //    nemá smysl ho v SW jakkoli ohýbat — vede to jen k FetchEvent chybám.
+  if (isNavigationRequest(req)) return;
+ 
   // 3) Hashované assety (immutable) — CACHE FIRST
   if (isHashedAsset(url)) {
     event.respondWith(
@@ -87,7 +78,7 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-
+ 
   // 4) Vše ostatní (ikony, manifest…) — STALE-WHILE-REVALIDATE
   event.respondWith(
     caches.match(req).then((cached) => {
@@ -104,7 +95,7 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
-
+ 
 // PUSH notifikace
 self.addEventListener('push', (event) => {
   let payload = {};
@@ -124,7 +115,7 @@ self.addEventListener('push', (event) => {
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
-
+ 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification?.data?.url || './';
@@ -137,8 +128,9 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
-
+ 
 // Dovol clientovi vyžádat okamžitou aktualizaci SW
 self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
+ 
