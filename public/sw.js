@@ -1,6 +1,3 @@
-
-Copy
-
 // Cache name musí být unikátní pro každý deploy. Placeholder __BUILD_ID__
 // nahradí Vite plugin při buildu (viz vite.config.js → replaceBuildId()).
 // Sentinel je sestaven ze dvou částí, aby ho plugin nenahradil zároveň s BUILD_ID.
