@@ -935,9 +935,11 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 .notification-row.notification-unread{box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 .notification-row p{margin:8px 0 0;line-height:1.42}
 
-/* Výčetka integration prototype */
-.settlement-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;padding:12px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.04)}
-.settlement-modal-head div{display:grid;gap:3px;min-width:0}.settlement-modal-head span:not(.pill){color:var(--muted);font-size:13px}.settlement-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.72fr);gap:16px;align-items:start}.settlement-form{align-content:start}.settlement-result{position:sticky;top:8px;display:grid;gap:12px}.settlement-hero-result{padding:16px;border:1px solid rgba(245,199,106,.42);border-radius:20px;background:linear-gradient(180deg,rgba(245,199,106,.16),rgba(255,255,255,.045));display:grid;gap:4px}.settlement-hero-result span,.settlement-result-grid span,.settlement-summary span{color:var(--muted);font-size:12px;font-weight:850}.settlement-hero-result b{font-size:34px;line-height:1;letter-spacing:-.04em}.settlement-hero-result small{color:#fff3c7}.settlement-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.settlement-result-grid div,.settlement-summary div{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.04);padding:10px;display:grid;gap:3px}.settlement-result-grid b,.settlement-summary b{font-size:16px}.settlement-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px;min-width:230px}.settlement-summary.muted{display:block;min-width:0;margin-top:0}.settlement-actions{justify-content:stretch}.settlement-actions button{flex:1}.settlement-inline-card .settlement-summary{max-width:520px}.settlement-driver-strip{display:grid;gap:8px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.04);padding:10px}.settlement-driver-strip .settlement-summary{min-width:0;margin-top:0}.settlement-table .ghost{width:auto}
+/* Výčetka integration */
+.settlement-modal{width:min(980px,100%);background:linear-gradient(180deg,#0d1828,#08111f);border-color:rgba(245,199,106,.24);box-shadow:0 34px 110px rgba(0,0,0,.78)}
+.settlement-modal .section-title{position:sticky;top:-18px;z-index:2;margin:-18px -18px 14px;padding:18px;border-bottom:1px solid rgba(255,255,255,.12);background:#0d1828}
+.settlement-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;padding:12px;border:1px solid rgba(255,255,255,.14);border-radius:16px;background:#101b2c}
+.settlement-modal-head div{display:grid;gap:3px;min-width:0}.settlement-modal-head span:not(.pill){color:var(--muted);font-size:13px}.settlement-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.72fr);gap:16px;align-items:start}.settlement-form{align-content:start}.settlement-modal .field input,.settlement-modal .field select,.settlement-modal .field textarea{background:#050b14;border-color:rgba(255,255,255,.16)}.settlement-result{position:sticky;top:58px;display:grid;gap:12px}.settlement-hero-result{padding:16px;border:1px solid rgba(245,199,106,.50);border-radius:20px;background:linear-gradient(180deg,rgba(245,199,106,.22),#111b2b);display:grid;gap:4px}.settlement-hero-result span,.settlement-result-grid span,.settlement-summary span{color:var(--muted);font-size:12px;font-weight:850}.settlement-hero-result b{font-size:34px;line-height:1;letter-spacing:-.04em}.settlement-hero-result small{color:#fff3c7}.settlement-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.settlement-result-grid div,.settlement-summary div{border:1px solid rgba(255,255,255,.13);border-radius:14px;background:#101b2c;padding:10px;display:grid;gap:3px}.settlement-result-grid b,.settlement-summary b{font-size:16px}.settlement-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px;min-width:230px}.settlement-summary.muted{display:block;min-width:0;margin-top:0}.settlement-actions{justify-content:stretch}.settlement-actions button{flex:1}.settlement-inline-card .settlement-summary{max-width:520px}.settlement-driver-strip{display:grid;gap:8px;border:1px solid rgba(255,255,255,.13);border-radius:16px;background:#101b2c;padding:10px}.settlement-driver-strip .settlement-summary{min-width:0;margin-top:0}.settlement-table .ghost{width:auto}
 @media (max-width:900px){.settlement-layout{grid-template-columns:1fr}.settlement-result{position:relative;top:auto}.settlement-summary{grid-template-columns:1fr;min-width:0}.settlement-hero-result b{font-size:30px}}
 
 
@@ -1255,8 +1257,8 @@ function PlannerKpiBar({ periodLabel, totalShifts, confirmedCount, conflictsCoun
 function StatusPill({ status, helpers }) { return <span className={`pill ${helpers.statusClass(status)}`}>{statusMap[status] || status}</span> }
 function Field({ label, children, className = '' }) { return <div className={`field ${className}`}><label>{label}</label>{children}</div> }
 function Select({ value, onChange, options }) { return <select value={value} onChange={(e) => onChange(e.target.value)}>{Object.entries(options).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select> }
-function Modal({ title, children, onClose }) {
-  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="modal-card card"><div className="section-title"><h3>{title}</h3><button className="ghost" onClick={onClose}>Zavřít</button></div>{children}</div></div>
+function Modal({ title, children, onClose, className = '' }) {
+  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className={`modal-card card ${className}`.trim()}><div className="section-title"><h3>{title}</h3><button className="ghost" onClick={onClose}>Zavřít</button></div>{children}</div></div>
 }
 function SideDrawer({ title, open, onClose, children }) {
   useEffect(() => {
@@ -1334,7 +1336,7 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
     upsertSettlement('returned', reason || 'Prosím oprav výčetku.')
   }
   const fieldProps = { disabled: readOnly }
-  return <Modal title={`Výčetka · ${formatDate(shift.date)} ${shift.start}–${shift.end}`} onClose={onClose}>
+  return <Modal title={`Výčetka · ${formatDate(shift.date)} ${shift.start}–${shift.end}`} onClose={onClose} className="settlement-modal">
     <div className="settlement-modal-head">
       <div><b>{helpers.driverName(shift.driverId)}</b><span>{helpers.vehicleName(shift.vehicleId)} · {shiftTypeName(shift)}</span></div>
       <SettlementStatusPill settlement={existing} />
