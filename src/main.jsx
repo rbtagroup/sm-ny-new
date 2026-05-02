@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 import { Bell, Clock, House, Settings as SettingsIcon } from 'lucide-react'
 
-const VERSION = '1.3.19-vycetka'
+const VERSION = `${__APP_VERSION__}-vycetka`
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
