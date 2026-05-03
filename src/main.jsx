@@ -2218,7 +2218,7 @@ function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedShiftId,
     return <button type="button" className="card driver-shift-card driver-shift-compact-card" onClick={() => onExpand(s.id)}>
       <div className="driver-compact-main">
         <div>
-          <span className="driver-compact-title">{formatDate(s.date)} · {s.start}–{s.end}</span>
+          <span className="driver-compact-title">{formatDate(s.date)} · {shiftTypeName(s)}</span>
           <p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p>
         </div>
         <div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} /><span className="driver-card-toggle" aria-hidden="true">▾</span></div>
