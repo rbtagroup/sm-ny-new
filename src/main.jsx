@@ -255,7 +255,7 @@ const toDb = {
   swapRequests: (r) => stripUndefined({ id: normalizeId(r.id, 'swap'), shift_id: r.shiftId, driver_id: r.driverId, target_mode: r.targetMode || 'all', target_driver_id: r.targetDriverId || null, accepted_by_driver_id: r.acceptedByDriverId || null, approved_driver_id: r.approvedDriverId || null, status: r.status || 'pending', reason: r.reason || null, rejected_reason: r.rejectedReason || null, history: r.history || [], created_at: r.createdAt || new Date().toISOString(), accepted_at: r.acceptedAt || null, resolved_at: r.resolvedAt || null, cancelled_at: r.cancelledAt || null }),
   notifications: (n) => stripUndefined({ id: normalizeId(n.id, 'ntf'), target_driver_id: n.targetDriverId || null, target_role: n.targetRole || 'admin', type: n.type || 'info', shift_id: n.shiftId || null, title: n.title || '', body: n.body || null, read_by: n.readBy || [], created_at: n.at || n.createdAt || new Date().toISOString() }),
   pushSubscriptions: (p) => stripUndefined({ id: normalizeId(p.id, 'push'), profile_id: p.profileId || null, driver_id: p.driverId || null, role: p.role || 'driver', endpoint: p.endpoint || '', subscription: p.subscription || p, platform: p.platform || null, active: p.active !== false, last_seen_at: new Date().toISOString() }),
-  audit: (a) => stripUndefined({ id: normalizeId(a.id, 'log'), action: a.text || a.action || '', payload: a.payload || {}, created_at: a.at || a.createdAt || new Date().toISOString() }),
+  audit: (a) => stripUndefined({ id: normalizeId(a.id, 'log'), actor_id: a.actorId || null, action: a.text || a.action || '', payload: a.payload || {}, created_at: a.at || a.createdAt || new Date().toISOString() }),
 }
 const fromDb = {
   drivers: (d) => ({ id: d.id, profileId: d.profile_id || '', name: d.name || '', phone: d.phone || '', email: d.email || '', active: d.active !== false, note: d.note || '' }),
@@ -268,7 +268,7 @@ const fromDb = {
   swapRequests: (r) => ({ id: r.id, shiftId: r.shift_id, driverId: r.driver_id, targetMode: r.target_mode || 'all', targetDriverId: r.target_driver_id || '', acceptedByDriverId: r.accepted_by_driver_id || '', approvedDriverId: r.approved_driver_id || '', status: r.status || 'pending', reason: r.reason || '', rejectedReason: r.rejected_reason || '', history: r.history || [], createdAt: r.created_at, acceptedAt: r.accepted_at || '', resolvedAt: r.resolved_at || '', cancelledAt: r.cancelled_at || '' }),
   notifications: (n) => ({ id: n.id, at: n.created_at, title: n.title || '', body: n.body || '', targetDriverId: n.target_driver_id || '', targetRole: n.target_role || 'admin', type: n.type || 'info', shiftId: n.shift_id || '', readBy: n.read_by || [] }),
   pushSubscriptions: (p) => ({ id: p.id, profileId: p.profile_id || '', driverId: p.driver_id || '', role: p.role || 'driver', endpoint: p.endpoint || '', subscription: p.subscription || {}, platform: p.platform || '', active: p.active !== false }),
-  audit: (a) => ({ id: a.id, at: a.created_at, text: a.action || '' }),
+  audit: (a) => ({ id: a.id, at: a.created_at, text: a.action || '', actorId: a.actor_id || '' }),
 }
 
 async function loadDataFromSupabase() {
@@ -485,9 +485,20 @@ function readStore() {
   }
 }
 function writeStore(data) {
-  const enriched = { ...data, settings: { ...(data.settings || {}), lastSavedAt: new Date().toISOString() } }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(enriched))
-  localStorage.setItem(AUTOBACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: enriched }))
+  // pushSubscriptions obsahují endpoint URL a šifrovací klíče — neukládáme do localStorage.
+  // Po reconnectu se načtou znovu ze Supabase.
+  const { pushSubscriptions: _omit, ...rest } = data
+  const enriched = { ...rest, pushSubscriptions: [], settings: { ...(data.settings || {}), lastSavedAt: new Date().toISOString() } }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(enriched))
+    localStorage.setItem(AUTOBACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: enriched }))
+  } catch (e) {
+    if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+      // Záloha se nevešla — odstraň ji a zkus uložit alespoň hlavní snapshot
+      try { localStorage.removeItem(AUTOBACKUP_KEY) } catch {}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(enriched)) } catch {}
+    }
+  }
 }
 
 function minutes(value) {
@@ -1075,7 +1086,7 @@ function useAppData(session, profile) {
   const commit = (updater, text, options = {}) => {
     setData((prev) => {
       const rawNext = typeof updater === 'function' ? updater(prev) : updater
-      const audit = text ? [{ id: uid('log'), at: new Date().toISOString(), text }, ...(rawNext.audit || [])].slice(0, 250) : rawNext.audit
+      const audit = text ? [{ id: uid('log'), at: new Date().toISOString(), text, actorId: session?.user?.id || null }, ...(rawNext.audit || [])].slice(0, 250) : rawNext.audit
       const next = { ...rawNext, audit }
       writeStore(next)
       if (online) {
@@ -1084,7 +1095,8 @@ function useAppData(session, profile) {
         const pushNotices = addedRows(prev.notifications, next.notifications)
         syncChangedRows(prev, next, profile)
           .then(async () => {
-            const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, session?.access_token || '') : null
+            const freshToken = pushNotices.length ? (await supabase.auth.getSession()).data.session?.access_token || '' : ''
+            const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, freshToken) : null
             const warning = pushDeliveryWarning(pushResult)
             pendingSyncs.current -= 1
             if (pendingSyncs.current === 0) {
