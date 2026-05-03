@@ -1013,6 +1013,7 @@ function useAppData(session, profile) {
 
   const reloadOnline = async (silent = false) => {
     if (!online) return
+    if (silent && pendingSyncs.current > 0) return
     if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '' }))
     try {
       const loaded = await loadDataFromSupabase()
