@@ -2676,7 +2676,7 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
   const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => isNoticeVisible(n, currentDriver, isDriver) ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označeny jako přečtené.')
   const clearRead = () => {
     const toDelete = visible.filter((n) => isNoticeRead(n, currentDriver, isDriver))
-    if (!toDelete.length || !safeDelete('smazání přečtených notifikací')) return
+    if (!toDelete.length) return
     const personal = toDelete.filter(isPersonalNotice)
     const broadcast = toDelete.filter((n) => !isPersonalNotice(n))
     const personalIds = new Set(personal.map((n) => n.id))
