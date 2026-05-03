@@ -419,10 +419,10 @@ function seed() {
   const w = startOfWeek(t)
   return {
     drivers: [
-      { id: 'drv_roman', name: 'Roman', phone: '+420 777 111 222', email: 'roman@example.cz', active: true, note: 'Stálý řidič' },
-      { id: 'drv_lukas', name: 'Lukáš', phone: '+420 777 702 702', email: 'prace@rbgroup.cz', active: true, note: 'Admin / záskok' },
-      { id: 'drv_petra', name: 'Petra', phone: '+420 777 333 444', email: 'petra@example.cz', active: true, note: 'Víkendy' },
-      { id: 'drv_milan', name: 'Milan', phone: '+420 777 444 555', email: 'milan@example.cz', active: true, note: 'Noční směny' },
+      { id: 'drv_roman', name: 'Roman', phone: '+420 600 000 001', email: 'roman@demo.example', active: true, note: 'Stálý řidič' },
+      { id: 'drv_lukas', name: 'Lukáš', phone: '+420 600 000 002', email: 'lukas@demo.example', active: true, note: 'Admin / záskok' },
+      { id: 'drv_petra', name: 'Petra', phone: '+420 600 000 003', email: 'petra@demo.example', active: true, note: 'Víkendy' },
+      { id: 'drv_milan', name: 'Milan', phone: '+420 600 000 004', email: 'milan@demo.example', active: true, note: 'Noční směny' },
     ],
     vehicles: [
       { id: 'car_tesla_1', name: 'Tesla Model 3', plate: 'RB 001', active: true, note: 'Hlavní vůz' },
@@ -2279,6 +2279,66 @@ function Availability({ data, commit, currentDriver }) {
   </>
 }
 
+// Tyto komponenty musí být na úrovni modulu (ne uvnitř DriverHome),
+// aby React mohl zachovat DOM mezi re-rendery a řidič neztrácel focus.
+function DriverActions({ shift, compact = false, data, actions }) {
+  const canConfirm = !['confirmed','completed','cancelled'].includes(shift.status)
+  const canDecline = !['declined','completed','cancelled'].includes(shift.status) && !shift.actualStartAt
+  const canCheckIn = !shift.actualStartAt && !['declined','cancelled','completed'].includes(shift.status)
+  const canCheckOut = Boolean(shift.actualStartAt && !shift.actualEndAt)
+  const canSwap = !['cancelled','completed'].includes(shift.status) && !['pending','accepted'].includes(shift.swapRequestStatus)
+  const settlement = settlementForShift(data, shift.id)
+  const canSettlement = canOpenSettlement(shift) || settlement
+  return <div className={compact ? 'driver-actions driver-actions-compact' : 'driver-actions'}>
+    {canConfirm && <button className="primary" onClick={() => actions.setStatus(shift.id, 'confirmed')}>Potvrdit</button>}
+    {canCheckIn && <button className="primary soft-primary driver-primary-action" onClick={() => actions.checkIn(shift.id)}>Nastoupil jsem</button>}
+    {canCheckOut && <button className="primary" onClick={() => actions.checkOut(shift.id)}>Ukončit směnu</button>}
+    {canSettlement && <button className="ghost" onClick={() => actions.setSettlementShiftId(shift.id)}>{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button>}
+    {canSwap && <button className="ghost" onClick={() => actions.requestSwap(shift)}>Výměna</button>}
+    {['pending','accepted'].includes(shift.swapRequestStatus) && <button className="danger" onClick={() => actions.cancelSwap(shift)}>Zrušit výměnu</button>}
+    {canDecline && <button className="danger" onClick={() => actions.decline(shift)}>Odmítnout</button>}
+  </div>
+}
+function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedShiftId, onExpand, actions }) {
+  const isPendingAction = ['assigned', 'draft', 'pending'].includes(s.status)
+  const isInProgress = Boolean(s.actualStartAt && !s.actualEndAt) || s.status === 'in_progress'
+  const [startAt, endAt] = intervalForShift(s)
+  const now = Date.now()
+  const isStartWindow = startAt - now <= 60 * 60 * 1000 && endAt >= now
+  const showStartPrompt = s.status === 'confirmed' && !s.actualStartAt && now >= startAt - 60 * 60 * 1000 && now <= startAt + 30 * 60 * 1000
+  const shouldDefaultFull = focusCard || isPendingAction || isInProgress || isStartWindow || s.status !== 'confirmed'
+  const isExpanded = expandedShiftId === s.id
+  const compactCard = !shouldDefaultFull && !isExpanded
+  const duration = actualDurationMinutes(s)
+  const vehicle = helpers.vehicle(s.vehicleId)
+  const conflictMessages = helpers.conflictMessages(s).filter((message) => !(message === 'Není vybrané vozidlo.' && !vehicle))
+  const settlement = settlementForShift(data, s.id)
+  if (compactCard) {
+    return <button type="button" className="card driver-shift-card driver-shift-compact-card" onClick={() => onExpand(s.id)}>
+      <div className="driver-compact-main">
+        <div>
+          <span className="driver-compact-title">{formatDate(s.date)} · {s.start}–{s.end}</span>
+          <p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p>
+        </div>
+        <div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} /><span className="driver-card-toggle" aria-hidden="true">▾</span></div>
+      </div>
+    </button>
+  }
+  const canCollapse = !shouldDefaultFull
+  return <div className={focusCard ? 'card driver-hero' : 'card driver-shift-card'}>
+    <div className="driver-shift-head"><div><span className="driver-date">{formatDate(s.date)}{!conflictMessages.length && <em className="driver-ok-mini">· bez kolize</em>}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} />{canCollapse && <button type="button" className="driver-card-toggle" aria-label="Sbalit směnu" onClick={() => onExpand('')}>▴</button>}</div></div>
+    {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
+    {s.note && <p className="muted driver-note">{s.note}</p>}
+    {(s.actualStartAt || s.actualEndAt) && <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div>}
+    {showStartPrompt && <div className="driver-info-line">Začněte směnu kliknutím na „Nastoupil jsem".</div>}
+    {settlement && <div className="settlement-driver-strip"><SettlementStatusPill settlement={settlement} /><SettlementSummary settlement={settlement} /></div>}
+    {conflictMessages.length > 0 && <ConflictBox messages={conflictMessages} />}
+    {['pending','accepted'].includes(s.swapRequestStatus) && <div className="alert warn">Žádost o výměnu je odeslaná a čeká na admina.</div>}
+    {s.declineReason && <p className="muted">Důvod odmítnutí: {s.declineReason}</p>}
+    <DriverActions shift={s} compact={!focusCard} data={data} actions={actions} />
+  </div>
+}
+
 function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   const [expandedShiftId, setExpandedShiftId] = useState('')
   const [settlementShiftId, setSettlementShiftId] = useState('')
@@ -2389,63 +2449,8 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     awaiting.length > 0 ? { key: 'awaiting', label: `⏳ ${awaiting.length} čeká`, kind: 'warn', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
     incomingSwaps.length > 0 ? { key: 'swaps', label: `↔ ${incomingSwaps.length} výměny`, kind: 'warn', onClick: () => scrollToDriverSection('driver-incoming-swaps-section') } : null,
   ].filter(Boolean)
-  const DriverActions = ({ shift, compact = false }) => {
-    const canConfirm = !['confirmed','completed','cancelled'].includes(shift.status)
-    const canDecline = !['declined','completed','cancelled'].includes(shift.status) && !shift.actualStartAt
-    const canCheckIn = !shift.actualStartAt && !['declined','cancelled','completed'].includes(shift.status)
-    const canCheckOut = Boolean(shift.actualStartAt && !shift.actualEndAt)
-    const canSwap = !['cancelled','completed'].includes(shift.status) && !['pending','accepted'].includes(shift.swapRequestStatus)
-    const settlement = settlementForShift(data, shift.id)
-    const canSettlement = canOpenSettlement(shift) || settlement
-    return <div className={compact ? 'driver-actions driver-actions-compact' : 'driver-actions'}>
-      {canConfirm && <button className="primary" onClick={() => setStatus(shift.id, 'confirmed')}>Potvrdit</button>}
-      {canCheckIn && <button className="primary soft-primary driver-primary-action" onClick={() => checkIn(shift.id)}>Nastoupil jsem</button>}
-      {canCheckOut && <button className="primary" onClick={() => checkOut(shift.id)}>Ukončit směnu</button>}
-      {canSettlement && <button className="ghost" onClick={() => setSettlementShiftId(shift.id)}>{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button>}
-      {canSwap && <button className="ghost" onClick={() => requestSwap(shift)}>Výměna</button>}
-      {['pending','accepted'].includes(shift.swapRequestStatus) && <button className="danger" onClick={() => cancelSwap(shift)}>Zrušit výměnu</button>}
-      {canDecline && <button className="danger" onClick={() => decline(shift)}>Odmítnout</button>}
-    </div>
-  }
-  const ShiftMobileCard = ({ s, focusCard = false }) => {
-    const isPendingAction = ['assigned', 'draft', 'pending'].includes(s.status)
-    const isInProgress = Boolean(s.actualStartAt && !s.actualEndAt) || s.status === 'in_progress'
-    const [startAt, endAt] = intervalForShift(s)
-    const now = Date.now()
-    const isStartWindow = startAt - now <= 60 * 60 * 1000 && endAt >= now
-    const showStartPrompt = s.status === 'confirmed' && !s.actualStartAt && now >= startAt - 60 * 60 * 1000 && now <= startAt + 30 * 60 * 1000
-    const shouldDefaultFull = focusCard || isPendingAction || isInProgress || isStartWindow || s.status !== 'confirmed'
-    const isExpanded = expandedShiftId === s.id
-    const compactCard = !shouldDefaultFull && !isExpanded
-    const duration = actualDurationMinutes(s)
-    const vehicle = helpers.vehicle(s.vehicleId)
-    const conflictMessages = helpers.conflictMessages(s).filter((message) => !(message === 'Není vybrané vozidlo.' && !vehicle))
-    const settlement = settlementForShift(data, s.id)
-    if (compactCard) {
-      return <button type="button" className="card driver-shift-card driver-shift-compact-card" onClick={() => setExpandedShiftId(s.id)}>
-        <div className="driver-compact-main">
-          <div>
-            <span className="driver-compact-title">{formatDate(s.date)} · {s.start}–{s.end}</span>
-            <p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p>
-          </div>
-          <div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} /><span className="driver-card-toggle" aria-hidden="true">▾</span></div>
-        </div>
-      </button>
-    }
-    const canCollapse = !shouldDefaultFull
-    return <div className={focusCard ? 'card driver-hero' : 'card driver-shift-card'}>
-      <div className="driver-shift-head"><div><span className="driver-date">{formatDate(s.date)}{!conflictMessages.length && <em className="driver-ok-mini">· bez kolize</em>}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} />{canCollapse && <button type="button" className="driver-card-toggle" aria-label="Sbalit směnu" onClick={() => setExpandedShiftId('')}>▴</button>}</div></div>
-      {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
-      {s.note && <p className="muted driver-note">{s.note}</p>}
-      {(s.actualStartAt || s.actualEndAt) && <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div>}
-      {showStartPrompt && <div className="driver-info-line">Začněte směnu kliknutím na „Nastoupil jsem“.</div>}
-      {settlement && <div className="settlement-driver-strip"><SettlementStatusPill settlement={settlement} /><SettlementSummary settlement={settlement} /></div>}
-      {conflictMessages.length > 0 && <ConflictBox messages={conflictMessages} />}
-      {['pending','accepted'].includes(s.swapRequestStatus) && <div className="alert warn">Žádost o výměnu je odeslaná a čeká na admina.</div>}
-      {s.declineReason && <p className="muted">Důvod odmítnutí: {s.declineReason}</p>}
-      <DriverActions shift={s} compact={!focusCard} />
-    </div>
-  }
+  const actions = { setStatus, checkIn, checkOut, setSettlementShiftId, requestSwap, cancelSwap, decline }
+  const cardProps = { data, helpers, expandedShiftId, onExpand: setExpandedShiftId, actions }
   const otherShifts = shifts.filter((s) => s.id !== focus?.id)
   const highlightOpenShifts = openShifts.length >= 4
   const settlementShift = data.shifts.find((s) => s.id === settlementShiftId)
@@ -2454,13 +2459,13 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     {syncState?.saving && <div className="driver-sync-banner saving" role="status">Ukládám změny…</div>}
     {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{syncState.error}</div>}
     {focus && <div className="driver-section-kicker">Aktuální směna</div>}
-    {focus ? <ShiftMobileCard s={focus} focusCard /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
+    {focus ? <ShiftMobileCard s={focus} focusCard {...cardProps} /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
     {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
-    {awaiting.length > 0 && <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
+    {awaiting.length > 0 && <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} {...cardProps} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
     {openShifts.length > 0 && <details id="driver-open-shifts-section" className={`card driver-offers collapse-card driver-open-shifts ${highlightOpenShifts ? 'driver-open-shifts-highlight' : ''}`}><summary><span><b>Zobrazit volné směny ({openShifts.length})</b><small>Nabídky, na které se můžeš přihlásit</small></span><span className="pill warn">{openShifts.length}</span></summary><div className="collapse-content"><div className="stack">{openShifts.map((shift) => { const interested = myOpenInterests.some((r) => r.shiftId === shift.id); return <div className="alert warn" key={shift.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />{helpers.vehicleName(shift.vehicleId)} · {shift.note || 'Volná směna k obsazení'}<br />{shift.instruction && <small>Instrukce: {shift.instruction}</small>}<div className="row-actions" style={{ marginTop: 8 }}>{interested ? <span className="pill good">Zájem odeslán</span> : <button onClick={() => applyForOpenShift(shift)}>Mám zájem</button>}</div></div> })}</div></div></details>}
     {incomingSwaps.length > 0 && <div id="driver-incoming-swaps-section" className="card driver-offers"><div className="section-title"><h3>Nabídnuté výměny pro mě</h3><span className="pill warn">{incomingSwaps.length}</span></div><div className="stack">{incomingSwaps.map(({ request, shift }) => <div className="alert warn" key={request.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />Nabízí: {helpers.driverName(request.driverId)} · {helpers.vehicleName(shift.vehicleId)}<br /><small>{request.reason || 'Bez zprávy'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => acceptSwap(request)}>Chci převzít směnu</button></div></div>)}</div></div>}
     <div className="section-title driver-list-title"><h3>Moje další směny</h3><span className="pill">{otherShifts.length}</span></div>
-    <div className="driver-card-list">{otherShifts.map((s) => <ShiftMobileCard s={s} key={s.id} />)}{!otherShifts.length && <div className="empty">Nemáš další plánované směny.</div>}</div>
+    <div className="driver-card-list">{otherShifts.map((s) => <ShiftMobileCard s={s} key={s.id} {...cardProps} />)}{!otherShifts.length && <div className="empty">Nemáš další plánované směny.</div>}</div>
     <DriverTwoWeekCalendar shifts={shifts} openShifts={openShifts} helpers={helpers} />
     {settlementShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={settlementShift} currentDriver={currentDriver} isDriver onClose={() => setSettlementShiftId('')} />}
   </div>
@@ -3046,7 +3051,7 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
         <div className="section-title"><h3>Obecné</h3></div>
         <div className="form two-col">
           <Field label="Jméno firmy"><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <Field label="Kontakt"><input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="+420 777 702 702" /></Field>
+          <Field label="Kontakt"><input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="+420 600 000 000" /></Field>
           <Field label="Logo URL" className="span2"><input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…" /></Field>
           <div className="field span2"><button className="primary" onClick={saveGeneral}>Uložit obecné</button></div>
         </div>
