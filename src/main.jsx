@@ -2445,20 +2445,23 @@ function DriverSettings({ data, commit, currentDriver, profile, session, onlineM
       <div className="compact-list"><div className="log"><b>{currentDriver?.name || profile?.full_name || 'Řidič'}</b><br /><span className="muted">{currentDriver?.email || profile?.email || 'Email nezadaný'}</span>{currentDriver?.phone && <><br /><span className="muted">{currentDriver.phone}</span></>}</div></div>
     </div>
     <div className="card"><div className="section-title"><h3>Notifikace</h3><span className="pill">{devices.length}</span></div><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} session={session} /></div>
-    <details className="card collapse-card"><summary><span><b>Diagnostika</b><small>Zařízení a verze aplikace</small></span><span className="pill">{devices.length}</span></summary><div className="collapse-content stack">
-      {devices.map((d) => <div className="log" key={d.id}><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">Aktivní push zařízení</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeDevice(d.id)}>Odhlásit zařízení</button></div></div>)}
-      {!devices.length && <div className="empty">Žádné aktivní push zařízení.</div>}
-      <div className="log"><b>Verze app</b><br /><span className="muted">v{VERSION}</span></div>
-      {syncState?.error && <div className="alert warn">{syncState.error}</div>}
-    </div></details>
-    <div className="card"><button className="danger" onClick={signOut}>Odhlásit</button></div>
+    {syncState?.error && <div className="card"><div className="alert warn">{syncState.error}</div></div>}
+    <div className="card"><div className="muted" style={{ fontSize: '0.8em', marginBottom: 8 }}>v{VERSION}</div><button className="danger" onClick={signOut}>Odhlásit</button></div>
   </div>
 }
 function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session }) {
   const [permission, setPermission] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'))
   const [status, setStatus] = useState('')
   const [isStandalone, setIsStandalone] = useState(() => Boolean(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone === true))
+  const [currentEndpoint, setCurrentEndpoint] = useState(null)
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setCurrentEndpoint(''); return }
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setCurrentEndpoint(sub?.endpoint || ''))
+      .catch(() => setCurrentEndpoint(''))
+  }, [permission])
   useEffect(() => {
     const media = window.matchMedia?.('(display-mode: standalone)')
     if (!media) return undefined
@@ -2522,7 +2525,9 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
   }
   const supported = 'serviceWorker' in navigator && 'Notification' in window
   const pushSupported = 'PushManager' in window
-  const myDevices = (data.pushSubscriptions || []).filter((p) => isDriver ? p.driverId === currentDriver?.id : p.profileId === profile?.id || p.role === profile?.role)
+  const myDevices = isDriver
+    ? (data.pushSubscriptions || []).filter((p) => p.driverId === currentDriver?.id && currentEndpoint !== null && p.endpoint === currentEndpoint)
+    : (data.pushSubscriptions || []).filter((p) => p.profileId === profile?.id || p.role === profile?.role)
   const activeDevices = myDevices.filter((p) => p.active !== false)
   const showIosGuide = !isStandalone && activeDevices.length === 0
   const deactivateDevice = (id) => {
@@ -2532,15 +2537,15 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
   return <div className="card">
     <div className="section-title"><h3>Push notifikace zařízení</h3><span className={permission === 'granted' ? 'pill good' : 'pill warn'}>{permission}</span></div>
     <p className="muted">Android podporuje PWA notifikace přímo v Chrome. Na iPhonu musí být aplikace přidaná na plochu a musí běžet jako PWA, jinak iOS běžně nepovolí web push pro stránku otevřenou jen v Safari.</p>
-    <div className="grid three" style={{ margin: '12px 0' }}>
+    {!isDriver && <div className="grid three" style={{ margin: '12px 0' }}>
       <Kpi label="Service Worker" value={supported ? 'OK' : 'Ne'} hint="základ PWA" kind={supported ? 'good' : 'bad'} />
       <Kpi label="PushManager" value={pushSupported ? 'OK' : 'Ne'} hint="remote push" kind={pushSupported ? 'good' : 'bad'} />
       <Kpi label="VAPID klíč" value={vapidPublicKey ? 'vyplněn' : 'chybí'} hint="browser subscription" kind={vapidPublicKey ? 'good' : 'warn'} />
-    </div>
+    </div>}
     <div className="actions" style={{ justifyContent: 'flex-start' }}>
       <button className="primary" onClick={subscribe}>Povolit notifikace na tomto zařízení</button>
-      <button className="ghost" onClick={test}>Lokální test</button>
-      <button className="ghost" onClick={serverTest}>Server push test</button>
+      <button className="ghost" onClick={test}>Otestovat notifikaci</button>
+      {!isDriver && <button className="ghost" onClick={serverTest}>Server push test</button>}
     </div>
     {status && <div className="alert warn" style={{ marginTop: 12 }}>{status}</div>}
     {showIosGuide && <div className="ios-guide"><b>iPhone postup</b><ol><li>Otevři aplikaci v Safari.</li><li>Dej Sdílet → Přidat na plochu.</li><li>Spusť RBSHIFT z plochy.</li><li>Potom povol notifikace.</li></ol></div>}
