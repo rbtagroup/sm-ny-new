@@ -350,8 +350,12 @@ async function syncChangedRows(prev, next, profile) {
     if (!isStaff && key === 'settlements') changed = changed.filter((row) => row.driverId === currentDriverId)
     if (!isStaff && key === 'notifications') {
       const previousIds = new Set((prev.notifications || []).map((n) => n.id))
+      const nextIds = new Set((next.notifications || []).map((n) => n.id))
       const insertedRows = changed.filter((row) => row.id && !previousIds.has(row.id)).map(toDb.notifications)
       const readUpdates = changed.filter((row) => row.id && previousIds.has(row.id)).map(toDb.notifications)
+      const removedPersonalIds = (prev.notifications || [])
+        .filter((n) => n.id && !nextIds.has(n.id) && n.targetDriverId === currentDriverId)
+        .map((n) => n.id)
       if (insertedRows.length) {
         const { error } = await supabase.from('notifications').insert(insertedRows)
         if (error) {
@@ -365,6 +369,10 @@ async function syncChangedRows(prev, next, profile) {
           errors.push(`notifications: ${error.message}`)
           if (critical.has(key)) throw new Error(errors.join('\n'))
         }
+      }
+      if (removedPersonalIds.length) {
+        const { error } = await supabase.from('notifications').delete().in('id', removedPersonalIds)
+        if (error) errors.push(`notifications delete: ${error.message}`)
       }
       continue
     }
