@@ -395,6 +395,13 @@ async function syncChangedRows(prev, next, profile) {
           if (critical.has(key)) throw new Error(errors.join('\n'))
         }
       }
+    } else if (!isStaff && key === 'absences' && currentDriverId) {
+      const nextAbsIds = new Set((next.absences || []).map((x) => x.id))
+      const rmAbsences = (prev.absences || []).filter((x) => x.id && !nextAbsIds.has(x.id) && x.driverId === currentDriverId).map((x) => x.id)
+      if (rmAbsences.length) {
+        const { error: absErr } = await supabase.from('absences').delete().in('id', rmAbsences)
+        if (absErr) errors.push('absences delete: ' + absErr.message)
+      }
     }
   }
   if (isStaff && JSON.stringify(prev.settings || {}) !== JSON.stringify(next.settings || {})) {
@@ -2596,7 +2603,7 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
   const deleteOne = (id) => {
     const notice = visible.find((n) => n.id === id)
     if (!notice) return
-    if (isPersonalNotice(notice)) {
+    if (!isDriver && isPersonalNotice(notice)) {
       commit((prev) => ({ ...prev, notifications: (prev.notifications || []).filter((n) => n.id !== id) }), 'Notifikace smazána.')
       queueUndo([id], [notice])
     } else {
@@ -2629,13 +2636,14 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
     const broadcast = toDelete.filter((n) => !isPersonalNotice(n))
     const personalIds = new Set(personal.map((n) => n.id))
     const broadcastIds = new Set(broadcast.map((n) => n.id))
+    const allToDeleteIds = new Set(toDelete.map((n) => n.id))
     commit((prev) => ({
       ...prev,
-      notifications: (prev.notifications || [])
-        .filter((n) => !personalIds.has(n.id))
-        .map((n) => broadcastIds.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver) : n),
+      notifications: isDriver
+        ? (prev.notifications || []).map((n) => allToDeleteIds.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver) : n)
+        : (prev.notifications || []).filter((n) => !personalIds.has(n.id)).map((n) => broadcastIds.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver) : n),
     }), 'Přečtené notifikace smazány.')
-    queueUndo(toDelete.map((n) => n.id), personal)
+    queueUndo(toDelete.map((n) => n.id), isDriver ? [] : personal)
   }
   return <>
     <PageTitle title="Notifikace">
