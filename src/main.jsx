@@ -1399,7 +1399,8 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     const preset = shiftTemplateValue(key, data.settings)
     if (preset) setForm((prev) => ({ ...prev, ...preset }))
   }
-  const conflictMessages = helpers.conflictMessages({ id: editing?.id || 'new', ...form })
+  const normalizeShiftForm = (item) => ({ ...item, status: !item.driverId ? 'open' : (item.status === 'open' ? 'assigned' : item.status) })
+  const conflictMessages = helpers.conflictMessages({ id: editing?.id || 'new', ...normalizeShiftForm(form) })
   const buildRepeats = () => {
     if (editing || repeat === 'none') return [form]
     if (repeat === 'daily7') return Array.from({ length: 7 }, (_, i) => ({ ...form, date: addDays(form.date, i) }))
@@ -1410,7 +1411,6 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
   const submit = (e) => {
     e.preventDefault()
     if (!form.date || !form.start || !form.end) return alert('Vyplň datum a čas směny.')
-    const normalizeShiftForm = (item) => ({ ...item, status: !item.driverId ? 'open' : (item.status === 'open' ? 'assigned' : item.status) })
     const normalizedForm = normalizeShiftForm(form)
     const wasEditing = Boolean(editing)
     if (editing && !confirmPastChange(editing)) return
