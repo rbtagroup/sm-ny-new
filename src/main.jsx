@@ -1367,7 +1367,7 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
           <div><span>Čistá tržba</span><b>{money(metrics.netto)}</b></div>
           <div><span>Najeto km</span><b>{Math.round(metrics.kmReal || 0).toLocaleString('cs-CZ')}</b></div>
           <div><span>Smluvní km</span><b>{Math.round(metrics.invoiceKm || 0).toLocaleString('cs-CZ')}</b></div>
-          <div><span>Hotovost rozdíl</span><b>{metrics.hasCashActual ? money(metrics.cashDiff) : '—'}</b></div>
+          <div><span>Hotovost rozdíl</span><b style={metrics.hasCashActual ? { color: metrics.cashDiff > 0 ? 'var(--good)' : metrics.cashDiff < 0 ? 'var(--bad)' : undefined } : undefined}>{metrics.hasCashActual ? `${metrics.cashDiff > 0 ? '+' : ''}${money(metrics.cashDiff)}` : '—'}</b></div>
         </div>
         {errors.length > 0 && <div className="alert warn">{errors[0]}</div>}
         <div className="actions settlement-actions">
