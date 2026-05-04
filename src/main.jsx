@@ -1363,7 +1363,7 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
         <div className="settlement-hero-result"><span>K odevzdání</span><b>{money(metrics.settlement)}</b><small>{metrics.payoutMode}</small></div>
         <div className="settlement-result-grid">
           <div><span>Výplata</span><b>{money(metrics.vyplata)}</b></div>
-          <div><span>Doplatek</span><b>{money(metrics.doplatek)}</b></div>
+          <div><span>Doplatek</span><b style={metrics.doplatek > 0 ? { color: 'var(--bad)' } : undefined}>{money(metrics.doplatek)}{metrics.doplatek > 0 ? ' ⚠' : ''}</b></div>
           <div><span>Čistá tržba</span><b>{money(metrics.netto)}</b></div>
           <div><span>Najeto km</span><b>{Math.round(metrics.kmReal || 0).toLocaleString('cs-CZ')}</b></div>
           <div><span>Smluvní km</span><b>{Math.round(metrics.invoiceKm || 0).toLocaleString('cs-CZ')}</b></div>
