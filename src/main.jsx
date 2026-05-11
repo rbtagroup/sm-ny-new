@@ -3,64 +3,57 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 import { Bell, Clock, House, Settings as SettingsIcon } from 'lucide-react'
+import { addedRows, changedRows, stableFingerprint } from './lib/syncDiff.js'
+import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls } from './lib/sensitiveSync.js'
+import {
+  actualDurationMinutes,
+  addDays,
+  dateInRange,
+  datePart,
+  datetimeLocal,
+  durationLabel,
+  formatDate,
+  formatDateTime,
+  hoursLabel,
+  intervalForShift,
+  localStamp,
+  minutes,
+  overlapsShift,
+  overlapsTimeWindow,
+  plannedDurationMinutes,
+  startOfWeek,
+  timePart,
+  todayISO,
+  weekdayOf,
+} from './lib/dateTime.js'
+import {
+  addNotificationsToData,
+  createNoticeFactory,
+  isNoticeRead,
+  isNoticeVisible,
+  markNoticeDeleted,
+  markNoticeRead,
+  unmarkNoticeDeleted,
+} from './lib/notifications.js'
+import {
+  canOpenSettlement,
+  computeSettlementMetrics,
+  settlementConfigDefaults,
+  settlementDefaultInputs,
+  settlementForShift,
+  settlementIsClosed,
+  shiftIsInStartWindow,
+  shiftNeedsSettlementAction,
+  validateSettlementInputs,
+} from './lib/settlements.js'
+import { createSupabaseMappers, ONLINE_TABLES, tableName } from './lib/supabaseData.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const STORAGE_KEY = 'rbshift-manager-data-v4'
 const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
-const todayISO = () => new Date().toISOString().slice(0, 10)
 const uid = (prefix = 'id') => `${prefix}_${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2, 11)}`
-
-const makeNotice = ({ title, body = '', targetDriverId = '', targetRole = 'admin', type = 'info', shiftId = '' }) => ({
-  id: uid('ntf'),
-  at: new Date().toISOString(),
-  title,
-  body,
-  targetDriverId,
-  targetRole,
-  type,
-  shiftId,
-  readBy: [],
-})
-function addNotificationsToData(data, notices) {
-  const clean = (Array.isArray(notices) ? notices : [notices]).filter(Boolean)
-  if (!clean.length) return data
-  return { ...data, notifications: [...clean, ...(data.notifications || [])].slice(0, 500) }
-}
-function isNoticeVisible(notice, currentDriver, isDriver) {
-  if (!notice || isNoticeDeleted(notice, currentDriver, isDriver)) return false
-  if (!isDriver) return true
-  if (notice.targetRole === 'all' || notice.targetRole === 'driver_all') return true
-  return Boolean(currentDriver?.id && notice.targetDriverId === currentDriver.id)
-}
-function noticeUserKey(currentDriver, isDriver) {
-  return isDriver ? `driver:${currentDriver?.id || ''}` : 'admin'
-}
-function isNoticeRead(notice, currentDriver, isDriver) {
-  const key = noticeUserKey(currentDriver, isDriver)
-  return (notice.readBy || []).includes(key)
-}
-function noticeDeletedKey(currentDriver, isDriver) {
-  return `deleted:${noticeUserKey(currentDriver, isDriver)}`
-}
-function isNoticeDeleted(notice, currentDriver, isDriver) {
-  const key = noticeDeletedKey(currentDriver, isDriver)
-  return (notice.readBy || []).some((x) => x === key || String(x).startsWith(`${key}:`))
-}
-function markNoticeRead(notice, currentDriver, isDriver) {
-  const key = noticeUserKey(currentDriver, isDriver)
-  return { ...notice, readBy: [...new Set([...(notice.readBy || []), key])] }
-}
-function markNoticeDeleted(notice, currentDriver, isDriver) {
-  const key = noticeDeletedKey(currentDriver, isDriver)
-  const token = `${key}:${new Date().toISOString()}`
-  // TODO: až bude v Supabase sloupec deleted_at, přepnout tento fallback z readBy tokenu na deleted_at/deleted_by.
-  return { ...notice, readBy: [...new Set([...(notice.readBy || []).filter((x) => x !== key && !String(x).startsWith(`${key}:`)), token])] }
-}
-function unmarkNoticeDeleted(notice, currentDriver, isDriver) {
-  const key = noticeDeletedKey(currentDriver, isDriver)
-  return { ...notice, readBy: (notice.readBy || []).filter((x) => x !== key && !String(x).startsWith(`${key}:`)) }
-}
+const makeNotice = createNoticeFactory(uid)
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
@@ -237,47 +230,14 @@ function appendSwapHistory(req, text) {
 
 const isConfiguredSupabase = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY)
 const supabase = isConfiguredSupabase ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY) : null
-
-
-const ONLINE_TABLES = [
-  'drivers', 'vehicles', 'shifts', 'settlements', 'absences', 'availability', 'serviceBlocks', 'swapRequests', 'notifications', 'pushSubscriptions', 'audit'
-]
-const tableName = (key) => ({ serviceBlocks: 'service_blocks', swapRequests: 'swap_requests', pushSubscriptions: 'push_subscriptions', settlements: 'shift_settlements', audit: 'audit_logs' }[key] || key)
-const normalizeId = (id, prefix = 'id') => id || uid(prefix)
-const stripUndefined = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined))
-const toDb = {
-  drivers: (d) => stripUndefined({ id: normalizeId(d.id, 'drv'), profile_id: d.profileId || d.profile_id || null, name: d.name || '', phone: d.phone || null, email: d.email || null, active: d.active !== false, note: d.note || null }),
-  vehicles: (v) => stripUndefined({ id: normalizeId(v.id, 'car'), name: v.name || '', plate: v.plate || '', active: v.active !== false, note: v.note || null }),
-  shifts: (s) => stripUndefined({ id: normalizeId(s.id, 'sh'), shift_date: s.date, start_time: s.start || '00:00', end_time: s.end || '00:00', driver_id: s.driverId || null, vehicle_id: s.vehicleId || null, type: s.type || 'day', status: s.status || 'assigned', note: s.note || null, instruction: s.instruction || null, decline_reason: s.declineReason || null, actual_start_at: s.actualStartAt || null, actual_end_at: s.actualEndAt || null, swap_request_status: s.swapRequestStatus || null }),
-  settlements: (s) => stripUndefined({ id: normalizeId(s.id, 'set'), shift_id: s.shiftId, driver_id: s.driverId || null, vehicle_id: s.vehicleId || null, status: s.status || 'draft', inputs: s.inputs || {}, metrics: s.metrics || {}, config: s.config || {}, note: s.note || null, submitted_at: s.submittedAt || null, approved_at: s.approvedAt || null, approved_by: s.approvedBy || null, returned_reason: s.returnedReason || null, created_at: s.createdAt || new Date().toISOString(), updated_at: s.updatedAt || new Date().toISOString() }),
-  absences: (a) => stripUndefined({ id: normalizeId(a.id, 'abs'), driver_id: a.driverId, from_date: a.from, to_date: a.to, reason: a.reason || null }),
-  availability: (a) => stripUndefined({ id: normalizeId(a.id, 'av'), driver_id: a.driverId, weekday: a.fromAt ? null : (a.date ? null : Number(a.weekday || 0)), avail_date: a.fromAt ? null : (a.date || null), from_at: a.fromAt || null, to_at: a.toAt || null, start_time: a.start || timePart(a.fromAt) || '00:00', end_time: a.end || timePart(a.toAt) || '23:59', note: a.note || null }),
-  serviceBlocks: (b) => stripUndefined({ id: normalizeId(b.id, 'srv'), vehicle_id: b.vehicleId, from_date: b.from, to_date: b.to, reason: b.reason || null }),
-  swapRequests: (r) => stripUndefined({ id: normalizeId(r.id, 'swap'), shift_id: r.shiftId, driver_id: r.driverId, target_mode: r.targetMode || 'all', target_driver_id: r.targetDriverId || null, accepted_by_driver_id: r.acceptedByDriverId || null, approved_driver_id: r.approvedDriverId || null, status: r.status || 'pending', reason: r.reason || null, rejected_reason: r.rejectedReason || null, history: r.history || [], created_at: r.createdAt || new Date().toISOString(), accepted_at: r.acceptedAt || null, resolved_at: r.resolvedAt || null, cancelled_at: r.cancelledAt || null }),
-  notifications: (n) => stripUndefined({ id: normalizeId(n.id, 'ntf'), target_driver_id: n.targetDriverId || null, target_role: n.targetRole || 'admin', type: n.type || 'info', shift_id: n.shiftId || null, title: n.title || '', body: n.body || null, read_by: n.readBy || [], created_at: n.at || n.createdAt || new Date().toISOString() }),
-  pushSubscriptions: (p) => stripUndefined({ id: normalizeId(p.id, 'push'), profile_id: p.profileId || null, driver_id: p.driverId || null, role: p.role || 'driver', endpoint: p.endpoint || '', subscription: p.subscription || p, platform: p.platform || null, active: p.active !== false, last_seen_at: new Date().toISOString() }),
-  audit: (a) => stripUndefined({ id: normalizeId(a.id, 'log'), actor_id: a.actorId || null, action: a.text || a.action || '', payload: a.payload || {}, created_at: a.at || a.createdAt || new Date().toISOString() }),
-}
-const fromDb = {
-  drivers: (d) => ({ id: d.id, profileId: d.profile_id || '', name: d.name || '', phone: d.phone || '', email: d.email || '', active: d.active !== false, note: d.note || '' }),
-  vehicles: (v) => ({ id: v.id, name: v.name || '', plate: v.plate || '', active: v.active !== false, note: v.note || '' }),
-  shifts: (s) => ({ id: s.id, date: s.shift_date, start: String(s.start_time || '').slice(0,5), end: String(s.end_time || '').slice(0,5), driverId: s.driver_id || '', vehicleId: s.vehicle_id || '', type: s.type || 'day', status: s.status || 'assigned', note: s.note || '', instruction: s.instruction || '', declineReason: s.decline_reason || '', actualStartAt: s.actual_start_at || '', actualEndAt: s.actual_end_at || '', swapRequestStatus: s.swap_request_status || '' }),
-  settlements: (s) => ({ id: s.id, shiftId: s.shift_id || '', driverId: s.driver_id || '', vehicleId: s.vehicle_id || '', status: s.status || 'draft', inputs: s.inputs || {}, metrics: s.metrics || {}, config: s.config || {}, note: s.note || '', submittedAt: s.submitted_at || '', approvedAt: s.approved_at || '', approvedBy: s.approved_by || '', returnedReason: s.returned_reason || '', createdAt: s.created_at || '', updatedAt: s.updated_at || '' }),
-  absences: (a) => ({ id: a.id, driverId: a.driver_id, from: a.from_date, to: a.to_date, reason: a.reason || '' }),
-  availability: (a) => ({ id: a.id, driverId: a.driver_id, weekday: a.weekday === null || a.weekday === undefined ? '' : Number(a.weekday), date: a.avail_date || '', fromAt: a.from_at ? String(a.from_at).slice(0,16) : '', toAt: a.to_at ? String(a.to_at).slice(0,16) : '', start: String(a.start_time || '').slice(0,5), end: String(a.end_time || '').slice(0,5), note: a.note || '' }),
-  serviceBlocks: (b) => ({ id: b.id, vehicleId: b.vehicle_id, from: b.from_date, to: b.to_date, reason: b.reason || '' }),
-  swapRequests: (r) => ({ id: r.id, shiftId: r.shift_id, driverId: r.driver_id, targetMode: r.target_mode || 'all', targetDriverId: r.target_driver_id || '', acceptedByDriverId: r.accepted_by_driver_id || '', approvedDriverId: r.approved_driver_id || '', status: r.status || 'pending', reason: r.reason || '', rejectedReason: r.rejected_reason || '', history: r.history || [], createdAt: r.created_at, acceptedAt: r.accepted_at || '', resolvedAt: r.resolved_at || '', cancelledAt: r.cancelled_at || '' }),
-  notifications: (n) => ({ id: n.id, at: n.created_at, title: n.title || '', body: n.body || '', targetDriverId: n.target_driver_id || '', targetRole: n.target_role || 'admin', type: n.type || 'info', shiftId: n.shift_id || '', readBy: n.read_by || [] }),
-  pushSubscriptions: (p) => ({ id: p.id, profileId: p.profile_id || '', driverId: p.driver_id || '', role: p.role || 'driver', endpoint: p.endpoint || '', subscription: p.subscription || {}, platform: p.platform || '', active: p.active !== false }),
-  audit: (a) => ({ id: a.id, at: a.created_at, text: a.action || '', actorId: a.actor_id || '' }),
-}
+const { toDb, fromDb } = createSupabaseMappers({ uid, timePart })
 
 async function loadDataFromSupabase() {
   if (!supabase) return readStore()
   const base = seed()
   const output = { ...base }
   const errors = []
-  for (const key of ONLINE_TABLES) {
+  const tableResults = await Promise.all(ONLINE_TABLES.map(async (key) => {
     const tn = tableName(key)
     let q = supabase.from(tn).select('*').order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
     if (key === 'notifications') {
@@ -285,26 +245,21 @@ async function loadDataFromSupabase() {
       q = q.gte('created_at', cutoff)
     }
     const { data: rows, error } = await q
-    if (error) {
-      if (key === 'settlements' && /does not exist|schema cache/i.test(error.message || '')) { output[key] = []; continue }
-      if (key === 'audit') { output[key] = []; continue }
-      errors.push(`${tn}: ${error.message}`); continue
+    return { key, tn, rows, error }
+  }))
+  for (const { key, tn, rows, error } of tableResults) {
+    if (!error) {
+      output[key] = (rows || []).map(fromDb[key])
+      continue
     }
-    output[key] = (rows || []).map(fromDb[key])
+    if (key === 'settlements' && /does not exist|schema cache/i.test(error.message || '')) { output[key] = []; continue }
+    if (key === 'audit') { output[key] = []; continue }
+    errors.push(`${tn}: ${error.message}`)
   }
   const { data: settingsRow } = await supabase.from('app_settings').select('payload').eq('id','default').maybeSingle()
   output.settings = { ...base.settings, ...(settingsRow?.payload || {}) }
   if (errors.length) throw new Error(errors.join('\n'))
   return output
-}
-
-function changedRows(prevList = [], nextList = []) {
-  const prev = new Map((prevList || []).map((x) => [x.id, JSON.stringify(x)]))
-  return (nextList || []).filter((x) => !prev.has(x.id) || prev.get(x.id) !== JSON.stringify(x))
-}
-function addedRows(prevList = [], nextList = []) {
-  const prevIds = new Set((prevList || []).map((x) => x.id))
-  return (nextList || []).filter((x) => x?.id && !prevIds.has(x.id))
 }
 async function sendPushForNotifications(notices, accessToken = '') {
   const clean = (Array.isArray(notices) ? notices : [notices]).filter((n) => n?.title)
@@ -335,6 +290,14 @@ function pushDeliveryWarning(result) {
   if (Number(result.failed || 0) > 0) return `${result.failed} zařízení nedostalo push`
   return ''
 }
+async function runRpcCalls(calls = []) {
+  const errors = []
+  for (const call of calls) {
+    const { error } = await supabase.rpc(call.fn, call.args)
+    if (error) errors.push(`${call.fn}: ${error.message}`)
+  }
+  if (errors.length) throw new Error(errors.join('\n'))
+}
 async function syncChangedRows(prev, next, profile) {
   if (!supabase || !profile) return
   const isStaff = ['admin','dispatcher'].includes(profile.role)
@@ -343,9 +306,15 @@ async function syncChangedRows(prev, next, profile) {
   const allowedForDriver = new Set(['shifts','settlements','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
   const errors = []
   const critical = new Set(['shifts','settlements','swapRequests','notifications','pushSubscriptions'])
+  const staffSwapResolution = isStaff
+    ? staffSwapResolutionRpcCalls(prev.swapRequests, changedRows(prev.swapRequests, next.swapRequests))
+    : { calls: [], handledIds: new Set(), handledShiftIds: new Set() }
   for (const key of ONLINE_TABLES) {
     if (!isStaff && !allowedForDriver.has(key)) continue
     let changed = changedRows(prev[key], next[key])
+    if (isStaff && key === 'shifts' && staffSwapResolution.handledShiftIds.size) {
+      changed = changed.filter((row) => !staffSwapResolution.handledShiftIds.has(row.id))
+    }
     // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
     if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId)
     if (!isStaff && key === 'settlements') changed = changed.filter((row) => row.driverId === currentDriverId)
@@ -353,7 +322,6 @@ async function syncChangedRows(prev, next, profile) {
       const previousIds = new Set((prev.notifications || []).map((n) => n.id))
       const nextIds = new Set((next.notifications || []).map((n) => n.id))
       const insertedRows = changed.filter((row) => row.id && !previousIds.has(row.id)).map(toDb.notifications)
-      const readUpdates = changed.filter((row) => row.id && previousIds.has(row.id)).map(toDb.notifications)
       const removedPersonalIds = (prev.notifications || [])
         .filter((n) => n.id && !nextIds.has(n.id) && n.targetDriverId === currentDriverId)
         .map((n) => n.id)
@@ -364,10 +332,11 @@ async function syncChangedRows(prev, next, profile) {
           if (critical.has(key)) throw new Error(errors.join('\n'))
         }
       }
-      for (const row of readUpdates) {
-        const { error } = await supabase.from('notifications').update({ read_by: row.read_by || [] }).eq('id', row.id)
-        if (error) {
-          errors.push(`notifications: ${error.message}`)
+      const stateCalls = notificationStateRpcCalls(prev.notifications, changed.filter((row) => row.id && previousIds.has(row.id)), currentDriverId)
+      if (stateCalls.length) {
+        try { await runRpcCalls(stateCalls) }
+        catch (error) {
+          errors.push(error.message)
           if (critical.has(key)) throw new Error(errors.join('\n'))
         }
       }
@@ -375,6 +344,29 @@ async function syncChangedRows(prev, next, profile) {
         const { error } = await supabase.from('notifications').delete().in('id', removedPersonalIds)
         if (error) errors.push(`notifications delete: ${error.message}`)
       }
+      continue
+    }
+    if (!isStaff && key === 'swapRequests') {
+      const { calls, denied } = swapRequestRpcCalls(prev.swapRequests, changed, currentDriverId)
+      if (denied.length) errors.push(`swap_requests: nepovolene akce ${denied.join(', ')}`)
+      if (calls.length) {
+        try { await runRpcCalls(calls) }
+        catch (error) { errors.push(error.message) }
+      }
+      if (errors.length && critical.has(key)) throw new Error(errors.join('\n'))
+      continue
+    }
+    if (isStaff && key === 'swapRequests') {
+      if (staffSwapResolution.calls.length) {
+        try { await runRpcCalls(staffSwapResolution.calls) }
+        catch (error) { errors.push(error.message) }
+      }
+      if (errors.length && critical.has(key)) throw new Error(errors.join('\n'))
+      changed = changed.filter((row) => !staffSwapResolution.handledIds.has(row.id))
+    }
+    if (key === 'audit') {
+      try { await runRpcCalls(auditInsertRpcCalls(changed)) }
+      catch (error) { errors.push(error.message) }
       continue
     }
     const rows = changed.map(toDb[key]).filter((r) => r.id)
@@ -404,7 +396,7 @@ async function syncChangedRows(prev, next, profile) {
       }
     }
   }
-  if (isStaff && JSON.stringify(prev.settings || {}) !== JSON.stringify(next.settings || {})) {
+  if (isStaff && stableFingerprint(prev.settings || {}) !== stableFingerprint(next.settings || {})) {
     const { error } = await supabase.from('app_settings').upsert({ id: 'default', payload: next.settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' })
     if (error) errors.push(`app_settings: ${error.message}`)
   }
@@ -483,7 +475,7 @@ function readStore() {
       serviceBlocks: parsed.serviceBlocks || [],
       settlements: (parsed.settlements || []).map((s) => ({ inputs: {}, metrics: {}, config: {}, note: '', submittedAt: '', approvedAt: '', approvedBy: '', returnedReason: '', ...s })),
       swapRequests: (parsed.swapRequests || []).map((r) => ({ targetMode: 'all', targetDriverId: '', acceptedByDriverId: '', acceptedAt: '', resolvedAt: '', approvedDriverId: '', rejectedReason: '', cancelledAt: '', history: [], ...r })),
-      notifications: parsed.notifications || [],
+      notifications: (parsed.notifications || []).map((n) => ({ readBy: [], deletedBy: [], ...n })),
       pushSubscriptions: parsed.pushSubscriptions || [],
       audit: parsed.audit || [],
       settings: { ...base.settings, ...(parsed.settings || {}) },
@@ -509,24 +501,6 @@ function writeStore(data) {
   }
 }
 
-function minutes(value) {
-  const [h, m] = String(value || '00:00').split(':').map(Number)
-  return (h || 0) * 60 + (m || 0)
-}
-function addDays(date, days) {
-  const d = new Date(`${date}T12:00:00`)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-function startOfWeek(date) {
-  const d = new Date(`${date}T12:00:00`)
-  const day = d.getDay() || 7
-  d.setDate(d.getDate() - day + 1)
-  return d.toISOString().slice(0, 10)
-}
-function formatDate(date, weekday = true) {
-  return new Intl.DateTimeFormat('cs-CZ', weekday ? { weekday: 'short', day: '2-digit', month: '2-digit' } : { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T12:00:00`))
-}
 function formatNoticeDate(date) {
   const d = new Date(`${date}T12:00:00`)
   return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`
@@ -537,43 +511,12 @@ function shiftTypeName(shift) {
 function shiftNoticeBody(shift, helpers, suffix = '') {
   return [shiftTypeName(shift), `${formatNoticeDate(shift.date)} · ${shift.start}–${shift.end}`, helpers?.vehicleName?.(shift.vehicleId), suffix].filter(Boolean).join(' · ')
 }
-function intervalForShift(s) {
-  const start = new Date(`${s.date}T${s.start || '00:00'}:00`).getTime()
-  let end = new Date(`${s.date}T${s.end || '00:00'}:00`).getTime()
-  if (minutes(s.end) <= minutes(s.start)) end += 24 * 60 * 60 * 1000
-  return [start, end]
-}
-function overlapsShift(a, b) {
-  const [a1, a2] = intervalForShift(a)
-  const [b1, b2] = intervalForShift(b)
-  return a1 < b2 && b1 < a2
-}
-function dateInRange(date, from, to) { return date >= from && date <= to }
-function weekdayOf(date) { return new Date(date + 'T12:00:00').getDay() }
-function overlapsTimeWindow(startA, endA, startB, endB) {
-  const a = { date: todayISO(), start: startA, end: endA }
-  const b = { date: todayISO(), start: startB, end: endB }
-  return overlapsShift(a, b)
-}
 function isPastLocked(shift) {
   if (!shift?.date) return false
   return shift.date < todayISO()
 }
 function confirmPastChange(shift) {
   return !isPastLocked(shift) || confirm('Tahle směna je v minulosti. Opravdu ji chceš upravit?')
-}
-function actualDurationMinutes(shift) {
-  if (!shift.actualStartAt || !shift.actualEndAt) return null
-  const start = new Date(shift.actualStartAt).getTime()
-  const end = new Date(shift.actualEndAt).getTime()
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null
-  return Math.round((end - start) / 60000)
-}
-function durationLabel(minutesTotal) {
-  if (minutesTotal == null) return '—'
-  const h = Math.floor(minutesTotal / 60)
-  const m = minutesTotal % 60
-  return h + ' h ' + m + ' min'
 }
 function deviceLabelFromUserAgent(value = '') {
   const ua = String(value || '')
@@ -587,146 +530,6 @@ function deviceLabelFromUserAgent(value = '') {
   if (/Windows/i.test(ua) && /Chrome/i.test(ua)) return '💻 Windows (Chrome)'
   return '📱 Neznámé zařízení'
 }
-function datetimeLocal(date = todayISO(), value = '07:00') { return `${date}T${value}` }
-function datePart(value) { return value ? String(value).slice(0, 10) : '' }
-function timePart(value) { return value ? String(value).slice(11, 16) : '' }
-function formatDateTime(value) {
-  if (!value) return '—'
-  return new Intl.DateTimeFormat('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
-}
-const settlementConfigDefaults = { commRate: 30, baseFull: 1000, baseHalf: 500, minTrzbaPerKm: 15, iacKmPerRide: 33, shkmKmPerRide: 7 }
-const settlementInputDefaults = { driver: '', shift: 'den', rz: '', kmStart: '', kmEnd: '', trzba: '', pristavne: '', palivo: '', myti: '', kartou: '', fakturou: '', jine: '', cashActual: '', iacCount: '', shkmCount: '', note: '' }
-function settlementNumber(value) {
-  const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'))
-  return Number.isFinite(parsed) ? parsed : 0
-}
-function settlementShiftCode(shift = {}) {
-  const planned = plannedDurationMinutes(shift)
-  if (planned > 0 && planned <= 6 * 60) return 'pul'
-  if (shift.type === 'night') return 'noc'
-  return 'den'
-}
-function settlementShiftLabel(code) {
-  return ({ den: 'Denní', noc: 'Noční', odpo: 'Odpolední', pul: '1/2 směna' }[code] || shiftTypeMap[code] || code || '—')
-}
-function settlementDefaultInputs(shift, data, helpers, existing = {}) {
-  const driver = (data.drivers || []).find((d) => d.id === shift?.driverId)
-  const vehicle = helpers.vehicle?.(shift?.vehicleId)
-  return {
-    ...settlementInputDefaults,
-    driver: driver?.name || helpers.driverName?.(shift?.driverId) || '',
-    shift: settlementShiftCode(shift),
-    rz: vehicle?.plate || '',
-    ...(existing || {}),
-  }
-}
-function normalizeSettlementInputs(inputs = {}) {
-  return {
-    driver: String(inputs.driver || '').trim(),
-    shift: inputs.shift || 'den',
-    rz: String(inputs.rz || '').trim(),
-    kmStart: settlementNumber(inputs.kmStart),
-    kmEnd: settlementNumber(inputs.kmEnd),
-    trzba: settlementNumber(inputs.trzba),
-    pristavne: settlementNumber(inputs.pristavne),
-    palivo: settlementNumber(inputs.palivo),
-    myti: settlementNumber(inputs.myti),
-    kartou: settlementNumber(inputs.kartou),
-    fakturou: settlementNumber(inputs.fakturou),
-    jine: settlementNumber(inputs.jine),
-    cashActual: settlementNumber(inputs.cashActual),
-    hasCashActual: String(inputs.cashActual ?? '').trim() !== '',
-    iacCount: settlementNumber(inputs.iacCount),
-    shkmCount: settlementNumber(inputs.shkmCount),
-  }
-}
-function computeSettlementMetrics(inputs = {}, config = {}) {
-  const cfg = { ...settlementConfigDefaults, ...(config || {}) }
-  const values = normalizeSettlementInputs(inputs)
-  const kmReal = Math.max(0, values.kmEnd - values.kmStart)
-  const iacKm = values.iacCount * cfg.iacKmPerRide
-  const shkmKm = values.shkmCount * cfg.shkmKmPerRide
-  const invoiceKm = iacKm + shkmKm
-  const chargedKm = Math.max(0, kmReal - invoiceKm)
-  const minTrzba = chargedKm * cfg.minTrzbaPerKm
-  const netto = values.trzba - values.pristavne
-  const nonCash = values.kartou + values.fakturou
-  const costs = values.palivo + values.myti + values.jine
-  const fixedPayout = values.shift === 'pul' ? cfg.baseHalf : cfg.baseFull
-  const commissionRate = cfg.commRate / 100
-  const threshold = commissionRate > 0 ? fixedPayout / commissionRate : Number.POSITIVE_INFINITY
-  const usesPercentage = netto > threshold
-  const vyplata = netto > 0 ? Math.round(usesPercentage ? netto * commissionRate : fixedPayout) : 0
-  const doplatek = Math.max(0, minTrzba - values.trzba)
-  const delta = values.trzba - minTrzba
-  const kOdevzdani = values.trzba - values.palivo - values.myti - values.kartou - values.fakturou - values.jine - vyplata
-  const settlement = kOdevzdani + doplatek
-  const cashExpected = settlement + vyplata
-  const cashDiff = values.hasCashActual ? values.cashActual - cashExpected : 0
-  return {
-    ...values,
-    config: cfg,
-    shiftLabel: settlementShiftLabel(values.shift),
-    kmReal,
-    chargedKm,
-    invoiceKm,
-    iacKm,
-    shkmKm,
-    minTrzba,
-    netto,
-    nonCash,
-    costs,
-    usesPercentage,
-    payoutMode: usesPercentage ? `Provize ${cfg.commRate} %` : `Fix ${money(fixedPayout)}`,
-    vyplata,
-    doplatek,
-    delta,
-    kOdevzdani,
-    settlement,
-    cashExpected,
-    cashDiff,
-    nedoplatek: doplatek > 0,
-  }
-}
-function validateSettlementInputs(inputs = {}, config = {}) {
-  const values = normalizeSettlementInputs(inputs)
-  const errors = []
-  if (!values.driver) errors.push('Vyplň jméno řidiče.')
-  if (values.kmStart < 0) errors.push('Počáteční km nemohou být záporné.')
-  if (values.kmEnd < 0) errors.push('Konečné km nemohou být záporné.')
-  if (values.kmEnd < values.kmStart) errors.push('Konečný stav tachometru je menší než počáteční.')
-  if (values.trzba <= 0) errors.push('Tržba musí být větší než 0.')
-  ;['pristavne','palivo','myti','kartou','fakturou','jine','cashActual','iacCount','shkmCount'].forEach((key) => {
-    if (values[key] < 0) errors.push(`${key} nesmí být záporné.`)
-  })
-  ;['iacCount','shkmCount'].forEach((key) => {
-    if (!Number.isInteger(values[key])) errors.push(`${key} musí být celé číslo.`)
-  })
-  const metrics = computeSettlementMetrics(inputs, config)
-  if (metrics.invoiceKm > metrics.kmReal) errors.push(`Smluvní km (${metrics.invoiceKm.toLocaleString('cs-CZ')}) jsou vyšší než najeté km (${metrics.kmReal.toLocaleString('cs-CZ')}).`)
-  return [...new Set(errors)]
-}
-function settlementForShift(data, shiftId) {
-  return (data.settlements || []).find((s) => s.shiftId === shiftId)
-}
-function canOpenSettlement(shift) {
-  return Boolean(shift?.actualEndAt || shift?.status === 'completed')
-}
-function settlementNeedsDriverAction(settlement) {
-  return !settlement || ['draft', 'returned'].includes(settlement.status)
-}
-function settlementIsClosed(settlement) {
-  return ['submitted', 'approved'].includes(settlement?.status)
-}
-function shiftNeedsSettlementAction(shift, settlement) {
-  return canOpenSettlement(shift) && settlementNeedsDriverAction(settlement)
-}
-function shiftIsInStartWindow(shift, now = Date.now()) {
-  if (!shift || shift.status !== 'confirmed' || shift.actualStartAt) return false
-  const [startAt, endAt] = intervalForShift(shift)
-  return now >= startAt - 60 * 60 * 1000 && now <= Math.max(endAt, startAt + 30 * 60 * 1000)
-}
-
 function driverInitials(name = '') {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return 'Ř'
@@ -788,14 +591,6 @@ function availabilityCoversShift(slot, shift) {
   return overlapsTimeWindow(shift.start, shift.end, slot.start, slot.end)
 }
 
-function plannedDurationMinutes(shift) {
-  const [start, end] = intervalForShift(shift)
-  return Math.max(0, Math.round((end - start) / 60000))
-}
-function hoursLabel(minutesTotal) {
-  if (minutesTotal == null) return '—'
-  return (minutesTotal / 60).toLocaleString('cs-CZ', { maximumFractionDigits: 1 }) + ' h'
-}
 function weekShifts(data, weekStart) {
   return sortByDateTime((data.shifts || []).filter((s) => s.date >= weekStart && s.date <= addDays(weekStart, 6)))
 }
@@ -854,11 +649,6 @@ function readinessText(data, helpers, weekStart) {
     r.conflicts.slice(0, 20).forEach((c) => lines.push(`${c.shift.date} ${c.shift.start}–${c.shift.end}: ${c.message}`))
   }
   return lines.join('\n')
-}
-function localStamp() {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes())
 }
 function coverageGaps(data, weekStart = startOfWeek(todayISO())) {
   const slots = data.settings?.coverageSlots || []
@@ -960,9 +750,14 @@ function useAppData(session, profile) {
   useEffect(() => {
     if (!online || !supabase) return
     let timer = null
-    const reloadSoon = () => {
+    const pendingTables = new Set()
+    const reloadSoon = (payload = {}) => {
+      if (payload?.table) pendingTables.add(payload.table)
       clearTimeout(timer)
-      timer = setTimeout(() => reloadOnline(true), 450)
+      timer = setTimeout(() => {
+        pendingTables.clear()
+        reloadOnline(true)
+      }, 700)
     }
     const realtimeTables = ['drivers', 'vehicles', 'shifts', 'shift_settlements', 'absences', 'availability', 'service_blocks', 'swap_requests', 'notifications', 'push_subscriptions', 'audit_logs', 'app_settings']
     const ch = supabase.channel(`rbshift-live-${session?.user?.id || 'user'}`)
@@ -1008,8 +803,13 @@ function useAppData(session, profile) {
           })
           .catch((err) => {
             pendingSyncs.current -= 1
-            writeStore(prev)
-            setData(prev)
+            const shouldRollback = options.rollbackOnError !== false
+            if (shouldRollback) {
+              writeStore(prev)
+              setData(prev)
+            } else {
+              writeStore(next)
+            }
             setSyncState((s) => ({ ...s, saving: false, error: err.message || String(err) }))
             options.onError?.(err)
           })
@@ -1199,7 +999,7 @@ function AppTopBar({ title, companyName, unreadCount, notifications, profile, cu
     </div>
     <div className="app-topbar-actions">
       <div className="topbar-menu-wrap">
-        <button className="topbar-icon-button" aria-expanded={notificationsOpen} onClick={openNotifications}>🔔{unreadCount > 0 && <span>{unreadCount}</span>}</button>
+        <button className="topbar-icon-button" aria-label="Notifikace" aria-expanded={notificationsOpen} onClick={openNotifications}><Bell size={20} strokeWidth={2.2} aria-hidden="true" />{unreadCount > 0 && <span>{unreadCount}</span>}</button>
         {notificationsOpen && <div className="topbar-dropdown notification-dropdown">
           <b>Nepřečtené notifikace</b>
           <div className="topbar-dropdown-list">
@@ -1219,7 +1019,7 @@ function AppTopBar({ title, companyName, unreadCount, notifications, profile, cu
           <button onClick={() => { setUserMenuOpen(false); signOut?.() }} disabled={!signOut}>Odhlásit</button>
         </div>}
       </div>
-      <button className="topbar-icon-button" aria-label="Nastavení" onClick={() => canOpenSettings && setPage('settings')} disabled={!canOpenSettings}>⚙️</button>
+      <button className="topbar-icon-button" aria-label="Nastavení" onClick={() => canOpenSettings && setPage('settings')} disabled={!canOpenSettings}><SettingsIcon size={20} strokeWidth={2.2} aria-hidden="true" /></button>
     </div>
   </header>
 }

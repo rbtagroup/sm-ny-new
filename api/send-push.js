@@ -69,6 +69,21 @@ const profileForToken = async (supabase, token) => {
 }
 
 const SWAP_DRIVER_NOTICE_TYPES = new Set(['swap-offer', 'swap-accepted'])
+const PUSH_CONCURRENCY = Number(process.env.PUSH_DELIVERY_CONCURRENCY || 8)
+
+const runWithConcurrency = async (items, limit, worker) => {
+  const output = []
+  let index = 0
+  const workerCount = Math.max(1, Math.min(Number(limit) || 1, items.length || 1))
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (index < items.length) {
+      const currentIndex = index
+      index += 1
+      output[currentIndex] = await worker(items[currentIndex], currentIndex)
+    }
+  }))
+  return output
+}
 
 const canSendSwapNotice = async (supabase, notice, callerDriverId) => {
   if (!callerDriverId || !notice.targetDriverId || !notice.shiftId || !SWAP_DRIVER_NOTICE_TYPES.has(notice.type)) return false
@@ -192,7 +207,7 @@ export default async function handler(req, res) {
       targetDriverId: notice.targetDriverId,
       recipients: recipients.length,
     })
-    for (const sub of recipients) {
+    const noticeResults = await runWithConcurrency(recipients, PUSH_CONCURRENCY, async (sub) => {
       try {
         await webpush.sendNotification(sub.subscription, JSON.stringify({
           title: notice.title,
@@ -203,15 +218,16 @@ export default async function handler(req, res) {
           type: notice.type,
           requireInteraction: ['new-shift', 'shift-change', 'swap-offer', 'swap-accepted', 'open-shift-interest'].includes(notice.type),
         }))
-        results.push({ id: sub.id, ok: true })
+        return { id: sub.id, noticeId: notice.id, ok: true }
       } catch (err) {
         const statusCode = err?.statusCode || err?.status
-        results.push({ id: sub.id, ok: false, statusCode, error: err?.message || String(err) })
         if (statusCode === 404 || statusCode === 410) {
           await supabase.from('push_subscriptions').update({ active: false, last_seen_at: new Date().toISOString() }).eq('id', sub.id)
         }
+        return { id: sub.id, noticeId: notice.id, ok: false, statusCode, error: err?.message || String(err) }
       }
-    }
+    })
+    results.push(...noticeResults)
   }
 
   const sent = results.filter((r) => r.ok).length

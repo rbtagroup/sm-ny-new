@@ -176,6 +176,9 @@ $$;
 
 grant execute on function public.rb_push_subscription_matches_profile(uuid, text, text) to authenticated;
 
+alter table public.notifications
+  add column if not exists deleted_by jsonb not null default '[]'::jsonb;
+
 create or replace function public.rb_guard_notification_update()
 returns trigger
 language plpgsql
@@ -197,10 +200,71 @@ begin
     or new.payload is distinct from old.payload
     or new.created_at is distinct from old.created_at
   then
-    raise exception 'Only read_by can be updated on notifications.';
+    raise exception 'Only read_by and deleted_by can be updated on notifications.';
   end if;
 
   return new;
+end;
+$$;
+
+create or replace function public.rb_guard_swap_request_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_driver text := public.rb_current_driver_id();
+begin
+  if public.rb_is_staff() then
+    return new;
+  end if;
+
+  if current_driver is null then
+    raise exception 'Driver profile is required.';
+  end if;
+
+  if old.driver_id = current_driver then
+    if old.status not in ('pending', 'accepted')
+      or new.status <> 'cancelled'
+      or new.id is distinct from old.id
+      or new.shift_id is distinct from old.shift_id
+      or new.driver_id is distinct from old.driver_id
+      or new.target_mode is distinct from old.target_mode
+      or new.target_driver_id is distinct from old.target_driver_id
+      or new.accepted_by_driver_id is distinct from old.accepted_by_driver_id
+      or new.approved_driver_id is distinct from old.approved_driver_id
+      or new.reason is distinct from old.reason
+      or new.rejected_reason is distinct from old.rejected_reason
+      or new.created_at is distinct from old.created_at
+      or new.accepted_at is distinct from old.accepted_at
+    then
+      raise exception 'Driver can only cancel own pending swap request.';
+    end if;
+
+    return new;
+  end if;
+
+  if old.status = 'pending'
+    and (old.target_mode = 'all' or old.target_driver_id = current_driver)
+    and new.status = 'accepted'
+    and new.accepted_by_driver_id = current_driver
+    and new.id is not distinct from old.id
+    and new.shift_id is not distinct from old.shift_id
+    and new.driver_id is not distinct from old.driver_id
+    and new.target_mode is not distinct from old.target_mode
+    and new.target_driver_id is not distinct from old.target_driver_id
+    and new.approved_driver_id is not distinct from old.approved_driver_id
+    and new.reason is not distinct from old.reason
+    and new.rejected_reason is not distinct from old.rejected_reason
+    and new.created_at is not distinct from old.created_at
+    and new.cancelled_at is not distinct from old.cancelled_at
+    and new.resolved_at is not distinct from old.resolved_at
+  then
+    return new;
+  end if;
+
+  raise exception 'Driver is not allowed to update this swap request.';
 end;
 $$;
 
@@ -258,6 +322,12 @@ create trigger notifications_guard_update
 before update on public.notifications
 for each row
 execute function public.rb_guard_notification_update();
+
+drop trigger if exists swap_requests_guard_update on public.swap_requests;
+create trigger swap_requests_guard_update
+before update on public.swap_requests
+for each row
+execute function public.rb_guard_swap_request_update();
 
 
 
@@ -436,28 +506,49 @@ drop policy if exists "swap_requests_select_authenticated" on public.swap_reques
 drop policy if exists "swap_requests_insert_authenticated" on public.swap_requests;
 drop policy if exists "swap_requests_update_authenticated" on public.swap_requests;
 drop policy if exists "swap_requests_delete_staff" on public.swap_requests;
+drop policy if exists "swap_requests_select_scoped" on public.swap_requests;
+drop policy if exists "swap_requests_insert_scoped" on public.swap_requests;
+drop policy if exists "swap_requests_update_scoped" on public.swap_requests;
 
 alter table public.swap_requests enable row level security;
 
--- Uvolněno kvůli upsert/live sync chování aplikace a volným směnám.
-create policy "swap_requests_select_authenticated"
+create policy "swap_requests_select_scoped"
 on public.swap_requests
 for select
 to authenticated
-using (auth.uid() is not null);
+using (
+  (select public.rb_is_staff())
+  or driver_id = (select public.rb_current_driver_id())
+  or target_driver_id = (select public.rb_current_driver_id())
+  or accepted_by_driver_id = (select public.rb_current_driver_id())
+  or target_mode = 'all'
+);
 
-create policy "swap_requests_insert_authenticated"
+create policy "swap_requests_insert_scoped"
 on public.swap_requests
 for insert
 to authenticated
-with check (auth.uid() is not null);
+with check (
+  (select public.rb_is_staff())
+  or driver_id = (select public.rb_current_driver_id())
+);
 
-create policy "swap_requests_update_authenticated"
+create policy "swap_requests_update_scoped"
 on public.swap_requests
 for update
 to authenticated
-using (auth.uid() is not null)
-with check (auth.uid() is not null);
+using (
+  (select public.rb_is_staff())
+  or driver_id = (select public.rb_current_driver_id())
+  or target_driver_id = (select public.rb_current_driver_id())
+  or accepted_by_driver_id = (select public.rb_current_driver_id())
+  or target_mode = 'all'
+)
+with check (
+  (select public.rb_is_staff())
+  or driver_id = (select public.rb_current_driver_id())
+  or accepted_by_driver_id = (select public.rb_current_driver_id())
+);
 
 create policy "swap_requests_delete_staff"
 on public.swap_requests
@@ -608,6 +699,7 @@ drop policy if exists "audit_logs_select_staff" on public.audit_logs;
 drop policy if exists "audit_logs_select_authenticated" on public.audit_logs;
 drop policy if exists "audit_logs_insert_authenticated" on public.audit_logs;
 drop policy if exists "audit_logs_update_authenticated" on public.audit_logs;
+drop policy if exists "audit_logs_update_staff" on public.audit_logs;
 drop policy if exists "audit_logs_delete_staff" on public.audit_logs;
 
 drop policy if exists "audit_logs_select" on public.audit_logs;
@@ -617,12 +709,11 @@ drop policy if exists "audit_logs_delete" on public.audit_logs;
 
 alter table public.audit_logs enable row level security;
 
--- Uvolněno kvůli aktuálnímu upsert/select chování aplikace.
-create policy "audit_logs_select_authenticated"
+create policy "audit_logs_select_staff"
 on public.audit_logs
 for select
 to authenticated
-using (auth.uid() is not null);
+using ((select public.rb_is_staff()));
 
 create policy "audit_logs_insert_authenticated"
 on public.audit_logs
@@ -630,12 +721,12 @@ for insert
 to authenticated
 with check (auth.uid() is not null);
 
-create policy "audit_logs_update_authenticated"
+create policy "audit_logs_update_staff"
 on public.audit_logs
 for update
 to authenticated
-using (auth.uid() is not null)
-with check (auth.uid() is not null);
+using ((select public.rb_is_staff()))
+with check ((select public.rb_is_staff()));
 
 create policy "audit_logs_delete_staff"
 on public.audit_logs

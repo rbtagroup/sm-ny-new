@@ -5,8 +5,9 @@
 Po nasazení balíčku nebo lokálně v projektu spusť:
 
 ```bash
-npm install
-npm run generate:vapid
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run generate:vapid
 ```
 
 Uvidíš:
@@ -50,10 +51,10 @@ Deployments → Redeploy
 V Supabase SQL Editoru spusť:
 
 ```text
-supabase/rls-final-fix.sql
+supabase/migrations/20260511101956_harden_sync_notifications.sql
 ```
 
-Patch obsahuje i pravidla pro `push_subscriptions`.
+Patch obsahuje i pravidla pro bezpečnější notifikace, audit, výměny směn a RPC funkce, které klient používá pro citlivé řidičské akce. Pro novou instalaci spusť základní schema a potom migrace ze složky `supabase/migrations`.
 
 ## 5) Test v aplikaci
 

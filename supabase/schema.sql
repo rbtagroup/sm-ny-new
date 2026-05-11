@@ -111,6 +111,7 @@ create table if not exists public.notifications (
   body text,
   payload jsonb not null default '{}'::jsonb,
   read_by jsonb not null default '[]'::jsonb,
+  deleted_by jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -291,7 +292,7 @@ begin
     or new.payload is distinct from old.payload
     or new.created_at is distinct from old.created_at
   then
-    raise exception 'Only read_by can be updated on notifications.';
+    raise exception 'Only read_by and deleted_by can be updated on notifications.';
   end if;
 
   return new;
@@ -349,14 +350,21 @@ create policy "swap_select_staff_or_involved" on public.swap_requests for select
   or accepted_by_driver_id = public.current_driver_id()
   or target_mode in ('all','open')
 );
-create policy "swap_insert_signed" on public.swap_requests for insert with check (auth.uid() is not null);
+create policy "swap_insert_signed" on public.swap_requests for insert with check (
+  public.current_role() in ('dispatcher','admin')
+  or driver_id = public.current_driver_id()
+);
 create policy "swap_update_staff_or_involved" on public.swap_requests for update using (
   public.current_role() in ('dispatcher','admin')
-  or status = 'open'
   or driver_id = public.current_driver_id()
   or target_driver_id = public.current_driver_id()
+  or accepted_by_driver_id = public.current_driver_id()
   or target_mode = 'all'
-) with check (auth.uid() is not null);
+) with check (
+  public.current_role() in ('dispatcher','admin')
+  or driver_id = public.current_driver_id()
+  or accepted_by_driver_id = public.current_driver_id()
+);
 create policy "swap_delete_staff" on public.swap_requests for delete using (public.current_role() in ('dispatcher','admin'));
 
 -- Notifications

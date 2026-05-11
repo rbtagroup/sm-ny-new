@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'))
 
 // Při každém buildu vytvoří unikátní cache name pro service worker.
-// Formát: "<verze>-<timestamp>"  (např. "1.3.18-1714659012345")
+// Formát: "<verze>-<timestamp>"  (např. "1.3.19-1714659012345")
 const BUILD_ID = `${pkg.version}-${Date.now()}`
 
 // Plugin: po skončení buildu nahradí __BUILD_ID__ ve výsledném dist/sw.js.
@@ -37,6 +37,19 @@ export default defineConfig({
   base: './',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+  },
+  build: {
+    rolldownOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('/react') || id.includes('/react-dom')) return 'react-vendor'
+          if (id.includes('@supabase')) return 'supabase-vendor'
+          if (id.includes('lucide-react')) return 'ui-vendor'
+          return 'vendor'
+        },
+      },
+    },
   },
   server: {
     host: true,

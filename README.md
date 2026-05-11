@@ -1,72 +1,66 @@
-# RBSHIFT v5.4.5 – UX cleanup dispečinku
+# RBSHIFT
 
-Stabilizační verze zaměřená na geometrii dispečerské aplikace, přehlednost dvou-týdenního plánu a odstranění zbytečných doprovodných textů.
-
-Nově:
-
-- verze aplikace `1.3.11-v5.4.6-notify-interest-fix`
-- kalendář směn zobrazuje **2 týdny pod sebou**
-- opravené přesahy v týdenním plánu
-- sekce **Chybí obsazení** je rozbalovací
-- sekce **Kolize k řešení** je rozbalovací
-- výchozí směny: **Denní 07:00–19:00**, **Noční 19:00–07:00**
-- časy směn lze upravit v Nastavení
-- Audit provozu je zjednodušený a rozbalovací
-- odstraněné provozně zbytečné texty o Supabase/datovém modelu
-- Notifikace mají u každé položky tlačítko **Smazat**
-- Dostupnost řidiče lze zadat opakovaně podle dne v týdnu nebo na konkrétní datum a čas
-- Historie změn je zkrácená, starší záznamy jsou rozbalovací
-- řidičský režim má méně rušivý panel úložiště
-
-## Důležité po nasazení
-
-Pokud chceš používat dostupnost na konkrétní datum, spusť v Supabase SQL Editoru:
-
-```text
-supabase/ux-cleanup-v5-4-5.sql
-```
-
-Nebo spusť celý aktualizovaný:
-
-```text
-supabase/rls-final-fix.sql
-```
+PWA plánovač směn pro taxi provoz. Aktuální balíček je `1.3.19` a projekt používá `pnpm` přes Corepack.
 
 ## Lokální spuštění
 
 ```bash
-npm install
-npm run dev
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
-## Build
+## Ověření
 
 ```bash
-npm run build
+pnpm test
+pnpm run build
+pnpm audit --prod
 ```
 
-## Vercel / Supabase
+Pro kompletní lokální kontrolu:
 
-Ponech stávající proměnné ve Vercelu. Tato verze nemění VAPID ani Supabase připojení.
-
-
-## v5.4.6 – oprava notifikací a zájmů o volné směny
-
-- zájem o volnou směnu se ukládá jen do `swap_requests`, nezkouší upravovat cizí/open směnu
-- převzetí nabídnuté směny řidičem se ukládá jen do `swap_requests`; samotnou směnu převádí až dispečer/admin
-- notifikace se při mazání skryjí pro daného uživatele přes `read_by`, nemažou se globálně
-- karta směny v týdenním plánu ukazuje počet zájemců o volnou směnu
-- build ověřen přes `npm run build`
-
-## v5.4.7 – Senior refactor
-- vyčištěné provozní UI bez backendových vysvětlivek v běžných obrazovkách
-- opravy layout přesahů a horizontálního scrollu
-- modální formuláře pro řidiče a vozidla přímo v aplikaci
-- dostupnost řidiče jako konkrétní DateTime rozsah od/do
-- kompaktnější historie, audit a provozní sekce
-
-Po nasazení spusť v Supabase také:
-
-```sql
-supabase/senior-refactor-v5-4-7.sql
+```bash
+pnpm run verify
 ```
+
+## Nasazení
+
+Vercel používá příkazy z `vercel.json`:
+
+```bash
+corepack enable && pnpm install --frozen-lockfile
+corepack enable && pnpm run build
+```
+
+Po nasazení databázových změn spusť v Supabase migrace ze složky `supabase/migrations`. Aktuální bezpečnostní patch je:
+
+```text
+supabase/migrations/20260511101956_harden_sync_notifications.sql
+```
+
+Ten doplňuje oddělený stav smazaných notifikací (`deleted_by`), zpřísňuje RLS pro výměny směn, vrací audit logy do režimu staff-only pro čtení/upravy a přidává RPC funkce pro citlivé akce:
+
+- `rb_request_swap`
+- `rb_cancel_swap_request`
+- `rb_accept_swap_request`
+- `rb_resolve_swap_request`
+- `rb_set_notification_state`
+- `rb_insert_audit_log`
+
+## Důležité proměnné
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `VAPID_PUBLIC_KEY` / `VITE_VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT`
+- `PUSH_DELIVERY_SECRET` nebo odpovídající scheduler secret
+- `PUSH_DELIVERY_CONCURRENCY` volitelně pro počet paralelně odesílaných push notifikací
+
+## Poznámky
+
+- `package-lock.json` v projektu není potřeba; zdrojem pravdy je `pnpm-lock.yaml`.
+- Service worker a `index.html` zůstávají bez cache, hashované assety se cachují dlouhodobě.
+- Serverové push notifikace se odesílají s omezenou paralelností přes `PUSH_DELIVERY_CONCURRENCY` nebo výchozí hodnotu `8`.
