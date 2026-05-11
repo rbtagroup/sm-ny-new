@@ -51,7 +51,7 @@ Deployments → Redeploy
 V Supabase SQL Editoru spusť:
 
 ```text
-supabase/migrations/20260511101956_harden_sync_notifications.sql
+supabase/migrations/20260511152914_harden_sync_notifications.sql
 ```
 
 Patch obsahuje i pravidla pro bezpečnější notifikace, audit, výměny směn a RPC funkce, které klient používá pro citlivé řidičské akce. Pro novou instalaci spusť základní schema a potom migrace ze složky `supabase/migrations`.

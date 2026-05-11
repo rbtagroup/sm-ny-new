@@ -36,7 +36,7 @@ corepack enable && pnpm run build
 Po nasazení databázových změn spusť v Supabase migrace ze složky `supabase/migrations`. Aktuální bezpečnostní patch je:
 
 ```text
-supabase/migrations/20260511101956_harden_sync_notifications.sql
+supabase/migrations/20260511152914_harden_sync_notifications.sql
 ```
 
 Ten doplňuje oddělený stav smazaných notifikací (`deleted_by`), zpřísňuje RLS pro výměny směn, vrací audit logy do režimu staff-only pro čtení/upravy a přidává RPC funkce pro citlivé akce:
