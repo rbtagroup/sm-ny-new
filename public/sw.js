@@ -27,7 +27,6 @@ const isSameOrigin = (url) => url.origin === self.location.origin;
 // vždy ze sítě, aby řidiči po deployi neviděli starý HTML s odkazy na již
 // neexistující ./assets/index-XXX.js.
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => cache.addAll(CORE_ASSETS))

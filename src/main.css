@@ -147,3 +147,72 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   .app-with-topbar .sidebar .nav button{font-size:13px;padding:8px 10px}
 }
 @media (max-width:1000px){.app-topbar-title span{display:none}}
+
+/* mobile admin polish: keep page actions compact and predictable */
+@media (max-width:640px){
+  .app-with-topbar .topbar{gap:12px}
+  .app-with-topbar .topbar .actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    width:100%;
+  }
+  .app-with-topbar .topbar .actions>*{min-width:0}
+  .app-with-topbar .topbar .actions>button,
+  .app-with-topbar .topbar .actions>.ghost,
+  .app-with-topbar .topbar .actions>.primary,
+  .app-with-topbar .topbar .actions>.danger,
+  .app-with-topbar .topbar .actions>.searchbox{
+    width:100%!important;
+    max-width:none;
+  }
+  .app-with-topbar .topbar .actions>button{
+    min-height:44px;
+    padding:10px 12px;
+    border-radius:14px;
+    line-height:1.2;
+    white-space:normal;
+  }
+  .app-with-topbar .topbar .actions>button:only-child{grid-column:1/-1}
+}
+@media (max-width:340px){
+  .app-with-topbar .topbar .actions{grid-template-columns:1fr}
+}
+
+/* PWA update prompt */
+.update-toast{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:130;
+  width:min(420px,calc(100vw - 28px));
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  padding:13px;
+  border:1px solid rgba(245,199,106,.36);
+  border-radius:18px;
+  background:rgba(8,17,31,.97);
+  box-shadow:var(--shadow);
+  backdrop-filter:blur(16px);
+}
+.update-toast-copy{display:grid;gap:3px;min-width:0}
+.update-toast-copy b{font-size:14px}
+.update-toast-copy span{color:var(--muted);font-size:12px;line-height:1.35}
+.update-toast-actions{display:flex;gap:8px}
+.update-toast-actions button{min-height:40px;padding:9px 12px;border-radius:13px}
+.update-toast-actions button:disabled{opacity:.55;cursor:not-allowed}
+.driver-shell-v2 .update-toast{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+@media (max-width:640px){
+  .update-toast{
+    left:12px;
+    right:12px;
+    bottom:calc(12px + env(safe-area-inset-bottom,0px));
+    width:auto;
+    grid-template-columns:1fr;
+  }
+  .update-toast-actions{display:grid;grid-template-columns:1fr 1fr}
+  .update-toast-actions button{width:100%}
+  .driver-shell-v2 .update-toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+}

@@ -862,30 +862,53 @@ function App({ session = null, profile = null, signOut = null }) {
   useEffect(() => { if (onlineMode && profile?.role === 'driver' && ownDriver?.id) setCurrentDriverId(ownDriver.id) }, [onlineMode, profile?.role, ownDriver?.id])
   const isDriver = role === 'driver'
   const currentDriver = onlineMode && isDriver ? ownDriver : (data.drivers.find((d) => d.id === currentDriverId) || data.drivers[0])
+  const [updateWorker, setUpdateWorker] = useState(null)
+  const [updateApplying, setUpdateApplying] = useState(false)
+  const updateReloadRequestedRef = useRef(false)
+  const updateReloadTimerRef = useRef(null)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
+    let mounted = true
     let reloading = false
+    const showUpdate = (sw) => {
+      if (!sw || !navigator.serviceWorker.controller || !mounted) return
+      setUpdateWorker(sw)
+      setUpdateApplying(false)
+    }
     navigator.serviceWorker.register('./sw.js').then((reg) => {
-      // Když je nový SW v 'waiting' stavu, požádej ho, ať okamžitě převezme řízení.
-      const promote = (sw) => sw && sw.postMessage('SKIP_WAITING')
-      if (reg.waiting) promote(reg.waiting)
+      if (reg.waiting) showUpdate(reg.waiting)
       reg.addEventListener('updatefound', () => {
         const installing = reg.installing
         if (!installing) return
         installing.addEventListener('statechange', () => {
-          if (installing.state === 'installed' && navigator.serviceWorker.controller) promote(installing)
+          if (installing.state === 'installed') showUpdate(installing)
         })
       })
     }).catch(() => null)
-    // Po převzetí řízení novým SW jednou přenačti stránku, aby se odebraly
-    // staré assety z paměti a načetly se nové z dist/.
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloading) return
+    const handleControllerChange = () => {
+      if (!updateReloadRequestedRef.current || reloading) return
       reloading = true
+      if (updateReloadTimerRef.current) window.clearTimeout(updateReloadTimerRef.current)
       window.location.reload()
-    })
+    }
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
+    return () => {
+      mounted = false
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
+    }
   }, [])
+  const applyPwaUpdate = () => {
+    if (updateApplying) return
+    updateReloadRequestedRef.current = true
+    setUpdateApplying(true)
+    updateWorker?.postMessage('SKIP_WAITING')
+    updateReloadTimerRef.current = window.setTimeout(() => window.location.reload(), 1800)
+  }
+  const dismissPwaUpdate = () => {
+    if (updateApplying) return
+    setUpdateWorker(null)
+  }
   useEffect(() => {
     if (isDriver && !['driver', 'notifications', 'availability', 'driverSettings'].includes(page)) setPage('driver')
     if (!isDriver && page === 'driver') setPage('planner')
@@ -902,6 +925,7 @@ function App({ session = null, profile = null, signOut = null }) {
     ['DISPEČINK', dispatcherNavItems],
     ...(role === 'admin' ? [['ADMIN', adminNavItems]] : [])
   ]
+  const updateToast = updateWorker && <UpdateReadyToast applying={updateApplying} onRefresh={applyPwaUpdate} onDismiss={dismissPwaUpdate} />
 
   if (isDriver) return <div className="driver-shell-v2">
     <header className="driver-topbar-v2">
@@ -917,6 +941,7 @@ function App({ session = null, profile = null, signOut = null }) {
     <nav className="driver-bottom-nav" aria-label="Řidičská navigace">
       {nav.map(([key, label, Icon]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span className="driver-nav-icon"><Icon size={24} strokeWidth={2} />{key === 'notifications' && unreadForCurrent > 0 && <em>{unreadForCurrent}</em>}</span><b>{label}</b></button>)}
     </nav>
+    {updateToast}
   </div>
 
   return <div className="app app-with-topbar">
@@ -959,6 +984,20 @@ function App({ session = null, profile = null, signOut = null }) {
       {page === 'history' && <History data={data} />}
       {page === 'settings' && <Settings data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} />}
     </main>
+    {updateToast}
+  </div>
+}
+
+function UpdateReadyToast({ applying, onRefresh, onDismiss }) {
+  return <div className="update-toast" role="status" aria-live="polite">
+    <div className="update-toast-copy">
+      <b>Je dostupná nová verze</b>
+      <span>Obnovit aplikaci a načíst poslední změny.</span>
+    </div>
+    <div className="update-toast-actions">
+      <button className="primary" onClick={onRefresh} disabled={applying}>{applying ? 'Obnovuji…' : 'Obnovit'}</button>
+      <button className="ghost" onClick={onDismiss} disabled={applying}>Později</button>
+    </div>
   </div>
 }
 
