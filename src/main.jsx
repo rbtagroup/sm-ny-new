@@ -2044,10 +2044,12 @@ function Drivers({ data, commit }) {
     <PageTitle title="Řidiči"><button className="primary" onClick={openCreate}>+ Přidat řidiče</button></PageTitle>
     <div className="card">
       <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem</span></div>
-      <div className="stack compact-list">{data.drivers.map((d) => <div className="log" key={d.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openEdit(d)} onKeyDown={(e) => { if (e.key === 'Enter') openEdit(d) }}>
-        <div className="split"><div><b>{d.name || 'Bez jména'}</b><br /><small className="muted">{d.phone || 'Bez telefonu'} · {d.email || 'Bez e-mailu'}{d.profileId ? ' · profil: ' + d.profileId.slice(0, 8) + '…' : ''}</small></div><span className={d.active ? 'pill good' : 'pill bad'}>{d.active ? 'Aktivní' : 'Neaktivní'}</span></div>
-        {d.note && <p className="muted compact-note">{d.note}</p>}
-        <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+      <div className="stack compact-list">{data.drivers.map((d) => <div className="log list-row" key={d.id}>
+        <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(d) } }}>
+          <div className="split"><div><b>{d.name || 'Bez jména'}</b><br /><small className="muted">{d.phone || 'Bez telefonu'} · {d.email || 'Bez e-mailu'}{d.profileId ? ' · profil: ' + d.profileId.slice(0, 8) + '…' : ''}</small></div><span className={d.active ? 'pill good' : 'pill bad'}>{d.active ? 'Aktivní' : 'Neaktivní'}</span></div>
+          {d.note && <p className="muted compact-note">{d.note}</p>}
+        </div>
+        <div className="row-actions list-row-actions">
           <button onClick={() => openEdit(d)}>Upravit</button>
           {d.active === false ? <button onClick={() => restore(d)}>Obnovit</button> : <button className="danger-mini" onClick={() => softDelete(d)}>Smazat</button>}
         </div>
@@ -2143,9 +2145,11 @@ function Vehicles({ data, commit }) {
         <div className="stack compact-list">{data.vehicles.map((v) => {
           const year = extractVehicleYear(v.note)
           const note = vehicleNoteBody(v.note)
-          return <div className="log" key={v.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openEdit(v)} onKeyDown={(e) => { if (e.key === 'Enter') openEdit(v) }}>
-            <div className="split"><div><b>{v.name || 'Bez modelu'}</b><br /><small className="muted">{v.plate || 'Bez SPZ'}{year ? ` · ${year}` : ''}{note ? ' · ' + note : ''}</small></div><span className={v.active ? 'pill good' : 'pill bad'}>{v.active ? 'Aktivní' : 'Neaktivní'}</span></div>
-            <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+          return <div className="log list-row" key={v.id}>
+            <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(v) } }}>
+              <div className="split"><div><b>{v.name || 'Bez modelu'}</b><br /><small className="muted">{v.plate || 'Bez SPZ'}{year ? ` · ${year}` : ''}{note ? ' · ' + note : ''}</small></div><span className={v.active ? 'pill good' : 'pill bad'}>{v.active ? 'Aktivní' : 'Neaktivní'}</span></div>
+            </div>
+            <div className="row-actions list-row-actions">
               <button onClick={() => openEdit(v)}>Upravit</button>
               {v.active === false ? <button onClick={() => restoreVehicle(v)}>Obnovit</button> : <button className="danger-mini" onClick={() => softDelete(v)}>Smazat</button>}
             </div>
@@ -3020,12 +3024,14 @@ function ShiftTemplates({ data, commit }) {
     <div className="card">
       <div className="section-title"><h3>Časy směn</h3><span className="pill">{activeCount} aktivní / {templates.length} celkem</span></div>
       <div className="stack compact-list">
-        {templates.map((tpl) => <div className="log" key={tpl.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openEdit(tpl)} onKeyDown={(e) => { if (e.key === 'Enter') openEdit(tpl) }}>
-          <div className="split">
-            <div><b>{tpl.name}</b><br /><small className="muted">{tpl.start}–{tpl.end} · {shiftTypeMap[tpl.type] || 'Vlastní'}</small></div>
-            <span className={tpl.active ? 'pill good' : 'pill bad'}>{tpl.active ? 'Aktivní' : 'Neaktivní'}</span>
+        {templates.map((tpl) => <div className="log list-row" key={tpl.id}>
+          <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(tpl)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(tpl) } }}>
+            <div className="split">
+              <div><b>{tpl.name}</b><br /><small className="muted">{tpl.start}–{tpl.end} · {shiftTypeMap[tpl.type] || 'Vlastní'}</small></div>
+              <span className={tpl.active ? 'pill good' : 'pill bad'}>{tpl.active ? 'Aktivní' : 'Neaktivní'}</span>
+            </div>
           </div>
-          <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+          <div className="row-actions list-row-actions">
             <button onClick={() => openEdit(tpl)}>Upravit</button>
             {tpl.active === false ? <button onClick={() => restore(tpl)}>Obnovit</button> : <button className="danger-mini" onClick={() => deactivate(tpl)}>Deaktivovat</button>}
           </div>
@@ -3468,4 +3474,8 @@ function MissingProfile({ session, error, reload }) {
   return <div className="auth-shell"><div className="card auth-card"><h2>Chybí profil uživatele</h2><p className="muted">Přihlášení existuje, ale v tabulce <b>profiles</b> není záznam pro tento účet.</p>{error && <div className="alert bad">{error}</div>}<Field label="Jméno pro profil řidiče"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><div className="row-actions" style={{ marginTop: 12 }}><button className="primary" disabled={busy} onClick={createDriverProfile}>Vytvořit profil řidiče</button><button onClick={reload}>Zkusit načíst znovu</button><button onClick={() => supabase.auth.signOut()}>Odhlásit</button></div></div></div>
 }
 
-createRoot(document.getElementById('root')).render(<Root />)
+const rootElement = document.getElementById('root')
+const root = import.meta.hot
+  ? (globalThis.__RBSHIFT_ROOT__ ||= createRoot(rootElement))
+  : createRoot(rootElement)
+root.render(<Root />)
