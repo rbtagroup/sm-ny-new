@@ -3505,7 +3505,7 @@ function MissingProfile({ session, error, reload }) {
   const [busy, setBusy] = useState(false)
   const createDriverProfile = async () => {
     setBusy(true)
-    const { error } = await supabase.from('profiles').insert({ id: session.user.id, full_name: name || session.user.email, role: 'driver' })
+    const { error } = await supabase.rpc('rb_ensure_driver_signup_profile', { display_name: name || null, phone_number: null })
     if (error) alert(error.message)
     await reload()
     setBusy(false)
