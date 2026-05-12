@@ -219,10 +219,6 @@ function hardDeleteShiftData(data, shift) {
     audit: (data.audit || []).filter((row) => !isAuditRelatedToShift(row, shift)),
   }
 }
-function confirmHardDeleteShift(shift, helpers) {
-  const label = `${formatDate(shift.date)} ${shift.start}–${shift.end} · ${helpers.driverName(shift.driverId)} · ${helpers.vehicleName(shift.vehicleId)}`
-  return prompt(`TRVALÉ SMAZÁNÍ SMĚNY\n\n${label}\n\nTato akce odstraní směnu z databáze, z řidičské aplikace, související žádosti o výměnu a notifikace. Řidiči se neposílá žádná další notifikace a nevytvoří se nový záznam v historii.\n\nPro potvrzení napiš: SMAZAT`, '') === 'SMAZAT'
-}
 function appendSwapHistory(req, text) {
   return { ...req, history: [...(req.history || []), { at: new Date().toISOString(), text }] }
 }
@@ -515,9 +511,6 @@ function isPastLocked(shift) {
   if (!shift?.date) return false
   return shift.date < todayISO()
 }
-function confirmPastChange(shift) {
-  return !isPastLocked(shift) || confirm('Tahle směna je v minulosti. Opravdu ji chceš upravit?')
-}
 function deviceLabelFromUserAgent(value = '') {
   const ua = String(value || '')
   if (/iPhone/i.test(ua)) return '📱 iPhone (Safari)'
@@ -659,9 +652,6 @@ function coverageGaps(data, weekStart = startOfWeek(todayISO())) {
     return { day, ...slot, planned, missing: Math.max(0, Number(slot.minDrivers || 0) - planned) }
   })).filter((x) => x.missing > 0)
 }
-function safeDelete(label) {
-  return prompt(`Pro potvrzení smazání napiš: SMAZAT\n${label || ''}`) === 'SMAZAT'
-}
 function todayRangeTitle() { return new Intl.DateTimeFormat('cs-CZ', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(new Date(`${todayISO()}T12:00:00`)) }
 function statusCounts(shifts) {
   return shifts.reduce((acc, s) => ({ ...acc, [s.status]: (acc[s.status] || 0) + 1 }), {})
@@ -721,7 +711,7 @@ async function copyText(text) {
     alert('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.')
   } catch {
     try { execCopy(); alert('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.') }
-    catch { prompt('Zkopíruj text ručně:', text) }
+    catch { alert('Kopírování se nepodařilo. Označ text ručně a zkopíruj ho přes Ctrl/Cmd+C.') }
   }
 }
 
@@ -1052,6 +1042,50 @@ function Modal({ title, children, onClose, className = '', backdropClassName = '
   }, [])
   return <div className={`modal-backdrop ${backdropClassName}`.trim()} role="dialog" aria-modal="true"><div className={`modal-card card ${className}`.trim()}><div className="section-title"><h3>{title}</h3><button className="ghost" onClick={onClose}>Zavřít</button></div>{children}</div></div>
 }
+function ActionSummary({ eyebrow, title, meta }) {
+  return <div className="action-summary">
+    {eyebrow && <span>{eyebrow}</span>}
+    {title && <b>{title}</b>}
+    {meta && <small>{meta}</small>}
+  </div>
+}
+function ShiftActionSummary({ shift, helpers }) {
+  if (!shift) return null
+  return <ActionSummary
+    eyebrow="Směna"
+    title={`${formatDate(shift.date)} ${shift.start}–${shift.end}`}
+    meta={`${helpers.driverName(shift.driverId)} · ${helpers.vehicleName(shift.vehicleId)}`}
+  />
+}
+function ConfirmActionModal({ title, message, warning, children, confirmLabel = 'Potvrdit', confirmClass = 'primary', onConfirm, onClose }) {
+  return <Modal title={title} onClose={onClose} className="action-modal">
+    <div className="stack action-modal-body">
+      {message && <p className="action-modal-copy">{message}</p>}
+      {warning && <div className="alert warn">{warning}</div>}
+      {children}
+      <div className="row-actions action-modal-actions">
+        <button className={confirmClass} type="button" onClick={onConfirm}>{confirmLabel}</button>
+        <button className="ghost" type="button" onClick={onClose}>Zpět</button>
+      </div>
+    </div>
+  </Modal>
+}
+function ReasonActionModal({ title, message, warning, children, label = 'Důvod', reason, placeholder = '', confirmLabel = 'Potvrdit', confirmClass = 'primary', onReasonChange, onConfirm, onClose }) {
+  return <Modal title={title} onClose={onClose} className="action-modal">
+    <form className="stack action-modal-body" onSubmit={(event) => { event.preventDefault(); onConfirm?.() }}>
+      {message && <p className="action-modal-copy">{message}</p>}
+      {warning && <div className="alert warn">{warning}</div>}
+      {children}
+      <Field label={label}>
+        <textarea value={reason || ''} onChange={(event) => onReasonChange?.(event.target.value)} placeholder={placeholder} autoFocus />
+      </Field>
+      <div className="row-actions action-modal-actions">
+        <button className={confirmClass} type="submit">{confirmLabel}</button>
+        <button className="ghost" type="button" onClick={onClose}>Zpět</button>
+      </div>
+    </form>
+  </Modal>
+}
 function SideDrawer({ title, open, onClose, children }) {
   useEffect(() => {
     if (!open) return undefined
@@ -1087,6 +1121,8 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
   const [inputs, setInputs] = useState(() => settlementDefaultInputs(shift, data, helpers, existing?.inputs))
   const [config] = useState(() => ({ ...settlementConfigDefaults, ...(existing?.config || {}) }))
   const [saving, setSaving] = useState(false)
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false)
+  const [returnReason, setReturnReason] = useState('')
   const readOnly = existing?.status === 'approved' || (isDriver && existing?.status === 'submitted')
   const metrics = useMemo(() => computeSettlementMetrics(inputs, config), [inputs, config])
   const errors = useMemo(() => validateSettlementInputs(inputs, config), [inputs, config])
@@ -1128,12 +1164,12 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
     if (status !== 'draft') onClose?.()
   }
   const returnSettlement = () => {
-    const reason = prompt('Důvod vrácení řidiči:', existing?.returnedReason || '')
-    if (reason === null) return
-    upsertSettlement('returned', reason || 'Prosím oprav výčetku.')
+    setReturnReason(existing?.returnedReason || '')
+    setReturnDialogOpen(true)
   }
   const fieldProps = { disabled: readOnly }
-  return <Modal title={`Výčetka · ${formatDate(shift.date)} ${shift.start}–${shift.end}`} onClose={onClose} className="settlement-modal" backdropClassName="settlement-modal-backdrop">
+  return <>
+  <Modal title={`Výčetka · ${formatDate(shift.date)} ${shift.start}–${shift.end}`} onClose={onClose} className="settlement-modal" backdropClassName="settlement-modal-backdrop">
     <div className="settlement-modal-head">
       <div><b>{helpers.driverName(shift.driverId)}</b><span>{helpers.vehicleName(shift.vehicleId)} · {shiftTypeName(shift)}</span></div>
       <SettlementStatusPill settlement={existing} />
@@ -1184,6 +1220,24 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
       </aside>
     </div>
   </Modal>
+  {returnDialogOpen && <ReasonActionModal
+    title="Vrátit výčetku k opravě"
+    message="Řidič dostane upozornění s důvodem, co má ve výčetce opravit."
+    label="Důvod pro řidiče"
+    reason={returnReason}
+    placeholder="Např. doplň hotovost, oprav kilometry nebo přidej poznámku."
+    confirmLabel="Vrátit k opravě"
+    confirmClass="danger"
+    onReasonChange={setReturnReason}
+    onClose={() => setReturnDialogOpen(false)}
+    onConfirm={() => {
+      setReturnDialogOpen(false)
+      upsertSettlement('returned', returnReason.trim() || 'Prosím oprav výčetku.')
+    }}
+  >
+    <ShiftActionSummary shift={shift} helpers={helpers} />
+  </ReasonActionModal>}
+  </>
 }
 
 const blankShift = (date = todayISO(), settings = {}) => { const firstTemplate = normalizeShiftTemplates(settings).find((tpl) => tpl.active); const preset = firstTemplate ? shiftTemplateValue(firstTemplate.id, settings) : null; const t = configuredShiftTimes(settings); return ({ date, start: preset?.start || t.dayStart, end: preset?.end || t.dayEnd, driverId: '', vehicleId: '', type: preset?.type || 'day', status: 'assigned', note: '', instruction: '', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }) }
@@ -1192,6 +1246,7 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
   const [repeat, setRepeat] = useState('none')
   const [template, setTemplate] = useState('custom')
   const [override, setOverride] = useState(false)
+  const [pastSaveDialogOpen, setPastSaveDialogOpen] = useState(false)
   useEffect(() => { if (!editing) setForm((f) => ({ ...f, date: initialDate })) }, [initialDate, editing])
   useEffect(() => { if (editing) { setForm({ ...blankShift(undefined, data.settings), ...editing }); setRepeat('none'); setTemplate('custom'); setOverride(false) } }, [editing])
   useEffect(() => {
@@ -1215,13 +1270,9 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     if (repeat === 'weekend') return [5, 6].map((i) => ({ ...form, date: addDays(startOfWeek(form.date), i) }))
     return [form]
   }
-  const submit = (e) => {
-    e.preventDefault()
-    if (!form.date || !form.start || !form.end) return alert('Vyplň datum a čas směny.')
+  const saveShift = () => {
     const normalizedForm = normalizeShiftForm(form)
     const wasEditing = Boolean(editing)
-    if (editing && !confirmPastChange(editing)) return
-    if (conflictMessages.length && !override) return alert('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
     if (editing) {
       const notice = normalizedForm.status === 'open'
         ? makeNotice({ title: 'Volná směna upravena', body: shiftNoticeBody(normalizedForm, helpers), targetRole: 'driver_all', type: 'open-shift-change', shiftId: editing.id })
@@ -1236,6 +1287,16 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     }
     setForm(blankShift(form.date, data.settings)); setRepeat('none'); setTemplate('custom'); setOverride(false); setEditing(null)
     onSaved?.({ editing: wasEditing })
+  }
+  const submit = (e) => {
+    e.preventDefault()
+    if (!form.date || !form.start || !form.end) return alert('Vyplň datum a čas směny.')
+    if (conflictMessages.length && !override) return alert('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
+    if (editing && isPastLocked(editing)) {
+      setPastSaveDialogOpen(true)
+      return
+    }
+    saveShift()
   }
   return <div className={variant === 'drawer' ? 'shift-form-panel' : 'card sticky-card'}>
     {variant !== 'drawer' && <div className="section-title"><h3>{editing ? 'Upravit směnu' : 'Nová směna'}</h3>{editing && <button className="ghost" onClick={() => { setEditing(null); setForm(blankShift(initialDate, data.settings)) }}>Zrušit</button>}</div>}
@@ -1256,6 +1317,19 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
       <div className="field span2 drawer-form-actions"><button className="primary" type="submit">Uložit</button><button className="ghost" type="button" onClick={onCancel}>Zrušit</button></div>
     </form>
     <div style={{ marginTop: 14 }}><ConflictBox messages={conflictMessages} /></div>
+    {pastSaveDialogOpen && <ConfirmActionModal
+      title="Upravit minulou směnu?"
+      message="Tahle směna je v minulosti. Změna se uloží do historie a může ovlivnit docházku nebo výčetku."
+      warning="Pokračuj jen pokud chceš zpětně upravit už proběhlou směnu."
+      confirmLabel="Uložit změny"
+      onClose={() => setPastSaveDialogOpen(false)}
+      onConfirm={() => {
+        setPastSaveDialogOpen(false)
+        saveShift()
+      }}
+    >
+      <ShiftActionSummary shift={editing} helpers={helpers} />
+    </ConfirmActionModal>}
   </div>
 }
 
@@ -1274,6 +1348,7 @@ function Planner({ data, helpers, commit }) {
   const [conflictsOnly, setConflictsOnly] = useState(false)
   const [shiftDrawerOpen, setShiftDrawerOpen] = useState(false)
   const [shiftFormDirty, setShiftFormDirty] = useState(false)
+  const [closeDirtyDialogOpen, setCloseDirtyDialogOpen] = useState(false)
   const [plannerToast, setPlannerToast] = useState('')
   const days = Array.from({ length: 14 }, (_, i) => addDays(weekStart, i))
   const rangeEnd = addDays(weekStart, 13)
@@ -1315,7 +1390,10 @@ function Planner({ data, helpers, commit }) {
     setShiftFormDirty(false)
   }
   const requestCloseShiftDrawer = () => {
-    if (shiftFormDirty && !confirm('Formulář má neuložené změny. Opravdu zavřít?')) return
+    if (shiftFormDirty) {
+      setCloseDirtyDialogOpen(true)
+      return
+    }
     closeShiftDrawer()
   }
   const handleShiftSaved = ({ editing: wasEditing } = {}) => {
@@ -1403,6 +1481,17 @@ function Planner({ data, helpers, commit }) {
         variant="drawer"
       />
     </SideDrawer>
+    {closeDirtyDialogOpen && <ConfirmActionModal
+      title="Zavřít bez uložení?"
+      message="Formulář má neuložené změny. Po zavření se rozepsaná směna zahodí."
+      confirmLabel="Zavřít bez uložení"
+      confirmClass="danger"
+      onClose={() => setCloseDirtyDialogOpen(false)}
+      onConfirm={() => {
+        setCloseDirtyDialogOpen(false)
+        closeShiftDrawer()
+      }}
+    />}
     {plannerToast && <div className="planner-toast" role="status">{plannerToast}</div>}
   </>
 }
@@ -1453,20 +1542,49 @@ function ShiftMini({ shift, data, helpers, setSelected }) {
 }
 function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) {
   const [settlementOpen, setSettlementOpen] = useState(false)
+  const [actionDialog, setActionDialog] = useState(null)
   const fresh = data.shifts.find((s) => s.id === shift.id) || shift
   const conflicts = helpers.conflictMessages(fresh)
   const swaps = (data.swapRequests || []).filter((r) => r.shiftId === fresh.id)
   const settlement = settlementForShift(data, fresh.id)
   const duration = actualDurationMinutes(fresh)
-  const setStatus = (status, reason = fresh.declineReason || '') => {
-    if (!confirmPastChange(fresh)) return
+  const closeActionDialog = () => setActionDialog(null)
+  const commitStatus = (status, reason = fresh.declineReason || '') => {
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, status, declineReason: reason } : s) }, statusNoticeForShift({ ...fresh, status, declineReason: reason }, status, helpers, reason)), `Detail směny: stav změněn na ${statusMap[status]}.`)
+  }
+  const requestStatus = (status, reason = fresh.declineReason || '') => {
+    if (status === 'declined') {
+      setActionDialog({ type: 'decline', status, reason })
+      return
+    }
+    if (isPastLocked(fresh)) {
+      setActionDialog({ type: 'status', status, reason })
+      return
+    }
+    commitStatus(status, reason)
+  }
+  const confirmStatusAction = () => {
+    if (!actionDialog?.status) return
+    commitStatus(actionDialog.status, actionDialog.reason || '')
+    closeActionDialog()
+  }
+  const requestEdit = () => {
+    if (isPastLocked(fresh)) {
+      setActionDialog({ type: 'editPast' })
+      return
+    }
+    setEditing(fresh)
+  }
+  const confirmEdit = () => {
+    closeActionDialog()
+    setEditing(fresh)
   }
   const checkIn = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, adminNotice('Řidič nastoupil na směnu', `${helpers.driverName(fresh.driverId)} · ${shiftNoticeBody(fresh, helpers)}`, 'attendance-start', fresh.id)), 'V detailu směny zaznamenán nástup.')
   const checkOut = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === fresh.id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, adminNotice('Řidič ukončil směnu', `${helpers.driverName(fresh.driverId)} · ${shiftNoticeBody(fresh, helpers)}`, 'attendance-end', fresh.id)), 'V detailu směny zaznamenáno ukončení.')
-  const hardDelete = () => {
-    if (!confirmHardDeleteShift(fresh, helpers)) return
+  const requestHardDelete = () => setActionDialog({ type: 'hardDelete' })
+  const confirmHardDelete = () => {
     commit((prev) => hardDeleteShiftData(prev, fresh), '')
+    closeActionDialog()
     setSelected(null)
   }
   const resolveSwap = (id, status) => {
@@ -1511,18 +1629,64 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
     {swaps.length > 0 && <div className="card-soft"><h4>Žádosti / zájemci</h4><div className="stack">{swaps.map((r) => <div className="alert warn" key={r.id}><b>{r.targetMode === 'open' ? 'Zájem o volnou směnu' : swapStatusMap[r.status]}</b> · {new Date(r.createdAt).toLocaleString('cs-CZ')}<br />Od: {helpers.driverName(r.driverId)} · Komu: {r.targetMode === 'open' ? 'volná směna' : (r.targetMode === 'driver' ? helpers.driverName(r.targetDriverId) : 'všem kolegům')}{r.acceptedByDriverId && <><br />Přijal: <b>{helpers.driverName(r.acceptedByDriverId)}</b></>}{r.approvedDriverId && <><br />Schválený řidič: <b>{helpers.driverName(r.approvedDriverId)}</b></>}{r.rejectedReason && <><br />Důvod zamítnutí: {r.rejectedReason}</>}<br />{r.reason || 'Bez důvodu'}{r.history?.length ? <div className="swap-history">{r.history.map((h, i) => <small key={i}>{new Date(h.at).toLocaleString('cs-CZ')} · {h.text}</small>)}</div> : null}{['pending','accepted'].includes(r.status) && <div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => resolveSwap(r.id, 'approved')}>Schválit a potvrdit</button><button onClick={() => resolveSwap(r.id, 'rejected')}>Zamítnout</button></div>}</div>)}</div></div>}
     <div style={{ marginTop: 12 }}><ConflictBox messages={conflicts} /></div>
     <div className="actions" style={{ marginTop: 14, justifyContent: 'flex-start' }}>
-      <button className="primary" onClick={() => setStatus('confirmed')}>Potvrdit</button>
+      <button className="primary" onClick={() => requestStatus('confirmed')}>Potvrdit</button>
       <button className="ghost" onClick={checkIn}>Nástup</button>
       <button className="ghost" onClick={checkOut}>Ukončit</button>
       <button className="ghost" onClick={() => setSettlementOpen(true)} disabled={!canOpenSettlement(fresh) && !settlement}>Výčetka</button>
-      <button className="ghost" onClick={() => setStatus('completed')}>Dokončeno</button>
-      <button className="danger" onClick={() => { const reason = prompt('Důvod odmítnutí:', fresh.declineReason || ''); setStatus('declined', reason || '') }}>Odmítnout</button>
-      <button className="ghost" onClick={() => confirmPastChange(fresh) && setEditing(fresh)}>Upravit</button>
+      <button className="ghost" onClick={() => requestStatus('completed')}>Dokončeno</button>
+      <button className="danger" onClick={() => requestStatus('declined')}>Odmítnout</button>
+      <button className="ghost" onClick={requestEdit}>Upravit</button>
       <button className="ghost" onClick={() => copyText(driverText(data, helpers, fresh.driverId))}>WhatsApp řidič</button>
-      <button className="danger" onClick={hardDelete}>Smazat natrvalo</button>
+      <button className="danger" onClick={requestHardDelete}>Smazat natrvalo</button>
     </div>
   </div>
   {settlementOpen && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={fresh} isDriver={false} onClose={() => setSettlementOpen(false)} />}
+  {actionDialog?.type === 'decline' && <ReasonActionModal
+    title="Odmítnout směnu"
+    message="Směna se označí jako odmítnutá a důvod zůstane viditelný v detailu."
+    warning={isPastLocked(fresh) ? 'Tahle směna je v minulosti. Změna ovlivní historii směny.' : ''}
+    label="Důvod odmítnutí"
+    reason={actionDialog.reason}
+    placeholder="Např. kolize, nemoc nebo provozní důvod."
+    confirmLabel="Odmítnout směnu"
+    confirmClass="danger"
+    onReasonChange={(reason) => setActionDialog((current) => current ? { ...current, reason } : current)}
+    onClose={closeActionDialog}
+    onConfirm={confirmStatusAction}
+  >
+    <ShiftActionSummary shift={fresh} helpers={helpers} />
+  </ReasonActionModal>}
+  {actionDialog?.type === 'status' && <ConfirmActionModal
+    title="Změnit minulou směnu?"
+    message={`Stav směny se změní na „${statusMap[actionDialog.status] || actionDialog.status}”.`}
+    warning="Tahle směna je v minulosti. Změna může ovlivnit historii, docházku nebo výčetku."
+    confirmLabel="Změnit stav"
+    onClose={closeActionDialog}
+    onConfirm={confirmStatusAction}
+  >
+    <ShiftActionSummary shift={fresh} helpers={helpers} />
+  </ConfirmActionModal>}
+  {actionDialog?.type === 'editPast' && <ConfirmActionModal
+    title="Upravit minulou směnu?"
+    message="Otevře se formulář pro úpravu už proběhlé směny."
+    warning="Pokračuj jen pokud chceš zpětně upravit historii směny."
+    confirmLabel="Otevřít úpravu"
+    onClose={closeActionDialog}
+    onConfirm={confirmEdit}
+  >
+    <ShiftActionSummary shift={fresh} helpers={helpers} />
+  </ConfirmActionModal>}
+  {actionDialog?.type === 'hardDelete' && <ConfirmActionModal
+    title="Trvale smazat směnu"
+    message="Tahle akce odstraní směnu z databáze, řidičské aplikace, související žádosti o výměnu, notifikace a navázané záznamy historie."
+    warning="Řidiči se neposílá žádná další notifikace a akce nejde jednoduše vrátit."
+    confirmLabel="Smazat natrvalo"
+    confirmClass="danger"
+    onClose={closeActionDialog}
+    onConfirm={confirmHardDelete}
+  >
+    <ShiftActionSummary shift={fresh} helpers={helpers} />
+  </ConfirmActionModal>}
   </>
 }
 
@@ -1723,24 +1887,98 @@ function ShiftsList({ data, helpers, commit }) {
   </>
 }
 function ShiftTable({ shifts, data, helpers, commit, compact = false }) {
-  if (!shifts.length) return <div className="empty">Žádné směny k zobrazení.</div>
-  const updateStatus = (shift, status, reason = '') => confirmPastChange(shift) && commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, status, declineReason: reason } : s) }, statusNoticeForShift({ ...shift, status, declineReason: reason }, status, helpers, reason)), `Změněn stav směny na ${statusMap[status]}.`)
+  const [actionDialog, setActionDialog] = useState(null)
+  const actionShift = actionDialog?.shift?.id ? (data.shifts.find((s) => s.id === actionDialog.shift.id) || actionDialog.shift) : null
+  const closeActionDialog = () => setActionDialog(null)
+  const commitStatus = (shift, status, reason = '') => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, status, declineReason: reason } : s) }, statusNoticeForShift({ ...shift, status, declineReason: reason }, status, helpers, reason)), `Změněn stav směny na ${statusMap[status]}.`)
+  const requestStatus = (shift, status, reason = '') => {
+    if (status === 'declined') {
+      setActionDialog({ type: 'decline', shift, status, reason: shift.declineReason || reason || '' })
+      return
+    }
+    if (isPastLocked(shift)) {
+      setActionDialog({ type: 'status', shift, status, reason })
+      return
+    }
+    commitStatus(shift, status, reason)
+  }
+  const confirmStatusAction = () => {
+    if (!actionShift || !actionDialog?.status) return
+    commitStatus(actionShift, actionDialog.status, actionDialog.reason || '')
+    closeActionDialog()
+  }
   const duplicate = (shift) => commit((prev) => ({ ...prev, shifts: [{ ...shift, id: uid('sh'), date: addDays(shift.date, 1), status: 'draft', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }, ...prev.shifts] }), 'Duplikována směna na další den.')
-  const remove = (shift) => {
-    if (!confirmPastChange(shift)) return
-    const reason = prompt('Důvod zrušení směny pro řidiče:', 'Zrušeno dispečerem')
-    if (reason === null) return
-    if (!confirm('Zrušit směnu a poslat řidiči notifikaci?')) return
-    commit((prev) => cancelShiftData(prev, shift, helpers, reason || 'Zrušeno dispečerem'), `Zrušena směna ${formatDate(shift.date)} ${shift.start}–${shift.end}.`)
+  const requestCancel = (shift) => setActionDialog({ type: 'cancel', shift, reason: 'Zrušeno dispečerem' })
+  const confirmCancel = () => {
+    if (!actionShift) return
+    const reason = actionDialog?.reason?.trim() || 'Zrušeno dispečerem'
+    commit((prev) => cancelShiftData(prev, actionShift, helpers, reason), `Zrušena směna ${formatDate(actionShift.date)} ${actionShift.start}–${actionShift.end}.`)
+    closeActionDialog()
   }
-  const hardDelete = (shift) => {
-    if (!confirmHardDeleteShift(shift, helpers)) return
-    commit((prev) => hardDeleteShiftData(prev, shift), '')
+  const requestHardDelete = (shift) => setActionDialog({ type: 'hardDelete', shift })
+  const confirmHardDelete = () => {
+    if (!actionShift) return
+    commit((prev) => hardDeleteShiftData(prev, actionShift), '')
+    closeActionDialog()
   }
-  return <div className="table-wrap"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Řidič</th><th>Vozidlo</th><th>Stav</th><th>Docházka</th><th>Kontrola</th>{!compact && <th>Akce</th>}</tr></thead><tbody>{shifts.map((s) => {
+  if (!shifts.length) return <div className="empty">Žádné směny k zobrazení.</div>
+  return <>
+  <div className="table-wrap"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Řidič</th><th>Vozidlo</th><th>Stav</th><th>Docházka</th><th>Kontrola</th>{!compact && <th>Akce</th>}</tr></thead><tbody>{shifts.map((s) => {
     const conflicts = helpers.conflictMessages(s)
-    return <tr key={s.id}><td><b>{formatDate(s.date)}</b><br /><small>{s.date}</small></td><td>{time(s.start)}–{time(s.end)}<br /><small>{shiftTypeMap[s.type] || s.type}</small></td><td>{helpers.driverName(s.driverId)}<br /><small>{s.note || 'Bez poznámky'}</small>{s.instruction && <><br /><small>Instrukce: {s.instruction}</small></>}{s.declineReason && <><br /><small>Důvod: {s.declineReason}</small></>}</td><td>{helpers.vehicleName(s.vehicleId)}</td><td><StatusPill status={s.status} helpers={helpers} />{['pending','accepted'].includes(s.swapRequestStatus) && <><br /><span className="pill warn">výměna</span></>}</td><td>{s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → {s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}<br /><small>{durationLabel(actualDurationMinutes(s))}</small></td><td>{conflicts.length ? <span className="pill bad">{conflicts.length} kolize</span> : <span className="pill good">OK</span>}</td>{!compact && <td><div className="row-actions"><button onClick={() => updateStatus(s, 'confirmed')}>Potvrdit</button><button onClick={() => { const reason = prompt('Důvod odmítnutí:', s.declineReason || ''); updateStatus(s, 'declined', reason || '') }}>Odmítnout</button><button onClick={() => updateStatus(s, 'completed')}>Hotovo</button><button onClick={() => duplicate(s)}>Duplikovat</button><button className="danger-mini" onClick={() => remove(s)}>Zrušit</button><button className="danger-mini" onClick={() => hardDelete(s)}>Smazat</button></div></td>}</tr>
+    return <tr key={s.id}><td><b>{formatDate(s.date)}</b><br /><small>{s.date}</small></td><td>{time(s.start)}–{time(s.end)}<br /><small>{shiftTypeMap[s.type] || s.type}</small></td><td>{helpers.driverName(s.driverId)}<br /><small>{s.note || 'Bez poznámky'}</small>{s.instruction && <><br /><small>Instrukce: {s.instruction}</small></>}{s.declineReason && <><br /><small>Důvod: {s.declineReason}</small></>}</td><td>{helpers.vehicleName(s.vehicleId)}</td><td><StatusPill status={s.status} helpers={helpers} />{['pending','accepted'].includes(s.swapRequestStatus) && <><br /><span className="pill warn">výměna</span></>}</td><td>{s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → {s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}<br /><small>{durationLabel(actualDurationMinutes(s))}</small></td><td>{conflicts.length ? <span className="pill bad">{conflicts.length} kolize</span> : <span className="pill good">OK</span>}</td>{!compact && <td><div className="row-actions"><button onClick={() => requestStatus(s, 'confirmed')}>Potvrdit</button><button onClick={() => requestStatus(s, 'declined')}>Odmítnout</button><button onClick={() => requestStatus(s, 'completed')}>Hotovo</button><button onClick={() => duplicate(s)}>Duplikovat</button><button className="danger-mini" onClick={() => requestCancel(s)}>Zrušit</button><button className="danger-mini" onClick={() => requestHardDelete(s)}>Smazat</button></div></td>}</tr>
   })}</tbody></table></div>
+  {actionDialog?.type === 'decline' && actionShift && <ReasonActionModal
+    title="Odmítnout směnu"
+    message="Směna se označí jako odmítnutá a důvod zůstane viditelný v detailu."
+    warning={isPastLocked(actionShift) ? 'Tahle směna je v minulosti. Změna ovlivní historii směny.' : ''}
+    label="Důvod odmítnutí"
+    reason={actionDialog.reason}
+    placeholder="Např. kolize, nemoc nebo provozní důvod."
+    confirmLabel="Odmítnout směnu"
+    confirmClass="danger"
+    onReasonChange={(reason) => setActionDialog((current) => current ? { ...current, reason } : current)}
+    onClose={closeActionDialog}
+    onConfirm={confirmStatusAction}
+  >
+    <ShiftActionSummary shift={actionShift} helpers={helpers} />
+  </ReasonActionModal>}
+  {actionDialog?.type === 'status' && actionShift && <ConfirmActionModal
+    title="Změnit minulou směnu?"
+    message={`Stav směny se změní na „${statusMap[actionDialog.status] || actionDialog.status}”.`}
+    warning="Tahle směna je v minulosti. Změna může ovlivnit historii, docházku nebo výčetku."
+    confirmLabel="Změnit stav"
+    onClose={closeActionDialog}
+    onConfirm={confirmStatusAction}
+  >
+    <ShiftActionSummary shift={actionShift} helpers={helpers} />
+  </ConfirmActionModal>}
+  {actionDialog?.type === 'cancel' && actionShift && <ReasonActionModal
+    title="Zrušit směnu"
+    message="Směna se označí jako zrušená a řidič dostane notifikaci s důvodem."
+    warning={isPastLocked(actionShift) ? 'Tahle směna je v minulosti. Zrušení ovlivní historii směny.' : ''}
+    label="Důvod zrušení pro řidiče"
+    reason={actionDialog.reason}
+    placeholder="Např. nemoc, provozní změna nebo zrušeno dispečerem."
+    confirmLabel="Zrušit směnu"
+    confirmClass="danger"
+    onReasonChange={(reason) => setActionDialog((current) => current ? { ...current, reason } : current)}
+    onClose={closeActionDialog}
+    onConfirm={confirmCancel}
+  >
+    <ShiftActionSummary shift={actionShift} helpers={helpers} />
+  </ReasonActionModal>}
+  {actionDialog?.type === 'hardDelete' && actionShift && <ConfirmActionModal
+    title="Trvale smazat směnu"
+    message="Tahle akce odstraní směnu z databáze, řidičské aplikace, související žádosti o výměnu, notifikace a navázané záznamy historie."
+    warning="Řidiči se neposílá žádná další notifikace a akce nejde jednoduše vrátit."
+    confirmLabel="Smazat natrvalo"
+    confirmClass="danger"
+    onClose={closeActionDialog}
+    onConfirm={confirmHardDelete}
+  >
+    <ShiftActionSummary shift={actionShift} helpers={helpers} />
+  </ConfirmActionModal>}
+  </>
 }
 
 const isValidEmail = (email = '') => !String(email || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())
@@ -1768,7 +2006,9 @@ function Drivers({ data, commit }) {
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [driverToDelete, setDriverToDelete] = useState('')
   const editingDriver = editing ? data.drivers.find((d) => d.id === editing) : null
+  const deleteDriver = driverToDelete ? data.drivers.find((d) => d.id === driverToDelete) : null
   const activeCount = data.drivers.filter((d) => d.active !== false).length
   const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(empty) }
   const openCreate = () => { setForm(empty); setEditing(null); setDrawerOpen(true) }
@@ -1789,9 +2029,15 @@ function Drivers({ data, commit }) {
     closeDrawer()
   }
   const softDelete = (driver = editingDriver) => {
-    if (!driver || !safeDelete('deaktivaci řidiče')) return
-    commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === driver.id ? { ...d, active: false } : d) }), 'Řidič deaktivován.')
-    if (editing === driver.id) closeDrawer()
+    if (!driver) return
+    setDriverToDelete(driver.id)
+  }
+  const confirmSoftDelete = () => {
+    if (!deleteDriver) return
+    commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === deleteDriver.id ? { ...d, active: false } : d) }), 'Řidič deaktivován.')
+    const wasEditing = editing === deleteDriver.id
+    setDriverToDelete('')
+    if (wasEditing) closeDrawer()
   }
   const restore = (driver) => commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === driver.id ? { ...d, active: true } : d) }), 'Řidič znovu aktivován.')
   return <>
@@ -1825,6 +2071,16 @@ function Drivers({ data, commit }) {
         </div>}
       </form>
     </SideDrawer>
+    {deleteDriver && <ConfirmActionModal
+      title="Deaktivovat řidiče"
+      message="Řidič se skryje jako neaktivní, ale jeho historické směny a záznamy zůstanou zachované."
+      confirmLabel="Deaktivovat řidiče"
+      confirmClass="danger"
+      onClose={() => setDriverToDelete('')}
+      onConfirm={confirmSoftDelete}
+    >
+      <ActionSummary eyebrow="Řidič" title={deleteDriver.name || 'Bez jména'} meta={deleteDriver.email || deleteDriver.phone || 'Bez kontaktu'} />
+    </ConfirmActionModal>}
   </>
 }
 
@@ -1833,8 +2089,12 @@ function Vehicles({ data, commit }) {
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [vehicleToDelete, setVehicleToDelete] = useState('')
+  const [serviceBlockToDelete, setServiceBlockToDelete] = useState('')
   const [block, setBlock] = useState({ vehicleId: '', from: todayISO(), to: todayISO(), reason: '' })
   const editingVehicle = editing ? data.vehicles.find((v) => v.id === editing) : null
+  const deleteVehicle = vehicleToDelete ? data.vehicles.find((v) => v.id === vehicleToDelete) : null
+  const deleteServiceBlock = serviceBlockToDelete ? data.serviceBlocks.find((item) => item.id === serviceBlockToDelete) : null
   const activeCount = data.vehicles.filter((v) => v.active !== false).length
   const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(empty) }
   const openCreate = () => { setForm(empty); setEditing(null); setDrawerOpen(true) }
@@ -1857,11 +2117,22 @@ function Vehicles({ data, commit }) {
     closeDrawer()
   }
   const addBlock = (e) => { e.preventDefault(); if (!block.vehicleId) return alert('Vyber vozidlo.'); commit((prev) => ({ ...prev, serviceBlocks: [{ id: uid('srv'), ...block }, ...prev.serviceBlocks] }), 'Přidána servisní blokace vozidla.'); setBlock({ vehicleId: '', from: todayISO(), to: todayISO(), reason: '' }) }
-  const removeBlock = (id) => safeDelete('servisní blokace') && commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((b) => b.id !== id) }), 'Smazána servisní blokace.')
+  const removeBlock = (id) => setServiceBlockToDelete(id)
+  const confirmRemoveBlock = () => {
+    if (!deleteServiceBlock) return
+    commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((b) => b.id !== deleteServiceBlock.id) }), 'Smazána servisní blokace.')
+    setServiceBlockToDelete('')
+  }
   const softDelete = (vehicle = editingVehicle) => {
-    if (!vehicle || !safeDelete('deaktivaci vozidla')) return
-    commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === vehicle.id ? { ...v, active: false } : v) }), 'Vozidlo deaktivováno.')
-    if (editing === vehicle.id) closeDrawer()
+    if (!vehicle) return
+    setVehicleToDelete(vehicle.id)
+  }
+  const confirmSoftDelete = () => {
+    if (!deleteVehicle) return
+    commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === deleteVehicle.id ? { ...v, active: false } : v) }), 'Vozidlo deaktivováno.')
+    const wasEditing = editing === deleteVehicle.id
+    setVehicleToDelete('')
+    if (wasEditing) closeDrawer()
   }
   const restoreVehicle = (vehicle) => commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === vehicle.id ? { ...v, active: true } : v) }), 'Vozidlo znovu aktivováno.')
   return <>
@@ -1899,6 +2170,26 @@ function Vehicles({ data, commit }) {
         </div>}
       </form>
     </SideDrawer>
+    {deleteVehicle && <ConfirmActionModal
+      title="Deaktivovat vozidlo"
+      message="Vozidlo se skryje jako neaktivní, ale historické směny a záznamy zůstanou zachované."
+      confirmLabel="Deaktivovat vozidlo"
+      confirmClass="danger"
+      onClose={() => setVehicleToDelete('')}
+      onConfirm={confirmSoftDelete}
+    >
+      <ActionSummary eyebrow="Vozidlo" title={`${deleteVehicle.name || 'Bez modelu'} · ${deleteVehicle.plate || 'Bez SPZ'}`} meta={vehicleNoteBody(deleteVehicle.note) || 'Bez poznámky'} />
+    </ConfirmActionModal>}
+    {deleteServiceBlock && <ConfirmActionModal
+      title="Smazat servisní blokaci"
+      message="Servisní blokace se odstraní z plánování dostupnosti vozidla."
+      confirmLabel="Smazat blokaci"
+      confirmClass="danger"
+      onClose={() => setServiceBlockToDelete('')}
+      onConfirm={confirmRemoveBlock}
+    >
+      <ActionSummary eyebrow="Blokace" title={`${deleteServiceBlock.from} až ${deleteServiceBlock.to}`} meta={deleteServiceBlock.reason || 'Bez důvodu'} />
+    </ConfirmActionModal>}
   </>
 }
 
@@ -1908,6 +2199,7 @@ function Availability({ data, commit, currentDriver }) {
   const [absence, setAbsence] = useState({ driverId: firstDriverId, from: todayISO(), to: todayISO(), reason: '' })
   const [slot, setSlot] = useState({ driverId: firstDriverId, kind: 'available', fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), note: '' })
   const [availabilityToast, setAvailabilityToast] = useState('')
+  const [deleteDialog, setDeleteDialog] = useState(null)
   useEffect(() => {
     if (currentDriver?.id) {
       setAbsence((f) => ({ ...f, driverId: currentDriver.id }))
@@ -1922,6 +2214,11 @@ function Availability({ data, commit, currentDriver }) {
   const driversForSelect = currentDriver ? [currentDriver] : data.drivers.filter((d) => d.active !== false)
   const absences = data.absences.filter((a) => !currentDriver || a.driverId === currentDriver.id)
   const availability = (data.availability || []).filter((a) => !currentDriver || a.driverId === currentDriver.id)
+  const deleteTarget = deleteDialog?.type === 'absence'
+    ? data.absences.find((item) => item.id === deleteDialog.id)
+    : deleteDialog?.type === 'slot'
+      ? (data.availability || []).find((item) => item.id === deleteDialog.id)
+      : null
   const submitAbsence = (e) => {
     e.preventDefault()
     if (!absence.driverId || !absence.from || !absence.to) return alert('Vyplň řidiče a datum.')
@@ -1950,8 +2247,20 @@ function Availability({ data, commit, currentDriver }) {
     commit((prev) => ({ ...prev, availability: [payload, ...(prev.availability || [])] }), 'Přidána dostupnost řidiče.')
     setSlot({ ...slot, fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), note: '' })
   }
-  const removeAbsence = (id) => safeDelete('nepřítomnost řidiče') && commit((prev) => ({ ...prev, absences: prev.absences.filter((a) => a.id !== id) }), 'Smazána nepřítomnost řidiče.')
-  const removeSlot = (id) => safeDelete('dostupnost řidiče') && commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((a) => a.id !== id) }), 'Smazána dostupnost řidiče.')
+  const requestDelete = (type, id) => {
+    setDeleteDialog({ type, id })
+  }
+  const confirmDelete = () => {
+    if (!deleteTarget || !deleteDialog) return
+    if (deleteDialog.type === 'absence') {
+      commit((prev) => ({ ...prev, absences: prev.absences.filter((a) => a.id !== deleteTarget.id) }), 'Smazána nepřítomnost řidiče.')
+    } else {
+      commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((a) => a.id !== deleteTarget.id) }), 'Smazána dostupnost řidiče.')
+    }
+    setDeleteDialog(null)
+  }
+  const removeAbsence = (id) => requestDelete('absence', id)
+  const removeSlot = (id) => requestDelete('slot', id)
   const DriverSelect = ({ value, onChange }) => currentDriver ? null : <Field label="Řidič"><select value={value} onChange={(e) => onChange(e.target.value)}>{driversForSelect.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
   return <><PageTitle title="Dostupnost řidičů" />
     {availabilityToast && <div className="planner-toast" role="status">{availabilityToast}</div>}
@@ -1984,6 +2293,20 @@ function Availability({ data, commit, currentDriver }) {
       })}{!availability.length && <div className="empty">Není zadaná žádná dostupnost.</div>}</div></div>
       <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack compact-list">{absences.map((a) => <div className="alert warn" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {a.from} až {a.to}<br /><small>{a.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeAbsence(a.id)}>Smazat</button></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
     </div>
+    {deleteTarget && <ConfirmActionModal
+      title={deleteDialog.type === 'absence' ? 'Smazat nepřítomnost' : 'Smazat dostupnost'}
+      message={deleteDialog.type === 'absence' ? 'Nepřítomnost se odstraní z plánování dostupnosti řidiče.' : 'Záznam dostupnosti se odstraní z plánování směn.'}
+      confirmLabel={deleteDialog.type === 'absence' ? 'Smazat nepřítomnost' : 'Smazat dostupnost'}
+      confirmClass="danger"
+      onClose={() => setDeleteDialog(null)}
+      onConfirm={confirmDelete}
+    >
+      <ActionSummary
+        eyebrow={deleteDialog.type === 'absence' ? 'Nepřítomnost' : 'Dostupnost'}
+        title={deleteDialog.type === 'absence' ? `${deleteTarget.from} až ${deleteTarget.to}` : availabilityLabel(deleteTarget)}
+        meta={`${data.drivers.find((d) => d.id === deleteTarget.driverId)?.name || 'Řidič'} · ${deleteDialog.type === 'absence' ? (deleteTarget.reason || 'Bez důvodu') : (availabilityNoteText(deleteTarget) || availabilityKindMap[availabilityKind(deleteTarget)] || 'Dostupnost')}`}
+      />
+    </ConfirmActionModal>}
   </>
 }
 
@@ -2407,7 +2730,6 @@ function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
 
 function DriverSettings({ data, commit, currentDriver, profile, session, onlineMode, signOut, syncState }) {
   const devices = (data.pushSubscriptions || []).filter((p) => p.active !== false && p.driverId === currentDriver?.id)
-  const removeDevice = (id) => safeDelete('push zařízení') && commit((prev) => ({ ...prev, pushSubscriptions: (prev.pushSubscriptions || []).map((p) => p.id === id ? { ...p, active: false } : p) }), 'Push zařízení bylo odhlášeno.')
   return <div className="driver-settings-view">
     <PageTitle title="Settings" />
     <div className="card"><div className="section-title"><h3>Účet</h3><span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online' : 'Demo'}</span></div>
@@ -2662,6 +2984,7 @@ function ShiftTemplates({ data, commit }) {
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [templateToDeactivate, setTemplateToDeactivate] = useState(null)
   const activeCount = templates.filter((tpl) => tpl.active).length
   const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(empty) }
   const openCreate = () => { setForm(empty); setEditing(null); setDrawerOpen(true) }
@@ -2682,8 +3005,13 @@ function ShiftTemplates({ data, commit }) {
     closeDrawer()
   }
   const deactivate = (tpl) => {
-    if (!tpl?.id || !confirm('Deaktivovat tuto šablonu směny? Existující směny se nezmění.')) return
-    saveTemplates((items) => items.map((item) => item.id === tpl.id ? { ...item, active: false } : item), 'Šablona směny deaktivována.')
+    if (!tpl?.id) return
+    setTemplateToDeactivate(tpl)
+  }
+  const confirmDeactivate = () => {
+    if (!templateToDeactivate?.id) return
+    saveTemplates((items) => items.map((item) => item.id === templateToDeactivate.id ? { ...item, active: false } : item), 'Šablona směny deaktivována.')
+    setTemplateToDeactivate(null)
     closeDrawer()
   }
   const restore = (tpl) => saveTemplates((items) => items.map((item) => item.id === tpl.id ? { ...item, active: true } : item), 'Šablona směny znovu aktivována.')
@@ -2724,6 +3052,16 @@ function ShiftTemplates({ data, commit }) {
         </div>}
       </form>
     </SideDrawer>
+    {templateToDeactivate && <ConfirmActionModal
+      title="Deaktivovat šablonu směny"
+      message="Šablona se přestane nabízet při tvorbě nových směn. Existující směny se nezmění."
+      confirmLabel="Deaktivovat šablonu"
+      confirmClass="danger"
+      onClose={() => setTemplateToDeactivate(null)}
+      onConfirm={confirmDeactivate}
+    >
+      <ActionSummary eyebrow="Šablona" title={templateToDeactivate.name} meta={`${templateToDeactivate.start}–${templateToDeactivate.end} · ${shiftTypeMap[templateToDeactivate.type] || 'Vlastní'}`} />
+    </ConfirmActionModal>}
   </>
 }
 
