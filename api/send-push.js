@@ -16,15 +16,18 @@ const readBody = async (req) => {
   return raw ? JSON.parse(raw) : {}
 }
 
-const normalizeNotice = (n = {}) => ({
-  id: n.id || '',
-  title: n.title || 'RBSHIFT',
-  body: n.body || 'Nové upozornění v aplikaci RBSHIFT.',
-  type: n.type || 'info',
-  shiftId: n.shiftId || n.shift_id || '',
-  targetDriverId: n.targetDriverId || n.target_driver_id || '',
-  targetRole: String(n.targetRole || n.target_role || 'admin').toLowerCase(),
-})
+const normalizeNotice = (n = {}) => {
+  const targetDriverId = n.targetDriverId || n.target_driver_id || ''
+  return {
+    id: n.id || '',
+    title: n.title || 'RBSHIFT',
+    body: n.body || 'Nové upozornění v aplikaci RBSHIFT.',
+    type: n.type || 'info',
+    shiftId: n.shiftId || n.shift_id || '',
+    targetDriverId,
+    targetRole: String(targetDriverId ? 'driver' : (n.targetRole || n.target_role || 'admin')).toLowerCase(),
+  }
+}
 
 const matchesNotice = (subscription, notice) => {
   const role = String(subscription.role || '').toLowerCase()

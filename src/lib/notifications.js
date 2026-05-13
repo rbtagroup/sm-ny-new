@@ -4,7 +4,7 @@ export const createNoticeFactory = (uid) => ({ title, body = '', targetDriverId 
   title,
   body,
   targetDriverId,
-  targetRole,
+  targetRole: targetDriverId ? 'driver' : targetRole,
   type,
   shiftId,
   readBy: [],

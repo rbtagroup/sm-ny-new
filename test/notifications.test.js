@@ -14,6 +14,14 @@ import {
 const driver = { id: 'drv_1' }
 const makeNotice = createNoticeFactory((prefix) => `${prefix}_1`)
 
+test('driver-targeted notices default to driver target role', () => {
+  const notice = makeNotice({ title: 'Test', targetDriverId: driver.id })
+  const adminNotice = makeNotice({ title: 'Admin' })
+
+  assert.equal(notice.targetRole, 'driver')
+  assert.equal(adminNotice.targetRole, 'admin')
+})
+
 test('read and deleted state are tracked separately', () => {
   const notice = makeNotice({ title: 'Test', targetDriverId: driver.id })
   const read = markNoticeRead(notice, driver, true)
