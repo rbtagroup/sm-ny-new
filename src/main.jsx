@@ -253,6 +253,15 @@ async function loadDataFromSupabase() {
     if (key === 'audit') { output[key] = []; continue }
     errors.push(`${tn}: ${error.message}`)
   }
+  const activeSwapStatusByShift = new Map(
+    (output.swapRequests || [])
+      .filter((request) => ['pending', 'accepted'].includes(request.status))
+      .map((request) => [request.shiftId, request.status]),
+  )
+  output.shifts = (output.shifts || []).map((shift) => ({
+    ...shift,
+    swapRequestStatus: activeSwapStatusByShift.get(shift.id) || (['pending', 'accepted'].includes(shift.swapRequestStatus) ? '' : shift.swapRequestStatus),
+  }))
   const { data: settingsRow } = await supabase.from('app_settings').select('payload').eq('id','default').maybeSingle()
   output.settings = { ...base.settings, ...(settingsRow?.payload || {}) }
   if (errors.length) throw new Error(errors.join('\n'))
@@ -2435,7 +2444,7 @@ function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedShiftId,
   </div>
 }
 
-function DriverActionModal({ dialog, shift, request, helpers, onClose, onDeclineReasonChange, onSubmitDecline, onConfirmCancelSwap, onConfirmAcceptSwap, onConfirmOpenShift }) {
+function DriverActionModal({ dialog, shift, request, helpers, onClose, onDeclineReasonChange, onSubmitDecline, onConfirmCancelSwap, onConfirmAcceptSwap, onConfirmDeclineSwap, onConfirmOpenShift }) {
   if (!dialog || !shift) return null
   const summary = <div className="driver-swap-summary">
     <span>{formatDate(shift.date)}</span>
@@ -2470,6 +2479,13 @@ function DriverActionModal({ dialog, shift, request, helpers, onClose, onDecline
       confirmLabel: 'Chci převzít směnu',
       confirmClass: 'primary',
       onConfirm: onConfirmAcceptSwap,
+    },
+    declineSwap: {
+      title: 'Odmítnout výměnu?',
+      body: `Nabízí: ${helpers.driverName(request?.driverId)}. Nabídka se označí jako odmítnutá a kolega i dispečink dostanou upozornění.`,
+      confirmLabel: 'Odmítnout',
+      confirmClass: 'danger',
+      onConfirm: onConfirmDeclineSwap,
     },
     openShift: {
       title: 'Přihlásit se na volnou směnu?',
@@ -2603,6 +2619,15 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     if (!shift) { showDriverToast('Směna už neexistuje.'); return }
     setActionDialog({ type: 'acceptSwap', requestId: request.id })
   }
+  const declineSwap = (request) => {
+    if (request.targetMode !== 'driver' || request.targetDriverId !== currentDriver?.id) {
+      showDriverToast('Tuhle nabídku můžeš buď převzít, nebo ignorovat.')
+      return
+    }
+    const shift = data.shifts.find((s) => s.id === request.shiftId)
+    if (!shift) { showDriverToast('Směna už neexistuje.'); return }
+    setActionDialog({ type: 'declineSwap', requestId: request.id })
+  }
   const confirmAcceptSwap = () => {
     const request = (data.swapRequests || []).find((r) => r.id === actionDialog?.requestId && r.status === 'pending')
     const shift = request ? data.shifts.find((s) => s.id === request.shiftId) : null
@@ -2618,6 +2643,31 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'accepted', acceptedByDriverId: currentDriver?.id, acceptedAt: new Date().toISOString() }, `${currentDriver?.name || 'Kolega'} chce směnu převzít.`) : r), shifts: prev.shifts.map((s) => s.id === request.shiftId ? { ...s, swapRequestStatus: 'accepted' } : s) }, notices), `${currentDriver?.name || 'Řidič'} přijal nabídku výměny směny.`)
     closeActionDialog()
     showDriverToast('Nabídka přijata, čeká na dispečink.')
+  }
+  const confirmDeclineSwap = () => {
+    const request = (data.swapRequests || []).find((r) => r.id === actionDialog?.requestId && r.status === 'pending' && r.targetMode === 'driver' && r.targetDriverId === currentDriver?.id)
+    const shift = request ? data.shifts.find((s) => s.id === request.shiftId) : null
+    if (!request || !shift) {
+      closeActionDialog()
+      showDriverToast('Nabídka výměny už není aktivní.')
+      return
+    }
+    const now = new Date().toISOString()
+    const reason = 'Odmítnuto řidičem'
+    const notices = [
+      makeNotice({ title: 'Kolega odmítl výměnu', body: `${currentDriver?.name || 'Kolega'} odmítl: ${shiftNoticeBody(shift, helpers)}`, targetDriverId: request.driverId, targetRole: 'driver', type: 'swap-rejected', shiftId: shift.id }),
+      makeNotice({ title: 'Nabídka výměny odmítnuta', body: `${currentDriver?.name || 'Řidič'} odmítl nabídku od ${helpers.driverName(request.driverId)} · ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'swap-rejected', shiftId: shift.id }),
+    ]
+    commit((prev) => addNotificationsToData({
+      ...prev,
+      swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'rejected', rejectedReason: reason, resolvedAt: now }, `${currentDriver?.name || 'Kolega'} odmítl nabídku výměny.`) : r),
+      shifts: prev.shifts.map((s) => s.id === request.shiftId ? { ...s, swapRequestStatus: 'rejected' } : s),
+    }, notices), `${currentDriver?.name || 'Řidič'} odmítl nabídku výměny směny.`, {
+      rollbackOnError: true,
+      onError: () => showDriverToast('Nepodařilo se odmítnout, zkus to znovu.'),
+    })
+    closeActionDialog()
+    showDriverToast('Nabídka odmítnuta.')
   }
   const applyForOpenShift = (shift) => {
     if (!currentDriver?.id) { showDriverToast('Řidičský profil není propojený.'); return }
@@ -2686,7 +2736,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
     {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
     {awaiting.length > 0 && <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} {...cardProps} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
     {openShifts.length > 0 && <details id="driver-open-shifts-section" className={`card driver-offers collapse-card driver-open-shifts ${highlightOpenShifts ? 'driver-open-shifts-highlight' : ''}`}><summary><span><b>Zobrazit volné směny ({openShifts.length})</b><small>Nabídky, na které se můžeš přihlásit</small></span><span className="pill warn">{openShifts.length}</span></summary><div className="collapse-content"><div className="stack">{openShifts.map((shift) => { const interested = myOpenInterests.some((r) => r.shiftId === shift.id); return <div className="alert warn" key={shift.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />{helpers.vehicleName(shift.vehicleId)} · {shift.note || 'Volná směna k obsazení'}<br />{shift.instruction && <small>Instrukce: {shift.instruction}</small>}<div className="row-actions" style={{ marginTop: 8 }}>{interested ? <span className="pill good">Zájem odeslán</span> : <button onClick={() => applyForOpenShift(shift)}>Mám zájem</button>}</div></div> })}</div></div></details>}
-    {incomingSwaps.length > 0 && <div id="driver-incoming-swaps-section" className="card driver-offers"><div className="section-title"><h3>Nabídnuté výměny pro mě</h3><span className="pill warn">{incomingSwaps.length}</span></div><div className="stack">{incomingSwaps.map(({ request, shift }) => <div className="alert warn" key={request.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />Nabízí: {helpers.driverName(request.driverId)} · {helpers.vehicleName(shift.vehicleId)}<br /><small>{request.reason || 'Bez zprávy'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => acceptSwap(request)}>Chci převzít směnu</button></div></div>)}</div></div>}
+    {incomingSwaps.length > 0 && <div id="driver-incoming-swaps-section" className="card driver-offers"><div className="section-title"><h3>Nabídnuté výměny pro mě</h3><span className="pill warn">{incomingSwaps.length}</span></div><div className="stack">{incomingSwaps.map(({ request, shift }) => <div className="alert warn" key={request.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />Nabízí: {helpers.driverName(request.driverId)} · {helpers.vehicleName(shift.vehicleId)}<br /><small>{request.reason || 'Bez zprávy'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => acceptSwap(request)}>Chci převzít směnu</button>{request.targetMode === 'driver' && request.targetDriverId === currentDriver?.id && <button className="danger" onClick={() => declineSwap(request)}>Odmítnout</button>}</div></div>)}</div></div>}
     <div className="section-title driver-list-title"><h3>Moje další směny</h3><span className="pill">{otherShifts.length}</span></div>
     <div className="driver-card-list">{otherShifts.map((s) => <ShiftMobileCard s={s} key={s.id} {...cardProps} />)}{!otherShifts.length && <div className="empty">Nemáš další plánované směny.</div>}</div>
     <DriverTwoWeekCalendar shifts={shifts} openShifts={openShifts} helpers={helpers} />
@@ -2723,6 +2773,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
       onSubmitDecline={submitDecline}
       onConfirmCancelSwap={confirmCancelSwap}
       onConfirmAcceptSwap={confirmAcceptSwap}
+      onConfirmDeclineSwap={confirmDeclineSwap}
       onConfirmOpenShift={confirmOpenShift}
     />
     {settlementShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={settlementShift} currentDriver={currentDriver} isDriver onClose={() => setSettlementShiftId('')} />}

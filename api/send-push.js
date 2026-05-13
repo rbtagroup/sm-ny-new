@@ -68,7 +68,7 @@ const profileForToken = async (supabase, token) => {
   return { ...profile, driverId: driver?.id || '' }
 }
 
-const SWAP_DRIVER_NOTICE_TYPES = new Set(['swap-offer', 'swap-accepted'])
+const SWAP_DRIVER_NOTICE_TYPES = new Set(['swap-offer', 'swap-accepted', 'swap-rejected'])
 const PUSH_CONCURRENCY = Number(process.env.PUSH_DELIVERY_CONCURRENCY || 8)
 const PUSH_RATE_LIMIT_WINDOW_MS = Number(process.env.PUSH_RATE_LIMIT_WINDOW_MS || 60_000)
 const PUSH_RATE_LIMIT_MAX = Number(process.env.PUSH_RATE_LIMIT_PER_WINDOW || process.env.PUSH_RATE_LIMIT_PER_MINUTE || 30)
@@ -148,7 +148,7 @@ const canSendSwapNotice = async (supabase, notice, callerDriverId) => {
     .from('swap_requests')
     .select('driver_id, target_mode, target_driver_id, accepted_by_driver_id, status')
     .eq('shift_id', notice.shiftId)
-    .in('status', ['pending', 'accepted'])
+    .in('status', ['pending', 'accepted', 'rejected'])
     .order('created_at', { ascending: false })
     .limit(20)
   if (requestError) throw requestError
@@ -175,6 +175,15 @@ const canSendSwapNotice = async (supabase, notice, callerDriverId) => {
     return (requests || []).some((request) =>
       request.status === 'accepted' &&
       request.accepted_by_driver_id === callerDriverId &&
+      request.driver_id === notice.targetDriverId,
+    )
+  }
+
+  if (notice.type === 'swap-rejected') {
+    return (requests || []).some((request) =>
+      request.status === 'rejected' &&
+      request.target_mode === 'driver' &&
+      request.target_driver_id === callerDriverId &&
       request.driver_id === notice.targetDriverId,
     )
   }
@@ -273,7 +282,7 @@ export default async function handler(req, res) {
           url: '/',
           shiftId: notice.shiftId,
           type: notice.type,
-          requireInteraction: ['new-shift', 'shift-change', 'swap-offer', 'swap-accepted', 'open-shift-interest'].includes(notice.type),
+          requireInteraction: ['new-shift', 'shift-change', 'swap-offer', 'swap-accepted', 'swap-rejected', 'open-shift-interest'].includes(notice.type),
         }))
         return { id: sub.id, noticeId: notice.id, ok: true }
       } catch (err) {

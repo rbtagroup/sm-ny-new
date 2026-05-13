@@ -91,6 +91,24 @@ export function swapRequestRpcCalls(prevSwapRequests = [], changedSwapRequests =
       continue
     }
 
+    const canDeclineTargeted = before.status === 'pending' &&
+      before.driverId !== currentDriverId &&
+      before.targetMode === 'driver' &&
+      before.targetDriverId === currentDriverId
+
+    if (canDeclineTargeted && request.status === 'rejected') {
+      calls.push({
+        fn: 'rb_decline_swap_request',
+        args: {
+          p_id: request.id,
+          p_history: request.history || [],
+          p_rejected_reason: request.rejectedReason || null,
+          p_resolved_at: request.resolvedAt || null,
+        },
+      })
+      continue
+    }
+
     denied.push(request.id)
   }
 

@@ -55,6 +55,56 @@ test('swapRequestRpcCalls rejects foreign inserts and accepts targeted pending s
   assert.equal(accept.calls[0].fn, 'rb_accept_swap_request')
 })
 
+test('swapRequestRpcCalls routes targeted swap decline to rb_decline_swap_request', () => {
+  const declinedAt = '2026-05-11T10:30:00.000Z'
+  const { calls, denied } = swapRequestRpcCalls([{
+    id: 'swap_decline',
+    driverId: 'drv_2',
+    targetMode: 'driver',
+    targetDriverId: 'drv_1',
+    status: 'pending',
+  }], [{
+    id: 'swap_decline',
+    driverId: 'drv_2',
+    targetMode: 'driver',
+    targetDriverId: 'drv_1',
+    status: 'rejected',
+    rejectedReason: 'Odmítnuto řidičem',
+    resolvedAt: declinedAt,
+    history: [{ at: declinedAt, text: 'Ridic odmitl nabidku.' }],
+  }], 'drv_1')
+
+  assert.deepEqual(denied, [])
+  assert.deepEqual(calls, [{
+    fn: 'rb_decline_swap_request',
+    args: {
+      p_id: 'swap_decline',
+      p_history: [{ at: declinedAt, text: 'Ridic odmitl nabidku.' }],
+      p_rejected_reason: 'Odmítnuto řidičem',
+      p_resolved_at: declinedAt,
+    },
+  }])
+})
+
+test('swapRequestRpcCalls does not let a driver reject an all-driver swap offer', () => {
+  const { calls, denied } = swapRequestRpcCalls([{
+    id: 'swap_all_decline',
+    driverId: 'drv_2',
+    targetMode: 'all',
+    targetDriverId: '',
+    status: 'pending',
+  }], [{
+    id: 'swap_all_decline',
+    driverId: 'drv_2',
+    targetMode: 'all',
+    targetDriverId: '',
+    status: 'rejected',
+  }], 'drv_1')
+
+  assert.deepEqual(calls, [])
+  assert.deepEqual(denied, ['swap_all_decline'])
+})
+
 test('auditInsertRpcCalls maps local audit entries to RPC payloads', () => {
   assert.deepEqual(auditInsertRpcCalls([{ id: 'log_1', text: 'Uprava', payload: { shiftId: 'sh_1' } }]), [{
     fn: 'rb_insert_audit_log',
