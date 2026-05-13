@@ -2,7 +2,7 @@ import './main.css'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
-import { Bell, Clock, House, Settings as SettingsIcon } from 'lucide-react'
+import { Bell, Check, Clock, House, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { AuthGate, MissingProfile } from './AuthViews.jsx'
 import { addedRows, changedRows, stableFingerprint } from './lib/syncDiff.js'
 import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls } from './lib/sensitiveSync.js'
@@ -950,7 +950,7 @@ function App({ session = null, profile = null, signOut = null }) {
   const unreadForCurrent = unreadNotifications.length
   const canOpenSettings = role === 'admin'
   const nav = isDriver
-    ? [['driver', 'Domů', House], ['availability', 'Dostupnost', Clock], ['notifications', 'Notifikace', Bell], ['driverSettings', 'Settings', SettingsIcon]]
+    ? [['driver', 'Domů', House], ['availability', 'Dostupnost', Clock], ['notifications', 'Notifikace', Bell], ['driverSettings', 'Nastavení', SettingsIcon]]
     : dispatcherNavItems
   const sidebarSections = [
     ['DISPEČINK', dispatcherNavItems],
@@ -2845,13 +2845,12 @@ function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
 }
 
 function DriverSettings({ data, commit, currentDriver, profile, session, onlineMode, signOut, syncState }) {
-  const devices = (data.pushSubscriptions || []).filter((p) => p.active !== false && p.driverId === currentDriver?.id)
   return <div className="driver-settings-view">
-    <PageTitle title="Settings" />
+    <PageTitle title="Nastavení" />
     <div className="card"><div className="section-title"><h3>Účet</h3><span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online' : 'Demo'}</span></div>
       <div className="compact-list"><div className="log"><b>{currentDriver?.name || profile?.full_name || 'Řidič'}</b><br /><span className="muted">{currentDriver?.email || profile?.email || 'Email nezadaný'}</span>{currentDriver?.phone && <><br /><span className="muted">{currentDriver.phone}</span></>}</div></div>
     </div>
-    <div className="card"><div className="section-title"><h3>Notifikace</h3><span className="pill">{devices.length}</span></div><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} session={session} /></div>
+    <div className="card driver-notification-settings-card"><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} session={session} /></div>
     {syncState?.error && <div className="card"><div className="alert warn">{syncState.error}</div></div>}
     <div className="card"><div className="muted" style={{ fontSize: '0.8em', marginBottom: 8 }}>v{VERSION}</div><button className="danger" onClick={signOut}>Odhlásit</button></div>
   </div>
@@ -2937,7 +2936,16 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
     ? (data.pushSubscriptions || []).filter((p) => p.driverId === currentDriver?.id && currentEndpoint !== null && p.endpoint === currentEndpoint)
     : (data.pushSubscriptions || []).filter((p) => p.profileId === profile?.id || p.role === profile?.role)
   const activeDevices = myDevices.filter((p) => p.active !== false)
-  const showIosGuide = !isStandalone && activeDevices.length === 0
+  const permissionLabel = ({ granted: 'povoleno', denied: 'blokováno', default: 'čeká na povolení', unsupported: 'nepodporováno' })[permission] || permission
+  const driverPushState = !supported
+    ? ['Nepodporováno', 'warn']
+    : permission === 'denied'
+      ? ['Blokováno', 'warn']
+      : activeDevices.length
+        ? ['Aktivní', 'good']
+        : ['Vypnuto', 'warn']
+  const isIosLike = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const showIosGuide = (!isDriver || isIosLike) && !isStandalone && activeDevices.length === 0
   const removalDevice = myDevices.find((d) => d.id === deviceToRemove)
   const deactivateDevice = (id) => {
     setDeviceToRemove(id)
@@ -2948,27 +2956,35 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
     setDeviceToRemove('')
     setStatus('Zařízení bylo odebráno z push notifikací.')
   }
-  return <div className="card">
-    <div className="section-title"><h3>Push notifikace zařízení</h3><span className={permission === 'granted' ? 'pill good' : 'pill warn'}>{permission}</span></div>
-    <p className="muted">Android podporuje PWA notifikace přímo v Chrome. Na iPhonu musí být aplikace přidaná na plochu a musí běžet jako PWA, jinak iOS běžně nepovolí web push pro stránku otevřenou jen v Safari.</p>
+  return <div className={isDriver ? 'driver-push-panel' : 'card'}>
+    <div className={`section-title ${isDriver ? 'driver-push-title' : ''}`.trim()}>
+      <div><h3>{isDriver ? 'Upozornění na směny' : 'Push notifikace zařízení'}</h3>{isDriver && <p className="muted">Připomenutí směn, změn a nabídek kolegů na tomto zařízení.</p>}</div>
+      <span className={isDriver ? `pill ${driverPushState[1]}` : (permission === 'granted' ? 'pill good' : 'pill warn')}>{isDriver ? driverPushState[0] : permissionLabel}</span>
+    </div>
+    {!isDriver && <p className="muted">Android podporuje PWA notifikace přímo v Chrome. Na iPhonu musí být aplikace přidaná na plochu a musí běžet jako PWA, jinak iOS běžně nepovolí web push pro stránku otevřenou jen v Safari.</p>}
+    {isDriver && <div className="driver-push-status-grid">
+      <div><span>Prohlížeč</span><b>{supported && pushSupported ? 'Připravený' : 'Nepodporuje'}</b></div>
+      <div><span>Zařízení</span><b>{activeDevices.length ? 'Připojené' : 'Nepřipojené'}</b></div>
+    </div>}
     {!isDriver && <div className="grid three" style={{ margin: '12px 0' }}>
       <Kpi label="Service Worker" value={supported ? 'OK' : 'Ne'} hint="základ PWA" kind={supported ? 'good' : 'bad'} />
       <Kpi label="PushManager" value={pushSupported ? 'OK' : 'Ne'} hint="remote push" kind={pushSupported ? 'good' : 'bad'} />
       <Kpi label="VAPID klíč" value={vapidPublicKey ? 'vyplněn' : 'chybí'} hint="browser subscription" kind={vapidPublicKey ? 'good' : 'warn'} />
     </div>}
-    <div className="actions" style={{ justifyContent: 'flex-start' }}>
-      <button className="primary" onClick={subscribe}>Povolit notifikace na tomto zařízení</button>
-      <button className="ghost" onClick={test}>Otestovat notifikaci</button>
+    <div className={isDriver ? 'driver-push-actions' : 'actions'} style={isDriver ? undefined : { justifyContent: 'flex-start' }}>
+      <button className="primary" onClick={subscribe}>{isDriver && <Bell size={18} strokeWidth={2.3} aria-hidden="true" />}Povolit na tomto zařízení</button>
+      <button className="ghost" onClick={test}>{isDriver && <Check size={18} strokeWidth={2.4} aria-hidden="true" />}Otestovat</button>
       {!isDriver && <button className="ghost" onClick={serverTest}>Server push test</button>}
     </div>
     {status && <div className="alert warn" style={{ marginTop: 12 }}>{status}</div>}
+    {isDriver && permission === 'denied' && <div className="driver-push-note">Notifikace jsou v prohlížeči blokované. Povol je v nastavení webu a vrať se sem znovu.</div>}
     {showIosGuide && <div className="ios-guide"><b>iPhone postup</b><ol><li>Otevři aplikaci v Safari.</li><li>Dej Sdílet → Přidat na plochu.</li><li>Spusť RBSHIFT z plochy.</li><li>Potom povol notifikace.</li></ol></div>}
-    <div className="device-list">
-      <div className="section-title"><h3>Moje zařízení</h3><span className={activeDevices.length ? 'pill good' : 'pill warn'}>{activeDevices.length} aktivní</span></div>
-      {myDevices.map((d) => <div className="device-row" key={d.id}><div><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">{d.active === false ? 'Vypnuté zařízení' : 'Aktivní push zařízení'}</small></div>{d.active !== false && <button className="danger" onClick={() => deactivateDevice(d.id)}>Odebrat</button>}</div>)}
-      {!myDevices.length && <div className="empty">Na tomto účtu zatím není uložené žádné zařízení.</div>}
+    <div className={`device-list ${isDriver ? 'driver-device-list' : ''}`.trim()}>
+      <div className="section-title"><h3>{isDriver ? 'Zařízení' : 'Moje zařízení'}</h3><span className={activeDevices.length ? 'pill good' : 'pill warn'}>{activeDevices.length} aktivní</span></div>
+      {myDevices.map((d) => <div className="device-row" key={d.id}><div><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">{d.active === false ? 'Vypnuté zařízení' : 'Aktivní push zařízení'}</small></div>{d.active !== false && (isDriver ? <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => deactivateDevice(d.id)} aria-label="Odebrat zařízení" title="Odebrat"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button> : <button className="danger" onClick={() => deactivateDevice(d.id)}>Odebrat</button>)}</div>)}
+      {!myDevices.length && <div className={`empty ${isDriver ? 'driver-empty-inbox' : ''}`.trim()}>{isDriver ? 'Toto zařízení zatím není připojené.' : 'Na tomto účtu zatím není uložené žádné zařízení.'}</div>}
     </div>
-    <p className="hintline">Notifikace dostanete na všechna zařízení, kde je app aktivní.</p>
+    <p className="hintline">{isDriver ? 'Upozornění chodí jen na zařízení, kde je aplikace povolená.' : 'Notifikace dostanete na všechna zařízení, kde je app aktivní.'}</p>
     {deviceToRemove && <Modal title="Odebrat zařízení" onClose={() => setDeviceToRemove('')} className="driver-swap-modal driver-action-modal" backdropClassName="driver-swap-modal-backdrop">
       <div className="stack driver-swap-form">
         <p className="driver-action-copy">Toto zařízení přestane dostávat push notifikace pro tento účet.</p>
@@ -3006,6 +3022,7 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
       return key !== todayKey && key !== yesterdayKey
     })],
   ].filter(([, items]) => items.length)
+  const hasRead = visible.length > unread.length
   const markOne = (id) => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označena jako přečtená.')
   const queueUndo = (ids, notices = []) => {
     const clean = [...new Set((ids || []).filter(Boolean))]
@@ -3062,31 +3079,53 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
     }), 'Přečtené notifikace smazány.')
     queueUndo(toDelete.map((n) => n.id), isDriver ? [] : personal)
   }
+  const staffNotificationActions = !isDriver ? <>
+    <button className="ghost" onClick={markAll}>Označit vše jako přečtené</button>
+    <button className="danger" onClick={clearRead}>Smazat přečtené</button>
+  </> : null
+  const renderNotice = (n) => {
+    const read = isNoticeRead(n, currentDriver, isDriver)
+    const noticeAt = n.at || n.createdAt || new Date().toISOString()
+
+    if (isDriver) {
+      return <div className={`driver-notification-row ${read ? 'is-read' : 'is-unread'}`} key={n.id}>
+        <div className="driver-notification-row-head">
+          <div className="driver-notification-copy">
+            <div className="driver-notification-titleline">{!read && <span className="driver-notification-dot" aria-hidden="true"></span>}<b>{n.title}</b></div>
+            <small>{new Date(noticeAt).toLocaleString('cs-CZ')}</small>
+          </div>
+          <div className="driver-notification-row-actions">
+            {!read && <button className="driver-notification-icon-button good" type="button" onClick={() => markOne(n.id)} aria-label="Označit jako přečtené" title="Přečteno"><Check size={18} strokeWidth={2.4} aria-hidden="true" /></button>}
+            <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => deleteOne(n.id)} aria-label="Skrýt notifikaci" title="Skrýt"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button>
+          </div>
+        </div>
+        <p>{n.body || 'Bez detailu'}</p>
+      </div>
+    }
+
+    return <div className={read ? 'log notification-row notification-read' : 'alert warn notification-row notification-unread'} key={n.id}>
+      <div className="split"><div><b>{n.title}</b><br /><small className="muted">{new Date(noticeAt).toLocaleString('cs-CZ')}</small></div>{!read && <span className="pill warn">nové</span>}</div>
+      <p>{n.body || 'Bez detailu'}</p>
+      <div className="row-actions notification-actions" style={{ marginTop: 8 }}>
+        {!read && <button onClick={() => markOne(n.id)}>Přečteno</button>}
+        <button className="danger-mini" onClick={() => deleteOne(n.id)}>Smazat</button>
+      </div>
+    </div>
+  }
   return <>
-    <PageTitle title="Notifikace">
-      <button className="ghost" onClick={markAll}>Označit vše jako přečtené</button>
-      <button className="danger" onClick={clearRead}>Smazat přečtené</button>
-    </PageTitle>
+    <PageTitle title="Notifikace">{staffNotificationActions}</PageTitle>
     {undoDeleteIds.length > 0 && <div className="toast-undo"><span>{undoDeleteIds.length === 1 ? 'Notifikace smazána.' : `${undoDeleteIds.length} notifikací smazáno.`}</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
-    <div className="card notifications-card"><div className="section-title"><h3>Centrum upozornění</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div><div className="notification-groups">
+    <div className={`card notifications-card ${isDriver ? 'driver-notifications-card' : ''}`.trim()}><div className="section-title"><h3>{isDriver ? 'Doručené' : 'Centrum upozornění'}</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div>
+      {isDriver && (unread.length > 0 || hasRead) && <div className="driver-notifications-toolbar">
+        {unread.length > 0 && <button className="ghost" type="button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>}
+        {hasRead && <button className="ghost danger-soft" type="button" onClick={clearRead}><Trash2 size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>}
+      </div>}
+      <div className="notification-groups">
       {notificationGroups.map(([label, items]) => <section className="notification-group" key={label}>
         <div className="notification-group-title">{label}</div>
-        <div className="stack">
-          {items.map((n) => {
-            const read = isNoticeRead(n, currentDriver, isDriver)
-            const noticeAt = n.at || n.createdAt || new Date().toISOString()
-            return <div className={read ? 'log notification-row notification-read' : 'alert warn notification-row notification-unread'} key={n.id}>
-              <div className="split"><div><b>{n.title}</b><br /><small className="muted">{new Date(noticeAt).toLocaleString('cs-CZ')}</small></div>{!read && <span className="pill warn">nové</span>}</div>
-              <p>{n.body || 'Bez detailu'}</p>
-              <div className="row-actions notification-actions" style={{ marginTop: 8 }}>
-                {!read && <button onClick={() => markOne(n.id)}>Přečteno</button>}
-                <button className="danger-mini" onClick={() => deleteOne(n.id)}>Smazat</button>
-              </div>
-            </div>
-          })}
-          </div>
+        <div className="stack">{items.map(renderNotice)}</div>
       </section>)}
-      {!visible.length && <div className="empty">Zatím žádné notifikace.</div>}
+      {!visible.length && <div className={`empty ${isDriver ? 'driver-empty-inbox' : ''}`.trim()}>{isDriver ? <><b>Žádná upozornění</b><br /><span className="muted">Vše je vyřízené.</span></> : 'Zatím žádné notifikace.'}</div>}
     </div></div>
     {!isDriver && <div className="stack" style={{ marginTop: 16 }}><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} /></div>}
   </>
