@@ -366,6 +366,27 @@ async function syncChangedRows(prev, next, profile) {
       catch (error) { errors.push(error.message) }
       continue
     }
+    if (!isStaff && key === 'shifts') {
+      const previousIds = new Set((prev.shifts || []).map((s) => s.id))
+      const insertedShiftIds = changed.filter((row) => row.id && !previousIds.has(row.id)).map((row) => row.id)
+      if (insertedShiftIds.length) {
+        errors.push(`shifts: řidič nemůže vytvořit směnu (${insertedShiftIds.join(', ')})`)
+        if (critical.has(key)) throw new Error(errors.join('\n'))
+      }
+      const rowsToUpdate = changed.filter((row) => row.id && previousIds.has(row.id)).map(toDb.shifts)
+      for (const row of rowsToUpdate) {
+        const { id, ...patch } = row
+        const { data: updatedRows, error } = await supabase.from('shifts').update(patch).eq('id', id).select('id')
+        if (error) {
+          errors.push(`shifts: ${error.message}`)
+          if (critical.has(key)) throw new Error(errors.join('\n'))
+        } else if (!updatedRows?.length) {
+          errors.push(`shifts: směnu ${id} se nepodařilo aktualizovat`)
+          if (critical.has(key)) throw new Error(errors.join('\n'))
+        }
+      }
+      continue
+    }
     const rows = changed.map(toDb[key]).filter((r) => r.id)
     if (rows.length) {
       const { error } = await supabase.from(tableName(key)).upsert(rows, { onConflict: 'id' })
