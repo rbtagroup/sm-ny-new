@@ -39,6 +39,18 @@ export function isNoticeVisible(notice, currentDriver, isDriver) {
   return Boolean(currentDriver?.id && notice.targetDriverId === currentDriver.id)
 }
 
+export function isNoticeVisibleInInbox(notice, currentDriver, isDriver, swapRequests = []) {
+  if (!isNoticeVisible(notice, currentDriver, isDriver)) return false
+  if (!isDriver || notice.type !== 'swap-offer' || !notice.shiftId) return true
+
+  return (swapRequests || []).some((request) =>
+    request?.shiftId === notice.shiftId &&
+    request.status === 'pending' &&
+    request.driverId !== currentDriver?.id &&
+    (request.targetMode === 'all' || request.targetDriverId === currentDriver?.id),
+  )
+}
+
 export function isNoticeRead(notice, currentDriver, isDriver) {
   const key = noticeUserKey(currentDriver, isDriver)
   return (notice.readBy || []).includes(key)

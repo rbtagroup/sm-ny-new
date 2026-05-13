@@ -31,7 +31,7 @@ import {
   addNotificationsToData,
   createNoticeFactory,
   isNoticeRead,
-  isNoticeVisible,
+  isNoticeVisibleInInbox,
   markNoticeDeleted,
   markNoticeRead,
   unmarkNoticeDeleted,
@@ -946,7 +946,7 @@ function App({ session = null, profile = null, signOut = null }) {
     if (!isDriver && role !== 'admin' && adminPageKeys.has(page)) setPage('planner')
   }, [isDriver, page, role])
 
-  const unreadNotifications = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, isDriver) && !isNoticeRead(n, currentDriver, isDriver))
+  const unreadNotifications = (data.notifications || []).filter((n) => isNoticeVisibleInInbox(n, currentDriver, isDriver, data.swapRequests) && !isNoticeRead(n, currentDriver, isDriver))
   const unreadForCurrent = unreadNotifications.length
   const canOpenSettings = role === 'admin'
   const nav = isDriver
@@ -2539,7 +2539,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   const shifts = sortByDateTime(data.shifts.filter(driverShiftIsDashboardVisible)).slice(0, 30)
   const openShifts = sortByDateTime((data.shifts || []).filter((s) => s.status === 'open' && !s.driverId && s.date >= todayISO())).slice(0, 30)
   const myOpenInterests = (data.swapRequests || []).filter((r) => r.targetMode === 'open' && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
-  const visibleNotices = (data.notifications || []).filter((n) => isNoticeVisible(n, currentDriver, true))
+  const visibleNotices = (data.notifications || []).filter((n) => isNoticeVisibleInInbox(n, currentDriver, true, data.swapRequests))
   const unreadNotices = visibleNotices.filter((n) => !isNoticeRead(n, currentDriver, true))
   const swapShift = swapDraft ? data.shifts.find((s) => s.id === swapDraft.shiftId) : null
   const swapColleagues = (data.drivers || []).filter((d) => d.active !== false && d.id !== currentDriver?.id)
@@ -3000,9 +3000,10 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
 
 function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile, session }) {
   const visible = (data.notifications || [])
-    .filter((n) => isNoticeVisible(n, currentDriver, isDriver))
+    .filter((n) => isNoticeVisibleInInbox(n, currentDriver, isDriver, data.swapRequests))
     .sort((a, b) => new Date(b.at || b.createdAt || 0).getTime() - new Date(a.at || a.createdAt || 0).getTime())
   const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver))
+  const visibleIds = new Set(visible.map((n) => n.id))
   const [undoDeleteIds, setUndoDeleteIds] = useState([])
   const [undoBuffer, setUndoBuffer] = useState([])
   const isPersonalNotice = (n) =>
@@ -3062,7 +3063,7 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
     setUndoDeleteIds([])
     setUndoBuffer([])
   }
-  const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => isNoticeVisible(n, currentDriver, isDriver) ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označeny jako přečtené.')
+  const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => visibleIds.has(n.id) ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označeny jako přečtené.')
   const clearRead = () => {
     const toDelete = visible.filter((n) => isNoticeRead(n, currentDriver, isDriver))
     if (!toDelete.length) return
