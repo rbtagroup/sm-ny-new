@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 import { Bell, Clock, House, Settings as SettingsIcon } from 'lucide-react'
+import { AuthGate, MissingProfile } from './AuthViews.jsx'
 import { addedRows, changedRows, stableFingerprint } from './lib/syncDiff.js'
 import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls } from './lib/sensitiveSync.js'
 import {
@@ -3475,42 +3476,9 @@ function Root() {
 
   if (!isConfiguredSupabase) return <App />
   if (loading) return <div className="auth-shell"><div className="card"><h2>RBSHIFT</h2><p className="muted">Načítám online režim…</p></div></div>
-  if (!session) return <AuthGate />
-  if (!profile) return <MissingProfile session={session} error={profileError} reload={() => loadProfile(session)} />
+  if (!session) return <AuthGate supabase={supabase} />
+  if (!profile) return <MissingProfile supabase={supabase} session={session} error={profileError} reload={() => loadProfile(session)} />
   return <App session={session} profile={profile} signOut={() => supabase.auth.signOut()} />
-}
-
-function AuthGate() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [mode, setMode] = useState('login')
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState('')
-  const submit = async (e) => {
-    e.preventDefault()
-    setBusy(true); setMsg('')
-    try {
-      const payload = { email, password }
-      const res = mode === 'signup' ? await supabase.auth.signUp(payload) : await supabase.auth.signInWithPassword(payload)
-      if (res.error) throw res.error
-      setMsg(mode === 'signup' ? 'Účet je vytvořený. Pokud Supabase vyžaduje potvrzení e-mailu, potvrď ho a potom se přihlas.' : 'Přihlášeno.')
-    } catch (err) { setMsg(err.message || String(err)) }
-    setBusy(false)
-  }
-  return <div className="auth-shell"><div className="card auth-card"><div className="brand"><div className="logo">RB</div><div><h1>RBSHIFT</h1><small>Online přihlášení</small></div></div><form className="stack" onSubmit={submit}><Field label="E-mail"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field><Field label="Heslo"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></Field><button className="primary" disabled={busy}>{busy ? 'Pracuji…' : mode === 'login' ? 'Přihlásit' : 'Vytvořit účet'}</button></form><div className="row-actions" style={{ marginTop: 12 }}><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Vytvořit účet' : 'Mám účet – přihlásit'}</button></div>{msg && <p className="hintline">{msg}</p>}</div></div>
-}
-
-function MissingProfile({ session, error, reload }) {
-  const [name, setName] = useState(session?.user?.email?.split('@')[0] || '')
-  const [busy, setBusy] = useState(false)
-  const createDriverProfile = async () => {
-    setBusy(true)
-    const { error } = await supabase.rpc('rb_ensure_driver_signup_profile', { display_name: name || null, phone_number: null })
-    if (error) alert(error.message)
-    await reload()
-    setBusy(false)
-  }
-  return <div className="auth-shell"><div className="card auth-card"><h2>Chybí profil uživatele</h2><p className="muted">Přihlášení existuje, ale v tabulce <b>profiles</b> není záznam pro tento účet.</p>{error && <div className="alert bad">{error}</div>}<Field label="Jméno pro profil řidiče"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><div className="row-actions" style={{ marginTop: 12 }}><button className="primary" disabled={busy} onClick={createDriverProfile}>Vytvořit profil řidiče</button><button onClick={reload}>Zkusit načíst znovu</button><button onClick={() => supabase.auth.signOut()}>Odhlásit</button></div></div></div>
 }
 
 const rootElement = document.getElementById('root')

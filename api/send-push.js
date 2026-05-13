@@ -70,6 +70,11 @@ const profileForToken = async (supabase, token) => {
 
 const SWAP_DRIVER_NOTICE_TYPES = new Set(['swap-offer', 'swap-accepted'])
 const PUSH_CONCURRENCY = Number(process.env.PUSH_DELIVERY_CONCURRENCY || 8)
+const PUSH_RATE_LIMIT_WINDOW_MS = Number(process.env.PUSH_RATE_LIMIT_WINDOW_MS || 60_000)
+const PUSH_RATE_LIMIT_MAX = Number(process.env.PUSH_RATE_LIMIT_PER_WINDOW || process.env.PUSH_RATE_LIMIT_PER_MINUTE || 30)
+const PUSH_MAX_NOTIFICATIONS_PER_REQUEST = Number(process.env.PUSH_MAX_NOTIFICATIONS_PER_REQUEST || 20)
+const PUSH_MAX_RECIPIENTS_PER_NOTICE = Number(process.env.PUSH_MAX_RECIPIENTS_PER_NOTICE || 500)
+const pushRateBuckets = (globalThis.__RBSHIFT_PUSH_RATE_BUCKETS__ ||= new Map())
 
 const runWithConcurrency = async (items, limit, worker) => {
   const output = []
@@ -83,6 +88,48 @@ const runWithConcurrency = async (items, limit, worker) => {
     }
   }))
   return output
+}
+
+const checkRateLimit = (key, weight = 1) => {
+  if (!PUSH_RATE_LIMIT_MAX || PUSH_RATE_LIMIT_MAX < 1) return { ok: true }
+  const now = Date.now()
+  const bucket = pushRateBuckets.get(key) || { count: 0, resetAt: now + PUSH_RATE_LIMIT_WINDOW_MS }
+  if (bucket.resetAt <= now) {
+    bucket.count = 0
+    bucket.resetAt = now + PUSH_RATE_LIMIT_WINDOW_MS
+  }
+  bucket.count += Math.max(1, Number(weight) || 1)
+  pushRateBuckets.set(key, bucket)
+
+  for (const [bucketKey, value] of pushRateBuckets) {
+    if (value.resetAt <= now) pushRateBuckets.delete(bucketKey)
+  }
+
+  return {
+    ok: bucket.count <= PUSH_RATE_LIMIT_MAX,
+    retryAfter: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+  }
+}
+
+const subscriptionsForNotice = async (supabase, notice) => {
+  let query = supabase
+    .from('push_subscriptions')
+    .select('id, profile_id, driver_id, role, endpoint, subscription, active')
+    .eq('active', true)
+
+  if (notice.targetDriverId) {
+    query = query.eq('driver_id', notice.targetDriverId)
+  } else if (notice.targetRole === 'driver_all' || notice.targetRole === 'driver') {
+    query = query.eq('role', 'driver')
+  } else if (notice.targetRole === 'admin' || !notice.targetRole) {
+    query = query.in('role', ['admin', 'dispatcher'])
+  } else if (notice.targetRole === 'dispatcher') {
+    query = query.in('role', ['dispatcher', 'admin'])
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+  return (data || []).filter((sub) => matchesNotice(sub, notice))
 }
 
 const canSendSwapNotice = async (supabase, notice, callerDriverId) => {
@@ -164,6 +211,7 @@ export default async function handler(req, res) {
   try { input = await readBody(req) } catch { return json(res, 400, { ok: false, error: 'Invalid JSON body' }) }
   const notifications = (Array.isArray(input.notifications) ? input.notifications : [input.notification || input]).map(normalizeNotice).filter((n) => n.title)
   if (!notifications.length) return json(res, 400, { ok: false, error: 'No notifications supplied' })
+  if (notifications.length > PUSH_MAX_NOTIFICATIONS_PER_REQUEST) return json(res, 413, { ok: false, error: `Too many notifications supplied. Limit is ${PUSH_MAX_NOTIFICATIONS_PER_REQUEST}.` })
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
   const expectedInternalSecret = process.env.PUSH_DELIVERY_SECRET || process.env.SCHEDULER_SECRET || process.env.DRIVER_REMINDER_SECRET
@@ -177,6 +225,14 @@ export default async function handler(req, res) {
     if (!callerProfile) return json(res, 401, { ok: false, error: 'Authentication required' })
   }
 
+  if (!internalAuthorized) {
+    const rate = checkRateLimit(callerProfile?.id || bearerTokenFrom(req).slice(0, 16) || 'unknown', notifications.length)
+    if (!rate.ok) {
+      res.setHeader('Retry-After', String(rate.retryAfter))
+      return json(res, 429, { ok: false, error: 'Push rate limit exceeded', retryAfter: rate.retryAfter })
+    }
+  }
+
   try {
     for (const notice of notifications) {
       if (!(await canSendNotice(supabase, notice, callerProfile, internalAuthorized))) {
@@ -187,19 +243,20 @@ export default async function handler(req, res) {
     return json(res, 500, { ok: false, error: err?.message || String(err) })
   }
 
-  const { data: subscriptions, error } = await supabase
-    .from('push_subscriptions')
-    .select('id, profile_id, driver_id, role, endpoint, subscription, active')
-    .eq('active', true)
-
-  if (error) return json(res, 500, { ok: false, error: error.message })
-
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
   const results = []
   const deliveries = []
   for (const notice of notifications) {
-    const recipients = (subscriptions || []).filter((sub) => matchesNotice(sub, notice))
+    let recipients
+    try {
+      recipients = await subscriptionsForNotice(supabase, notice)
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err?.message || String(err) })
+    }
+    if (recipients.length > PUSH_MAX_RECIPIENTS_PER_NOTICE) {
+      return json(res, 413, { ok: false, error: `Too many push recipients for one notice. Limit is ${PUSH_MAX_RECIPIENTS_PER_NOTICE}.`, recipients: recipients.length })
+    }
     deliveries.push({
       noticeId: notice.id,
       type: notice.type,
