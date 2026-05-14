@@ -141,14 +141,14 @@ const dispatcherNavItems = [
   ['dashboard', 'Dashboard'],
   ['settlements', 'Výčetky'],
   ['notifications', 'Notifikace'],
-  ['audit', 'Audit provozu']
+  ['audit', 'Audit']
 ]
 const adminNavItems = [
   ['drivers', 'Řidiči'],
   ['vehicles', 'Vozidla'],
   ['availability', 'Dostupnost'],
-  ['shiftTemplates', 'Šablony směn'],
-  ['history', 'Historie změn'],
+  ['shiftTemplates', 'Šablony'],
+  ['history', 'Historie'],
   ['settings', 'Nastavení']
 ]
 const adminPageKeys = new Set(adminNavItems.map(([key]) => key))
@@ -1200,6 +1200,15 @@ function SettlementSummary({ settlement }) {
     <div><span>Km</span><b>{Math.round(metrics.kmReal || 0).toLocaleString('cs-CZ')}</b></div>
   </div>
 }
+function SettlementMobileSummary({ settlement }) {
+  if (!settlement) return <span className="settlement-list-amount muted">Výčetka chybí</span>
+  const metrics = settlement.metrics || computeSettlementMetrics(settlement.inputs || {}, settlement.config || {})
+  return <span className="settlement-list-amount">
+    <small>K odevzdání</small>
+    <b>{money(metrics.settlement)}</b>
+    <em>Hotovost {money(metrics.cashDiff)}</em>
+  </span>
+}
 function SettlementFormModal({ data, helpers, commit, shift, currentDriver = null, isDriver = false, onClose }) {
   const existing = settlementForShift(data, shift?.id)
   const [inputs, setInputs] = useState(() => settlementDefaultInputs(shift, data, helpers, existing?.inputs))
@@ -1520,6 +1529,17 @@ function Planner({ data, helpers, commit }) {
     {gaps.length > 0 && gapsOpen && <div className="card planner-kpi-detail">
       <div className="section-title"><h3>Chybí obsazení</h3><span className="pill bad">{gaps.length}</span></div>
       <div className="table-wrap missing-coverage-table"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Typ směny</th><th>Stav</th><th>Akce</th></tr></thead><tbody>{gaps.map((g) => <tr key={g.day + g.id}><td><b>{formatDate(g.day)}</b><br /><small>{g.day}</small></td><td>{g.start}–{g.end}</td><td>{g.name}</td><td><span className="pill bad">chybí {g.missing}</span><br /><small>plánováno {g.planned} z {g.minDrivers}</small></td><td><button className="ghost" type="button" onClick={() => { setPlannerView('calendar'); setShiftDrawerOpen(true); setShiftFormDirty(false); setEditing(null) }}>Vytvořit směnu</button></td></tr>)}</tbody></table></div>
+      <div className="missing-coverage-mobile-list">
+        {gaps.map((g) => <div className="missing-coverage-card" key={g.day + g.id}>
+          <div>
+            <b>{formatDate(g.day)} · {g.start}–{g.end}</b>
+            <span>{g.name}</span>
+          </div>
+          <span className="pill bad">chybí {g.missing}</span>
+          <small>Plánováno {g.planned} z {g.minDrivers}</small>
+          <button className="ghost" type="button" onClick={() => { setPlannerView('calendar'); setShiftDrawerOpen(true); setShiftFormDirty(false); setEditing(null) }}>Vytvořit směnu</button>
+        </div>)}
+      </div>
     </div>}
     <div className="card compact-card" style={{ marginBottom: 16 }}>
       <div className="section-title"><h3>Filtry</h3></div>
@@ -1843,7 +1863,7 @@ function Settlements({ data, helpers, commit }) {
   const approved = rows.filter((row) => row.settlement?.status === 'approved').length
   const selectedShift = (data.shifts || []).find((s) => s.id === selectedShiftId)
   return <>
-    <PageTitle title="Výčetky směn" subtitle="Samostatný integrační prototyp výčetky navázaný na docházku.">
+    <PageTitle title="Výčetky směn" subtitle="Kontrola tržeb a výčetek po ukončených směnách.">
       <span className="pill waiting">{waiting} čeká</span>
       <span className="pill warn">{missing} chybí</span>
       <span className="pill good">{approved} schváleno</span>
@@ -1865,6 +1885,19 @@ function Settlements({ data, helpers, commit }) {
             {!rows.length && <tr><td colSpan="6"><div className="empty">Zatím nejsou ukončené směny pro výčetku.</div></td></tr>}
           </tbody>
         </table>
+      </div>
+      <div className="settlement-mobile-list">
+        {rows.map(({ shift, settlement }) => <button className="settlement-list-row" type="button" key={shift.id} onClick={() => setSelectedShiftId(shift.id)}>
+          <span className="settlement-list-main">
+            <b>{formatDate(shift.date)} {shift.start}–{shift.end}</b>
+            <small>{helpers.driverName(shift.driverId)} · {helpers.vehicleName(shift.vehicleId)}</small>
+          </span>
+          <span className="settlement-list-meta">
+            <SettlementStatusPill settlement={settlement} />
+            <SettlementMobileSummary settlement={settlement} />
+          </span>
+        </button>)}
+        {!rows.length && <div className="empty">Zatím nejsou ukončené směny pro výčetku.</div>}
       </div>
     </div>
     {selectedShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={selectedShift} isDriver={false} onClose={() => setSelectedShiftId('')} />}
@@ -1936,16 +1969,16 @@ function OperationalAudit({ data, helpers, commit }) {
         <summary><span><b>Tento týden</b><small>{formatDate(weekStart)}–{formatDate(to)} · pokrytí a docházka</small></span><span className={weekIssues ? 'pill bad' : 'pill good'}>{weekIssues ? `${weekIssues} kontrol` : 'OK'}</span></summary>
         <div className="collapse-content stack">
           <div className="section-title"><h3>Pokrytí týdne</h3><span className={coverageRows.some((r) => r.missing) ? 'pill bad' : 'pill good'}>{coverageRows.filter((r) => r.missing).length}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll"><table className="table"><thead><tr><th>Den</th><th>Pásmo</th><th>Čas</th><th>Plán</th><th>Min.</th><th>Stav</th></tr></thead><tbody>{coverageRows.map((row) => <tr key={`${row.day}-${row.slot.id}`}><td><b>{formatDate(row.day)}</b></td><td>{row.slot.name}</td><td>{row.slot.start}–{row.slot.end}</td><td>{row.planned}</td><td>{row.slot.minDrivers}</td><td>{row.missing ? <span className="pill bad">chybí {row.missing}</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-coverage-table"><table className="table"><thead><tr><th>Den</th><th>Pásmo</th><th>Čas</th><th>Plán</th><th>Min.</th><th>Stav</th></tr></thead><tbody>{coverageRows.map((row) => <tr key={`${row.day}-${row.slot.id}`}><td><b>{formatDate(row.day)}</b></td><td>{row.slot.name}</td><td>{row.slot.start}–{row.slot.end}</td><td>{row.planned}</td><td>{row.slot.minDrivers}</td><td>{row.missing ? <span className="pill bad">chybí {row.missing}</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
           <div className="section-title"><h3>Docházkový report</h3><span className="pill">{hoursLabel(actualTotal)}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll"><table className="table"><thead><tr><th>Řidič</th><th>Směn</th><th>Hotovo</th><th>Plán</th><th>Reál</th><th>Rozdíl</th><th>Kontrola</th></tr></thead><tbody>{attendance.map((row) => <tr key={row.driver.id}><td><b>{row.driver.name}</b><br /><small>{row.driver.phone || row.driver.email || 'bez kontaktu'}</small></td><td>{row.shifts.length}</td><td>{row.completed}</td><td>{hoursLabel(row.plannedMinutes)}</td><td>{hoursLabel(row.actualMinutes)}</td><td>{hoursLabel(row.diffMinutes)}</td><td>{row.open ? <span className="pill warn">{row.open} běží</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-attendance-table"><table className="table"><thead><tr><th>Řidič</th><th>Směn</th><th>Hotovo</th><th>Plán</th><th>Reál</th><th>Rozdíl</th><th>Kontrola</th></tr></thead><tbody>{attendance.map((row) => <tr key={row.driver.id}><td><b>{row.driver.name}</b><br /><small>{row.driver.phone || row.driver.email || 'bez kontaktu'}</small></td><td>{row.shifts.length}</td><td>{row.completed}</td><td>{hoursLabel(row.plannedMinutes)}</td><td>{hoursLabel(row.actualMinutes)}</td><td>{hoursLabel(row.diffMinutes)}</td><td>{row.open ? <span className="pill warn">{row.open} běží</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
         </div>
       </details>
       <details className="card collapse-card" {...sectionProps('month')}>
         <summary><span><b>Tento měsíc</b><small>{monthLogs.length} záznamů historie · dlouhodobé normy</small></span><span className="pill">{monthLogs.length}</span></summary>
         <div className="collapse-content stack">
           <div className="section-title"><h3>Normy pokrytí</h3><span className="pill">{data.settings?.coverageSlots?.length || 0}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Min. řidičů</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b></td><td>{slot.start}–{slot.end}</td><td><input type="number" min="0" value={slot.minDrivers} onChange={(e) => updateMinDrivers(slot.id, e.target.value)} style={{ width: 90 }} /></td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-standards-table"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Min. řidičů</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b></td><td>{slot.start}–{slot.end}</td><td><input type="number" min="0" value={slot.minDrivers} onChange={(e) => updateMinDrivers(slot.id, e.target.value)} style={{ width: 90 }} /></td></tr>)}</tbody></table></div>
           <div className="section-title"><h3>Historie za měsíc</h3><span className="pill">{monthLogs.length}</span></div>
           <div className="timeline stack audit-table-scroll">{monthLogs.slice(0, 50).map((log) => <div className="log" key={log.id}><b>{new Date(log.at).toLocaleString('cs-CZ')}</b><br /><span className="muted">{log.text}</span></div>)}{!monthLogs.length && <div className="empty">Za tento měsíc nejsou žádné záznamy.</div>}</div>
         </div>
@@ -1969,6 +2002,39 @@ function ShiftsList({ data, helpers, commit }) {
     </PageTitle>
     <ShiftTable shifts={filtered} data={data} helpers={helpers} commit={commit} />
   </>
+}
+function StaffShiftMobileCard({ shift: s, helpers, compact, onStatus, onDuplicate, onCancel, onHardDelete }) {
+  const conflicts = helpers.conflictMessages(s)
+  const attendance = `${s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → ${s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}`
+  return <div className={`staff-shift-card status-${s.status}`}>
+    <div className="staff-shift-card-head">
+      <div>
+        <b>{formatDate(s.date)}</b>
+        <span>{time(s.start)}–{time(s.end)} · {shiftTypeMap[s.type] || s.type}</span>
+      </div>
+      <StatusPill status={s.status} helpers={helpers} />
+    </div>
+    <div className="staff-shift-card-grid">
+      <span><small>Řidič</small><b>{helpers.driverName(s.driverId)}</b></span>
+      <span><small>Vozidlo</small><b>{helpers.vehicleName(s.vehicleId)}</b></span>
+      <span><small>Docházka</small><b>{attendance}</b><em>{durationLabel(actualDurationMinutes(s))}</em></span>
+      <span><small>Kontrola</small>{conflicts.length ? <b className="bad-text">{conflicts.length} kolize</b> : <b className="good-text">OK</b>}</span>
+    </div>
+    {(s.note || s.instruction || s.declineReason || ['pending','accepted'].includes(s.swapRequestStatus)) && <div className="staff-shift-card-notes">
+      {['pending','accepted'].includes(s.swapRequestStatus) && <span className="pill warn">výměna</span>}
+      {s.note && <small>{s.note}</small>}
+      {s.instruction && <small>Instrukce: {s.instruction}</small>}
+      {s.declineReason && <small>Důvod: {s.declineReason}</small>}
+    </div>}
+    {!compact && <div className="row-actions staff-shift-card-actions">
+      <button type="button" onClick={() => onStatus(s, 'confirmed')}>Potvrdit</button>
+      <button type="button" onClick={() => onStatus(s, 'declined')}>Odmítnout</button>
+      <button type="button" onClick={() => onStatus(s, 'completed')}>Hotovo</button>
+      <button type="button" onClick={() => onDuplicate(s)}>Duplikovat</button>
+      <button className="danger-mini" type="button" onClick={() => onCancel(s)}>Zrušit</button>
+      <button className="danger-mini icon-only" type="button" onClick={() => onHardDelete(s)} aria-label="Trvale smazat směnu" title="Trvale smazat směnu"><Trash2 size={16} strokeWidth={2.2} aria-hidden="true" /></button>
+    </div>}
+  </div>
 }
 function ShiftTable({ shifts, data, helpers, commit, compact = false }) {
   const [actionDialog, setActionDialog] = useState(null)
@@ -2007,10 +2073,13 @@ function ShiftTable({ shifts, data, helpers, commit, compact = false }) {
   }
   if (!shifts.length) return <div className="empty">Žádné směny k zobrazení.</div>
   return <>
-  <div className="table-wrap"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Řidič</th><th>Vozidlo</th><th>Stav</th><th>Docházka</th><th>Kontrola</th>{!compact && <th>Akce</th>}</tr></thead><tbody>{shifts.map((s) => {
+  <div className="table-wrap shift-table-desktop"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Řidič</th><th>Vozidlo</th><th>Stav</th><th>Docházka</th><th>Kontrola</th>{!compact && <th>Akce</th>}</tr></thead><tbody>{shifts.map((s) => {
     const conflicts = helpers.conflictMessages(s)
     return <tr key={s.id}><td><b>{formatDate(s.date)}</b><br /><small>{s.date}</small></td><td>{time(s.start)}–{time(s.end)}<br /><small>{shiftTypeMap[s.type] || s.type}</small></td><td>{helpers.driverName(s.driverId)}<br /><small>{s.note || 'Bez poznámky'}</small>{s.instruction && <><br /><small>Instrukce: {s.instruction}</small></>}{s.declineReason && <><br /><small>Důvod: {s.declineReason}</small></>}</td><td>{helpers.vehicleName(s.vehicleId)}</td><td><StatusPill status={s.status} helpers={helpers} />{['pending','accepted'].includes(s.swapRequestStatus) && <><br /><span className="pill warn">výměna</span></>}</td><td>{s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → {s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}<br /><small>{durationLabel(actualDurationMinutes(s))}</small></td><td>{conflicts.length ? <span className="pill bad">{conflicts.length} kolize</span> : <span className="pill good">OK</span>}</td>{!compact && <td><div className="row-actions"><button onClick={() => requestStatus(s, 'confirmed')}>Potvrdit</button><button onClick={() => requestStatus(s, 'declined')}>Odmítnout</button><button onClick={() => requestStatus(s, 'completed')}>Hotovo</button><button onClick={() => duplicate(s)}>Duplikovat</button><button className="danger-mini" onClick={() => requestCancel(s)}>Zrušit</button><button className="danger-mini" onClick={() => requestHardDelete(s)}>Smazat</button></div></td>}</tr>
   })}</tbody></table></div>
+  <div className="staff-shift-mobile-list">
+    {shifts.map((s) => <StaffShiftMobileCard key={s.id} shift={s} helpers={helpers} compact={compact} onStatus={requestStatus} onDuplicate={duplicate} onCancel={requestCancel} onHardDelete={requestHardDelete} />)}
+  </div>
   {actionDialog?.type === 'decline' && actionShift && <ReasonActionModal
     title="Odmítnout směnu"
     message="Směna se označí jako odmítnutá a důvod zůstane viditelný v detailu."

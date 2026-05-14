@@ -253,3 +253,259 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   .update-toast-actions button{width:100%}
   .driver-shell-v2 .update-toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 }
+
+/* Staff mobile preview: calmer operational UI and table-free operational rows */
+.settlement-mobile-list{display:none}
+.staff-shift-mobile-list{display:none}
+.missing-coverage-mobile-list{display:none}
+@media (max-width:760px){
+  .app-with-topbar{background:#08111f}
+  .app-with-topbar .app-topbar-shell{
+    min-height:58px;
+    padding:8px 12px;
+    background:#08111f;
+    box-shadow:none;
+  }
+  .app-with-topbar .app-topbar-logo{
+    width:38px;
+    height:38px;
+    border-radius:13px;
+    box-shadow:none;
+  }
+  .app-with-topbar .topbar-icon-button,
+  .app-with-topbar .topbar-user-button{
+    min-height:38px;
+    border-radius:13px;
+    box-shadow:none;
+  }
+  .app-with-topbar .main{padding:12px}
+  .app-with-topbar .topbar{margin-bottom:12px}
+  .app-with-topbar .topbar h2{font-size:24px;letter-spacing:0}
+  .app-with-topbar .topbar p{font-size:13px;line-height:1.35}
+  .app-with-topbar .kpis{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    margin-right:-12px;
+    padding:0 12px 2px 0;
+    scrollbar-width:none;
+  }
+  .app-with-topbar .kpis::-webkit-scrollbar{display:none}
+  .app-with-topbar .kpis .kpi{
+    flex:0 0 136px;
+    min-height:84px;
+  }
+  .app-with-topbar .card{
+    border-radius:14px;
+    padding:14px;
+    background:rgba(12,23,38,.92);
+    box-shadow:0 10px 28px rgba(0,0,0,.24);
+  }
+  .app-with-topbar .kpi .value{font-size:22px;letter-spacing:0}
+  .app-with-topbar .section-title h3{font-size:17px}
+  .app-with-topbar .log,
+  .app-with-topbar .alert,
+  .app-with-topbar .quick-item,
+  .app-with-topbar .card-soft{
+    border-radius:12px;
+    background:rgba(255,255,255,.035);
+  }
+  .app-with-topbar .pill{border-radius:12px}
+  .app-with-topbar .nav button,
+  .app-with-topbar .ghost,
+  .app-with-topbar .primary,
+  .app-with-topbar .danger{
+    border-radius:12px;
+  }
+  .app-with-topbar .sidebar{
+    background:rgba(8,17,31,.98);
+    box-shadow:none;
+  }
+  .app-with-topbar .sidebar .nav button{
+    min-height:36px;
+    padding:8px 10px;
+    border-color:rgba(255,255,255,.10);
+    background:rgba(255,255,255,.035);
+  }
+  .app-with-topbar .sidebar .nav button.active{
+    background:rgba(245,199,106,.12);
+    border-color:rgba(245,199,106,.38);
+  }
+  .shift-table-desktop{display:none}
+  .staff-shift-mobile-list{display:grid;gap:10px}
+  .staff-shift-card{
+    display:grid;
+    gap:10px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-left:3px solid rgba(245,199,106,.55);
+    border-radius:14px;
+    background:rgba(255,255,255,.035);
+  }
+  .staff-shift-card.status-confirmed,
+  .staff-shift-card.status-completed{border-left-color:var(--good)}
+  .staff-shift-card.status-declined,
+  .staff-shift-card.status-cancelled{border-left-color:var(--bad)}
+  .staff-shift-card.status-open{border-left-color:var(--warn)}
+  .staff-shift-card-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .staff-shift-card-head div{display:grid;gap:3px;min-width:0}
+  .staff-shift-card-head b{font-size:17px;line-height:1.12;letter-spacing:0}
+  .staff-shift-card-head div>span{color:#fff3c7;font-size:13px;font-weight:850;line-height:1.25}
+  .staff-shift-card-head .pill{flex:0 0 auto}
+  .staff-shift-card-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .staff-shift-card-grid>span{
+    display:grid;
+    gap:3px;
+    min-width:0;
+    padding:9px;
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:12px;
+    background:rgba(0,0,0,.10);
+  }
+  .staff-shift-card-grid small{color:var(--muted);font-size:11px;font-weight:850}
+  .staff-shift-card-grid b{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-size:14px;
+  }
+  .staff-shift-card-grid em{color:var(--muted);font-style:normal;font-size:11px}
+  .good-text{color:#d8fff0}
+  .bad-text{color:#ffdede}
+  .staff-shift-card-notes{
+    display:flex;
+    flex-wrap:wrap;
+    gap:7px;
+    color:var(--muted);
+    line-height:1.35;
+  }
+  .staff-shift-card-actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .staff-shift-card-actions button{
+    width:100%;
+    min-height:40px;
+    padding:8px 10px;
+    line-height:1.15;
+  }
+  .staff-shift-card-actions .icon-only{
+    display:grid;
+    place-items:center;
+    padding:0;
+  }
+  .missing-coverage-table{display:none}
+  .missing-coverage-mobile-list{display:grid;gap:10px}
+  .missing-coverage-card{
+    display:grid;
+    gap:8px;
+    padding:12px;
+    border:1px solid rgba(255,207,90,.30);
+    border-radius:14px;
+    background:rgba(255,207,90,.08);
+  }
+  .missing-coverage-card div{display:grid;gap:3px;min-width:0}
+  .missing-coverage-card b{font-size:16px;line-height:1.2}
+  .missing-coverage-card span:not(.pill),
+  .missing-coverage-card small{color:var(--muted)}
+  .missing-coverage-card .pill{justify-self:start}
+  .missing-coverage-card button{width:100%;min-height:42px}
+  .audit-card-table{
+    max-height:none;
+    overflow:visible;
+    border:0;
+    border-radius:0;
+  }
+  .audit-card-table .table{
+    display:block;
+    min-width:0;
+  }
+  .audit-card-table thead{display:none}
+  .audit-card-table tbody{display:grid;gap:8px}
+  .audit-card-table tr{
+    display:grid;
+    gap:7px;
+    padding:11px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:rgba(255,255,255,.035);
+  }
+  .audit-card-table td{
+    display:grid;
+    grid-template-columns:86px minmax(0,1fr);
+    gap:8px;
+    align-items:center;
+    padding:0;
+    border:0;
+    min-width:0;
+  }
+  .audit-card-table td::before{
+    color:var(--muted);
+    font-size:11px;
+    font-weight:850;
+  }
+  .audit-card-table td>*{min-width:0}
+  .audit-card-table input{max-width:110px}
+  .audit-coverage-table td:nth-child(1)::before{content:"Den"}
+  .audit-coverage-table td:nth-child(2)::before{content:"Pásmo"}
+  .audit-coverage-table td:nth-child(3)::before{content:"Čas"}
+  .audit-coverage-table td:nth-child(4)::before{content:"Plán"}
+  .audit-coverage-table td:nth-child(5)::before{content:"Min."}
+  .audit-coverage-table td:nth-child(6)::before{content:"Stav"}
+  .audit-attendance-table td:nth-child(1)::before{content:"Řidič"}
+  .audit-attendance-table td:nth-child(2)::before{content:"Směn"}
+  .audit-attendance-table td:nth-child(3)::before{content:"Hotovo"}
+  .audit-attendance-table td:nth-child(4)::before{content:"Plán"}
+  .audit-attendance-table td:nth-child(5)::before{content:"Reál"}
+  .audit-attendance-table td:nth-child(6)::before{content:"Rozdíl"}
+  .audit-attendance-table td:nth-child(7)::before{content:"Kontrola"}
+  .audit-standards-table td:nth-child(1)::before{content:"Pásmo"}
+  .audit-standards-table td:nth-child(2)::before{content:"Čas"}
+  .audit-standards-table td:nth-child(3)::before{content:"Min."}
+  .settlement-table{display:none}
+  .settlement-mobile-list{display:grid;gap:10px}
+  .settlement-list-row{
+    width:100%;
+    display:grid;
+    gap:10px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:rgba(255,255,255,.035);
+    color:var(--text);
+    text-align:left;
+  }
+  .settlement-list-main,
+  .settlement-list-meta{display:grid;gap:6px;min-width:0}
+  .settlement-list-main b{font-size:16px;line-height:1.2;letter-spacing:0}
+  .settlement-list-main small{color:var(--muted);line-height:1.35}
+  .settlement-list-meta{align-items:start}
+  .settlement-list-amount{
+    display:grid;
+    gap:3px;
+    width:100%;
+    padding:10px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:12px;
+    background:rgba(0,0,0,.12);
+  }
+  .settlement-list-amount small{color:var(--muted);font-weight:850}
+  .settlement-list-amount b{font-size:18px;letter-spacing:0}
+  .settlement-list-amount em{color:var(--muted);font-style:normal;font-size:12px}
+}
+@media (max-width:420px){
+  .staff-shift-card-grid{grid-template-columns:1fr}
+  .staff-shift-card-head{display:grid}
+  .staff-shift-card-head .pill{justify-self:start}
+}
