@@ -3393,6 +3393,7 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
   const [driverReminderWeekday, setDriverReminderWeekday] = useState(parseDriverReminderCron(currentDriverReminderCron).weekday)
   const [driverReminderTime, setDriverReminderTime] = useState(cronTimeValue(currentDriverReminderCron))
   const [driverReminderStatus, setDriverReminderStatus] = useState('')
+  const [pushCleanupStatus, setPushCleanupStatus] = useState('')
   const [notificationConfig, setNotificationConfig] = useState(() => ({
     push: data.settings?.notifications?.push !== false,
     email: data.settings?.notifications?.email === true,
@@ -3403,7 +3404,7 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
   const pushDiagnostics = useMemo(() => {
     const devices = data.pushSubscriptions || []
     const active = devices.filter((device) => device.active !== false)
-    const failed = active.filter((device) => device.lastError)
+    const failed = active.filter((device) => device.lastError || Number(device.deliveryFailures || 0) > 0)
     const lastSeenAt = devices.map((device) => device.lastSeenAt).filter(Boolean).sort().at(-1) || ''
     const lastDeliveryAt = devices.map((device) => device.lastDeliveryAt).filter(Boolean).sort().at(-1) || ''
     return {
@@ -3464,6 +3465,26 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
     setDriverReminderStatus('Uloženo lokálně. Cron obnov v Supabase SQL: select public.refresh_driver_reminder_cron();')
   }
   const requestWhatsappReset = () => commit((prev) => ({ ...prev, settings: { ...prev.settings, integrations: { ...(prev.settings?.integrations || {}), whatsappConfigured: false, whatsappKeyResetRequestedAt: new Date().toISOString() } } }), 'Vyžádán reset WhatsApp integrace.')
+  const cleanupInvalidPushSubscriptions = async () => {
+    if (!pushDiagnostics.failed) return
+    setPushCleanupStatus('Odpojuji chybová push zařízení…')
+    if (onlineMode && supabase?.rpc) {
+      const { data: result, error } = await supabase.rpc('rb_cleanup_invalid_push_subscriptions', { p_min_failures: 1 })
+      if (error) {
+        setPushCleanupStatus(`Nepodařilo se odpojit chybová zařízení: ${error.message}`)
+        return
+      }
+      await reloadOnline?.(true)
+      setPushCleanupStatus(`Odpojeno ${Number(result?.deactivated || 0)} chybových zařízení.`)
+      return
+    }
+    commit((prev) => ({ ...prev, pushSubscriptions: (prev.pushSubscriptions || []).map((device) => (
+      device.active !== false && (device.lastError || Number(device.deliveryFailures || 0) > 0)
+        ? { ...device, active: false, lastSeenAt: new Date().toISOString() }
+        : device
+    )) }), 'Chybová push zařízení byla odpojena.')
+    setPushCleanupStatus(`Odpojeno ${pushDiagnostics.failed} chybových zařízení lokálně.`)
+  }
   return <><PageTitle title={title} />
     <div className="grid two">
       <div className="card">
@@ -3509,6 +3530,10 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
         {pushDiagnostics.recentErrors.length > 0 && <div className="stack" style={{ marginTop: 12 }}>
           {pushDiagnostics.recentErrors.map((device) => <div className="log" key={device.id}><b>{deviceLabelFromUserAgent(device.platform)}</b><br /><span className="muted">{device.lastError}</span></div>)}
         </div>}
+        <div className="actions" style={{ justifyContent: 'flex-start', marginTop: 12 }}>
+          <button className="ghost" type="button" onClick={cleanupInvalidPushSubscriptions} disabled={!pushDiagnostics.failed}>Odpojit chybová zařízení</button>
+        </div>
+        {pushCleanupStatus && <div className="alert warn" style={{ marginTop: 12 }}>{pushCleanupStatus}</div>}
       </div>
       <div className="card">
         <div className="section-title"><h3>Připomínka volných směn</h3><span className="pill">{humanDriverReminderCron(driverReminderCron)}</span></div>
