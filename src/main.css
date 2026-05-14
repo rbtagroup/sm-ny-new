@@ -95,6 +95,129 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 .driver-empty-inbox{display:block;padding:24px 16px}
 @media (max-width:420px){.driver-notifications-card .section-title{display:grid;gap:8px}.driver-notifications-card .section-title .pill{justify-self:start}.driver-notifications-toolbar{display:grid;grid-template-columns:1fr}.driver-notifications-toolbar button{width:100%!important}.driver-notification-row-head{gap:8px}.driver-notification-icon-button{width:34px;height:34px}.driver-notification-titleline b{white-space:normal}}
 
+/* v5.5.7 local driver calm polish */
+.driver-shell-v2 .driver-priority-view{gap:10px}
+.driver-shell-v2 .card{
+  border-radius:16px;
+  background:rgba(13,24,40,.94);
+  box-shadow:0 10px 28px rgba(0,0,0,.20);
+}
+.driver-shell-v2 .driver-hero{
+  border-color:rgba(245,199,106,.42);
+  background:linear-gradient(180deg,rgba(245,199,106,.12),rgba(13,24,40,.94));
+  box-shadow:0 12px 34px rgba(0,0,0,.24);
+}
+.driver-shell-v2 .driver-shift-card,
+.driver-shell-v2 .driver-open-shifts,
+.driver-shell-v2 .driver-offers,
+.driver-shell-v2 .driver-calendar-card,
+.driver-shell-v2 .driver-notifications-card,
+.driver-shell-v2 .driver-notification-settings-card{
+  border-color:rgba(255,255,255,.10);
+}
+.driver-shell-v2 .driver-open-shifts-highlight{
+  border-color:rgba(255,207,90,.38)!important;
+  background:rgba(13,24,40,.94);
+  box-shadow:0 10px 28px rgba(0,0,0,.20);
+}
+.driver-shell-v2 .driver-shift-head h3{
+  font-size:clamp(31px,7vw,42px);
+  letter-spacing:0;
+}
+.driver-shell-v2 .driver-date{
+  letter-spacing:0;
+  color:#fff0bd;
+}
+.driver-shell-v2 .driver-instruction,
+.driver-shell-v2 .settlement-driver-strip,
+.driver-shell-v2 .driver-info-line{
+  border-radius:14px;
+  background:rgba(255,255,255,.035);
+}
+.driver-shell-v2 .alert.warn{
+  border-color:rgba(255,207,90,.28);
+  background:rgba(255,207,90,.075);
+}
+.driver-shell-v2 .driver-actions{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:8px;
+  margin-top:10px;
+}
+.driver-shell-v2 .driver-actions .driver-primary-action{
+  width:100%;
+  min-height:56px;
+  grid-column:auto;
+  border-radius:14px;
+}
+.driver-more-actions{
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:14px;
+  background:rgba(255,255,255,.030);
+  overflow:hidden;
+}
+.driver-more-actions>summary{
+  list-style:none;
+  cursor:pointer;
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:850;
+}
+.driver-more-actions>summary::-webkit-details-marker{display:none}
+.driver-more-actions>summary::after{
+  content:"▾";
+  margin-left:7px;
+  color:#fff3c7;
+}
+.driver-more-actions[open]>summary{
+  border-bottom:1px solid rgba(255,255,255,.10);
+  color:var(--text);
+}
+.driver-more-actions[open]>summary::after{content:"▴"}
+.driver-more-actions>div{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  padding:8px;
+}
+.driver-more-actions button{
+  min-height:42px;
+  border-radius:12px;
+  line-height:1.15;
+}
+.driver-shell-v2 .driver-notification-row{
+  border-radius:14px;
+  background:rgba(255,255,255,.035);
+}
+.driver-shell-v2 .driver-notification-row.is-unread{
+  border-color:rgba(245,199,106,.28);
+  background:rgba(245,199,106,.075);
+  box-shadow:none;
+}
+.driver-shell-v2 .driver-notification-row.is-read{opacity:.72}
+.driver-shell-v2 .driver-notification-dot{
+  width:7px;
+  height:7px;
+  box-shadow:none;
+}
+.driver-shell-v2 .driver-push-status-grid div,
+.driver-shell-v2 .device-row{
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+}
+.driver-shell-v2 .ios-guide{
+  border-color:rgba(128,199,255,.24);
+  background:rgba(128,199,255,.055);
+}
+@media (max-width:420px){
+  .driver-more-actions>div{grid-template-columns:1fr}
+  .driver-shell-v2 .driver-shift-head h3{font-size:32px}
+}
+
 /* Výčetka integration */
 .settlement-modal-backdrop{place-items:start center;overflow:hidden;overscroll-behavior:contain;padding:calc(12px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));background:rgba(3,8,15,.86);backdrop-filter:blur(10px)}
 .settlement-modal{width:min(980px,100%);max-height:calc(100vh - 24px);max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,#0d1828,#08111f);border-color:rgba(245,199,106,.24);box-shadow:0 34px 110px rgba(0,0,0,.78)}

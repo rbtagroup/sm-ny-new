@@ -760,6 +760,15 @@ async function copyText(text) {
   }
 }
 
+function driverFriendlyError(message = '') {
+  const text = String(message || '')
+  if (!text) return ''
+  if (/row-level security|violates|permission denied|not authorized|audit_logs|notifications|shifts/i.test(text)) {
+    return 'Akci se nepodařilo uložit. Zkus to znovu nebo kontaktuj dispečink.'
+  }
+  return text
+}
+
 function useAppData(session, profile) {
   const online = Boolean(isConfiguredSupabase && session?.user && profile)
   const [data, setData] = useState(readStore)
@@ -895,16 +904,49 @@ function buildHelpers(data) {
   return { driver, vehicle, driverName, vehicleName, conflictMessages, statusClass }
 }
 
+function getLocalDemoParams(onlineMode) {
+  if (onlineMode || typeof window === 'undefined') return { role: '', driver: '' }
+  const params = new URLSearchParams(window.location.search)
+  return {
+    role: String(params.get('demoRole') || params.get('role') || '').trim().toLowerCase(),
+    driver: String(params.get('demoDriver') || params.get('driverId') || '').trim(),
+  }
+}
+
+function normalizeDemoText(value = '') {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+function resolveDemoDriverId(value = '', drivers = []) {
+  const query = normalizeDemoText(value)
+  if (!query) return ''
+  const match = drivers.find((driver) => {
+    const fields = [driver.id, driver.name, driver.email].map((field) => normalizeDemoText(field))
+    return fields.some((field) => field === query || field.includes(query))
+  })
+  return match?.id || ''
+}
+
 function App({ session = null, profile = null, signOut = null }) {
   const onlineMode = Boolean(isConfiguredSupabase && session?.user && profile)
   const [data, commit, syncState, reloadOnline] = useAppData(session, profile)
   const helpers = useMemo(() => buildHelpers(data), [data])
-  const [page, setPage] = useState('planner')
-  const [role, setRole] = useState(() => profile?.role || 'admin')
+  const demoParams = getLocalDemoParams(onlineMode)
+  const demoRole = ['admin', 'dispatcher', 'driver'].includes(demoParams.role) ? demoParams.role : ''
+  const demoDriverId = resolveDemoDriverId(demoParams.driver, data.drivers)
+  const [page, setPage] = useState(() => demoRole === 'driver' ? 'driver' : 'planner')
+  const [role, setRole] = useState(() => profile?.role || demoRole || 'admin')
   const ownDriver = onlineMode ? data.drivers.find((d) => d.profileId === session.user.id || (d.email && d.email.toLowerCase() === session.user.email?.toLowerCase())) : null
-  const [currentDriverId, setCurrentDriverId] = useState(ownDriver?.id || data.drivers[0]?.id || '')
-  useEffect(() => { if (profile?.role) setRole(profile.role) }, [profile?.role])
+  const [currentDriverId, setCurrentDriverId] = useState(demoDriverId || ownDriver?.id || data.drivers[0]?.id || '')
+  useEffect(() => {
+    if (profile?.role) {
+      setRole(profile.role)
+      return
+    }
+    if (!onlineMode && demoRole) setRole(demoRole)
+  }, [profile?.role, onlineMode, demoRole])
   useEffect(() => { if (onlineMode && profile?.role === 'driver' && ownDriver?.id) setCurrentDriverId(ownDriver.id) }, [onlineMode, profile?.role, ownDriver?.id])
+  useEffect(() => { if (!onlineMode && demoDriverId) setCurrentDriverId(demoDriverId) }, [onlineMode, demoDriverId])
   const isDriver = role === 'driver'
   const currentDriver = onlineMode && isDriver ? ownDriver : (data.drivers.find((d) => d.id === currentDriverId) || data.drivers[0])
   const [updateWorker, setUpdateWorker] = useState(null)
@@ -2477,14 +2519,29 @@ function DriverActions({ shift, compact = false, data, actions }) {
   const canSwap = !['cancelled','completed'].includes(shift.status) && !['pending','accepted'].includes(shift.swapRequestStatus)
   const settlement = settlementForShift(data, shift.id)
   const canSettlement = canOpenSettlement(shift) || settlement
+  const primaryKind = canCheckOut ? 'checkout' : canCheckIn ? 'checkin' : canSettlement ? 'settlement' : canConfirm ? 'confirm' : ''
+  const primaryAction = primaryKind === 'checkout'
+    ? <button className="primary driver-primary-action" onClick={() => actions.checkOut(shift.id)}>Ukončit směnu</button>
+    : primaryKind === 'checkin'
+      ? <button className="primary soft-primary driver-primary-action" onClick={() => actions.checkIn(shift.id)}>Nastoupil jsem</button>
+      : primaryKind === 'settlement'
+        ? <button className="primary soft-primary driver-primary-action" onClick={() => actions.setSettlementShiftId(shift.id)}>{settlement ? 'Otevřít výčetku' : 'Vyplnit výčetku'}</button>
+        : primaryKind === 'confirm'
+          ? <button className="primary driver-primary-action" onClick={() => actions.setStatus(shift.id, 'confirmed')}>Potvrdit</button>
+          : null
+  const secondaryActions = [
+    canConfirm && primaryKind !== 'confirm' ? <button className="ghost" onClick={() => actions.setStatus(shift.id, 'confirmed')} key="confirm">Potvrdit</button> : null,
+    canSettlement && primaryKind !== 'settlement' ? <button className="ghost" onClick={() => actions.setSettlementShiftId(shift.id)} key="settlement">{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button> : null,
+    canSwap ? <button className="ghost" onClick={() => actions.requestSwap(shift)} key="swap">Nabídnout výměnu</button> : null,
+    ['pending','accepted'].includes(shift.swapRequestStatus) ? <button className="danger" onClick={() => actions.cancelSwap(shift)} key="cancelSwap">Zrušit výměnu</button> : null,
+    canDecline ? <button className="danger" onClick={() => actions.decline(shift)} key="decline">Odmítnout směnu</button> : null,
+  ].filter(Boolean)
   return <div className={compact ? 'driver-actions driver-actions-compact' : 'driver-actions'}>
-    {canConfirm && <button className="primary" onClick={() => actions.setStatus(shift.id, 'confirmed')}>Potvrdit</button>}
-    {canCheckIn && <button className="primary soft-primary driver-primary-action" onClick={() => actions.checkIn(shift.id)}>Nastoupil jsem</button>}
-    {canCheckOut && <button className="primary" onClick={() => actions.checkOut(shift.id)}>Ukončit směnu</button>}
-    {canSettlement && <button className="ghost" onClick={() => actions.setSettlementShiftId(shift.id)}>{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button>}
-    {canSwap && <button className="ghost" onClick={() => actions.requestSwap(shift)}>Výměna</button>}
-    {['pending','accepted'].includes(shift.swapRequestStatus) && <button className="danger" onClick={() => actions.cancelSwap(shift)}>Zrušit výměnu</button>}
-    {canDecline && <button className="danger" onClick={() => actions.decline(shift)}>Odmítnout</button>}
+    {primaryAction}
+    {secondaryActions.length > 0 && <details className="driver-more-actions">
+      <summary>Další akce</summary>
+      <div>{secondaryActions}</div>
+    </details>}
   </div>
 }
 function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedShiftId, onExpand, actions }) {
@@ -2813,7 +2870,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   return <div className="driver-view driver-mobile-view driver-priority-view">
     {driverToast && <div className="planner-toast" role="status">{driverToast}</div>}
     {syncState?.saving && <div className="driver-sync-banner saving" role="status">Ukládám změny…</div>}
-    {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{syncState.error}</div>}
+    {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{driverFriendlyError(syncState.error)}</div>}
     {focus && <div className="driver-section-kicker">Aktuální směna</div>}
     {focus ? <ShiftMobileCard s={focus} focusCard {...cardProps} /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
     {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
@@ -2934,7 +2991,7 @@ function DriverSettings({ data, commit, currentDriver, profile, session, onlineM
       <div className="compact-list"><div className="log"><b>{currentDriver?.name || profile?.full_name || 'Řidič'}</b><br /><span className="muted">{currentDriver?.email || profile?.email || 'Email nezadaný'}</span>{currentDriver?.phone && <><br /><span className="muted">{currentDriver.phone}</span></>}</div></div>
     </div>
     <div className="card driver-notification-settings-card"><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} session={session} /></div>
-    {syncState?.error && <div className="card"><div className="alert warn">{syncState.error}</div></div>}
+    {syncState?.error && <div className="card"><div className="alert warn">{driverFriendlyError(syncState.error)}</div></div>}
     <div className="card"><div className="muted" style={{ fontSize: '0.8em', marginBottom: 8 }}>v{VERSION}</div><button className="danger" onClick={signOut}>Odhlásit</button></div>
   </div>
 }
@@ -3019,6 +3076,7 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
     ? (data.pushSubscriptions || []).filter((p) => p.driverId === currentDriver?.id && currentEndpoint !== null && p.endpoint === currentEndpoint)
     : (data.pushSubscriptions || []).filter((p) => p.profileId === profile?.id || p.role === profile?.role)
   const activeDevices = myDevices.filter((p) => p.active !== false)
+  const lastPushAt = activeDevices.map((p) => p.lastDeliveryAt).filter(Boolean).sort().at(-1) || ''
   const permissionLabel = ({ granted: 'povoleno', denied: 'blokováno', default: 'čeká na povolení', unsupported: 'nepodporováno' })[permission] || permission
   const driverPushState = !supported
     ? ['Nepodporováno', 'warn']
@@ -3048,6 +3106,8 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
     {isDriver && <div className="driver-push-status-grid">
       <div><span>Prohlížeč</span><b>{supported && pushSupported ? 'Připravený' : 'Nepodporuje'}</b></div>
       <div><span>Zařízení</span><b>{activeDevices.length ? 'Připojené' : 'Nepřipojené'}</b></div>
+      <div><span>Povolení</span><b>{permissionLabel}</b></div>
+      <div><span>Poslední push</span><b>{lastPushAt ? formatDateTime(lastPushAt) : '—'}</b></div>
     </div>}
     {!isDriver && <div className="grid three" style={{ margin: '12px 0' }}>
       <Kpi label="Service Worker" value={supported ? 'OK' : 'Ne'} hint="základ PWA" kind={supported ? 'good' : 'bad'} />
