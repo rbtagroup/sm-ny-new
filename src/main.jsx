@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Bell, Check, Clock, House, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { AuthGate, MissingProfile } from './AuthViews.jsx'
 import { addedRows, changedRows, stableFingerprint } from './lib/syncDiff.js'
-import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls } from './lib/sensitiveSync.js'
+import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCallsWithSideEffects } from './lib/sensitiveSync.js'
 import {
   actualDurationMinutes,
   addDays,
@@ -312,17 +312,29 @@ async function syncChangedRows(prev, next, profile) {
   const allowedForDriver = new Set(['shifts','settlements','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
   const errors = []
   const critical = new Set(['shifts','settlements','swapRequests','notifications','pushSubscriptions'])
+  const previousNotificationIds = new Set((prev.notifications || []).map((n) => n.id))
+  const previousAuditIds = new Set((prev.audit || []).map((n) => n.id))
+  const insertedNotifications = changedRows(prev.notifications, next.notifications).filter((row) => row.id && !previousNotificationIds.has(row.id))
+  const insertedAuditRows = changedRows(prev.audit, next.audit).filter((row) => row.id && !previousAuditIds.has(row.id))
+  const changedSwapRequests = changedRows(prev.swapRequests, next.swapRequests)
+  const handledNotificationIds = new Set()
+  const handledAuditIds = new Set()
+  const driverSwapShiftIds = new Set(!isStaff ? changedSwapRequests.map((row) => row.shiftId).filter(Boolean) : [])
   const staffSwapResolution = isStaff
-    ? staffSwapResolutionRpcCalls(prev.swapRequests, changedRows(prev.swapRequests, next.swapRequests))
+    ? staffSwapResolutionRpcCalls(prev.swapRequests, changedSwapRequests, { includeSideEffects: true, notifications: insertedNotifications, auditRows: insertedAuditRows })
     : { calls: [], handledIds: new Set(), handledShiftIds: new Set() }
+  ;(staffSwapResolution.handledNotificationIds || new Set()).forEach((id) => handledNotificationIds.add(id))
+  ;(staffSwapResolution.handledAuditIds || new Set()).forEach((id) => handledAuditIds.add(id))
   for (const key of ONLINE_TABLES) {
     if (!isStaff && !allowedForDriver.has(key)) continue
     let changed = changedRows(prev[key], next[key])
+    if (key === 'notifications' && handledNotificationIds.size) changed = changed.filter((row) => !handledNotificationIds.has(row.id))
+    if (key === 'audit' && handledAuditIds.size) changed = changed.filter((row) => !handledAuditIds.has(row.id))
     if (isStaff && key === 'shifts' && staffSwapResolution.handledShiftIds.size) {
       changed = changed.filter((row) => !staffSwapResolution.handledShiftIds.has(row.id))
     }
     // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
-    if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId)
+    if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId && !driverSwapShiftIds.has(row.id))
     if (!isStaff && key === 'settlements') changed = changed.filter((row) => row.driverId === currentDriverId)
     if (!isStaff && key === 'notifications') {
       const previousIds = new Set((prev.notifications || []).map((n) => n.id))
@@ -332,7 +344,7 @@ async function syncChangedRows(prev, next, profile) {
         .filter((n) => n.id && !nextIds.has(n.id) && n.targetDriverId === currentDriverId)
         .map((n) => n.id)
       if (insertedRows.length) {
-        const { error } = await supabase.from('notifications').insert(insertedRows)
+        const { error } = await supabase.rpc('rb_insert_notifications', { p_notifications: insertedRows })
         if (error) {
           errors.push(`notifications: ${error.message}`)
           if (critical.has(key)) throw new Error(errors.join('\n'))
@@ -353,7 +365,9 @@ async function syncChangedRows(prev, next, profile) {
       continue
     }
     if (!isStaff && key === 'swapRequests') {
-      const { calls, denied } = swapRequestRpcCalls(prev.swapRequests, changed, currentDriverId)
+      const { calls, denied, handledNotificationIds: swapNotificationIds, handledAuditIds: swapAuditIds } = swapRequestRpcCallsWithSideEffects(prev.swapRequests, changed, currentDriverId, { includeSideEffects: true, notifications: insertedNotifications, auditRows: insertedAuditRows })
+      ;(swapNotificationIds || new Set()).forEach((id) => handledNotificationIds.add(id))
+      ;(swapAuditIds || new Set()).forEach((id) => handledAuditIds.add(id))
       if (denied.length) errors.push(`swap_requests: nepovolene akce ${denied.join(', ')}`)
       if (calls.length) {
         try { await runRpcCalls(calls) }
@@ -2981,7 +2995,7 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
     {showIosGuide && <div className="ios-guide"><b>iPhone postup</b><ol><li>Otevři aplikaci v Safari.</li><li>Dej Sdílet → Přidat na plochu.</li><li>Spusť RBSHIFT z plochy.</li><li>Potom povol notifikace.</li></ol></div>}
     <div className={`device-list ${isDriver ? 'driver-device-list' : ''}`.trim()}>
       <div className="section-title"><h3>{isDriver ? 'Zařízení' : 'Moje zařízení'}</h3><span className={activeDevices.length ? 'pill good' : 'pill warn'}>{activeDevices.length} aktivní</span></div>
-      {myDevices.map((d) => <div className="device-row" key={d.id}><div><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">{d.active === false ? 'Vypnuté zařízení' : 'Aktivní push zařízení'}</small></div>{d.active !== false && (isDriver ? <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => deactivateDevice(d.id)} aria-label="Odebrat zařízení" title="Odebrat"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button> : <button className="danger" onClick={() => deactivateDevice(d.id)}>Odebrat</button>)}</div>)}
+      {myDevices.map((d) => <div className="device-row" key={d.id}><div><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">{d.active === false ? 'Vypnuté zařízení' : (d.lastError ? `Chyba: ${d.lastError}` : 'Aktivní push zařízení')}</small>{d.lastDeliveryAt && <><br /><small className="muted">Poslední push: {formatDateTime(d.lastDeliveryAt)}</small></>}</div>{d.active !== false && (isDriver ? <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => deactivateDevice(d.id)} aria-label="Odebrat zařízení" title="Odebrat"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button> : <button className="danger" onClick={() => deactivateDevice(d.id)}>Odebrat</button>)}</div>)}
       {!myDevices.length && <div className={`empty ${isDriver ? 'driver-empty-inbox' : ''}`.trim()}>{isDriver ? 'Toto zařízení zatím není připojené.' : 'Na tomto účtu zatím není uložené žádné zařízení.'}</div>}
     </div>
     <p className="hintline">{isDriver ? 'Upozornění chodí jen na zařízení, kde je aplikace povolená.' : 'Notifikace dostanete na všechna zařízení, kde je app aktivní.'}</p>
@@ -3386,6 +3400,22 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
   }))
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
   const whatsappConfigured = Boolean(data.settings?.integrations?.whatsappConfigured || import.meta.env.VITE_WHATSAPP_API_URL || import.meta.env.VITE_WHATSAPP_API_KEY)
+  const pushDiagnostics = useMemo(() => {
+    const devices = data.pushSubscriptions || []
+    const active = devices.filter((device) => device.active !== false)
+    const failed = active.filter((device) => device.lastError)
+    const lastSeenAt = devices.map((device) => device.lastSeenAt).filter(Boolean).sort().at(-1) || ''
+    const lastDeliveryAt = devices.map((device) => device.lastDeliveryAt).filter(Boolean).sort().at(-1) || ''
+    return {
+      total: devices.length,
+      active: active.length,
+      inactive: devices.length - active.length,
+      failed: failed.length,
+      lastSeenAt,
+      lastDeliveryAt,
+      recentErrors: failed.slice(0, 3),
+    }
+  }, [data.pushSubscriptions])
   const operationalNotificationRules = [
     ['Nová směna', 'řidič dostane upozornění po vytvoření nebo přiřazení směny'],
     ['Změna směny', 'řidič dostane upozornění při změně času, auta, instrukcí nebo stavu'],
@@ -3470,6 +3500,15 @@ function Settings({ title = 'Nastavení', data, commit, supabase, onlineMode, re
         <div className="stack" style={{ marginTop: 14 }}>
           {operationalNotificationRules.map(([rule, description]) => <div className="log" key={rule}><b>{rule}</b><br /><span className="muted">{description}</span></div>)}
         </div>
+        <div className="grid four" style={{ marginTop: 14 }}>
+          <Kpi label="Zařízení" value={pushDiagnostics.active} hint={`${pushDiagnostics.total} celkem`} kind={pushDiagnostics.active ? 'good' : 'warn'} />
+          <Kpi label="Neaktivní" value={pushDiagnostics.inactive} hint="odpojená" kind={pushDiagnostics.inactive ? 'warn' : 'good'} />
+          <Kpi label="Chyby" value={pushDiagnostics.failed} hint="aktivní zařízení" kind={pushDiagnostics.failed ? 'bad' : 'good'} />
+          <Kpi label="Poslední push" value={pushDiagnostics.lastDeliveryAt ? formatDateTime(pushDiagnostics.lastDeliveryAt) : '—'} hint={pushDiagnostics.lastSeenAt ? `seen ${formatDateTime(pushDiagnostics.lastSeenAt)}` : 'bez záznamu'} />
+        </div>
+        {pushDiagnostics.recentErrors.length > 0 && <div className="stack" style={{ marginTop: 12 }}>
+          {pushDiagnostics.recentErrors.map((device) => <div className="log" key={device.id}><b>{deviceLabelFromUserAgent(device.platform)}</b><br /><span className="muted">{device.lastError}</span></div>)}
+        </div>}
       </div>
       <div className="card">
         <div className="section-title"><h3>Připomínka volných směn</h3><span className="pill">{humanDriverReminderCron(driverReminderCron)}</span></div>

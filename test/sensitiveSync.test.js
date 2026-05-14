@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls } from '../src/lib/sensitiveSync.js'
+import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls, swapRequestRpcCallsWithSideEffects } from '../src/lib/sensitiveSync.js'
 
 test('notificationStateRpcCalls emits only changed read/delete state for current driver', () => {
   const calls = notificationStateRpcCalls(
@@ -30,6 +30,48 @@ test('swapRequestRpcCalls routes new driver request to rb_request_swap', () => {
   assert.equal(calls[0].fn, 'rb_request_swap')
   assert.equal(calls[0].args.p_id, 'swap_1')
   assert.equal(calls[0].args.p_shift_id, 'sh_1')
+})
+
+test('swapRequestRpcCallsWithSideEffects bundles swap notifications and audit into one RPC', () => {
+  const createdAt = '2026-05-11T10:00:00.000Z'
+  const notice = { id: 'ntf_1', shiftId: 'sh_1', title: 'Nabídka', targetDriverId: 'drv_2' }
+  const audit = { id: 'log_1', text: 'Řidič požádal o výměnu.' }
+  const { calls, handledNotificationIds, handledAuditIds } = swapRequestRpcCallsWithSideEffects([], [{
+    id: 'swap_1',
+    shiftId: 'sh_1',
+    driverId: 'drv_1',
+    targetMode: 'driver',
+    targetDriverId: 'drv_2',
+    status: 'pending',
+    createdAt,
+  }], 'drv_1', { includeSideEffects: true, notifications: [notice], auditRows: [audit] })
+
+  assert.equal(calls[0].fn, 'rb_request_swap_with_notifications')
+  assert.equal(calls[0].args.p_shift_id, 'sh_1')
+  assert.deepEqual(calls[0].args.p_notifications, [notice])
+  assert.deepEqual(calls[0].args.p_audit_rows, [audit])
+  assert.deepEqual([...handledNotificationIds], ['ntf_1'])
+  assert.deepEqual([...handledAuditIds], ['log_1'])
+})
+
+test('swapRequestRpcCallsWithSideEffects consumes shared audit rows once', () => {
+  const audit = { id: 'log_shared', text: 'Hromadná synchronizace výměn.' }
+  const { calls, handledAuditIds } = swapRequestRpcCallsWithSideEffects([], [{
+    id: 'swap_1',
+    shiftId: 'sh_1',
+    driverId: 'drv_1',
+    targetMode: 'all',
+    status: 'pending',
+  }, {
+    id: 'swap_2',
+    shiftId: 'sh_2',
+    driverId: 'drv_1',
+    targetMode: 'all',
+    status: 'pending',
+  }], 'drv_1', { includeSideEffects: true, auditRows: [audit] })
+
+  assert.deepEqual(calls.map((call) => call.args.p_audit_rows), [[audit], []])
+  assert.deepEqual([...handledAuditIds], ['log_shared'])
 })
 
 test('swapRequestRpcCalls rejects foreign inserts and accepts targeted pending swaps', () => {
@@ -143,6 +185,31 @@ test('staffSwapResolutionRpcCalls resolves accepted swaps through staff RPC', ()
       p_resolved_at: '2026-05-11T11:00:00.000Z',
     },
   }])
+})
+
+test('staffSwapResolutionRpcCalls can bundle resolution side effects', () => {
+  const notice = { id: 'ntf_staff', shiftId: 'sh_3', title: 'Schváleno', targetDriverId: 'drv_new' }
+  const audit = { id: 'log_staff', text: 'Výměna schválena.' }
+  const { calls, handledNotificationIds, handledAuditIds } = staffSwapResolutionRpcCalls([{
+    id: 'swap_3',
+    shiftId: 'sh_3',
+    driverId: 'drv_old',
+    acceptedByDriverId: 'drv_new',
+    status: 'accepted',
+  }], [{
+    id: 'swap_3',
+    shiftId: 'sh_3',
+    driverId: 'drv_old',
+    acceptedByDriverId: 'drv_new',
+    approvedDriverId: 'drv_new',
+    status: 'approved',
+  }], { includeSideEffects: true, notifications: [notice], auditRows: [audit] })
+
+  assert.equal(calls[0].fn, 'rb_resolve_swap_request_with_notifications')
+  assert.deepEqual(calls[0].args.p_notifications, [notice])
+  assert.deepEqual(calls[0].args.p_audit_rows, [audit])
+  assert.deepEqual([...handledNotificationIds], ['ntf_staff'])
+  assert.deepEqual([...handledAuditIds], ['log_staff'])
 })
 
 test('staffSwapResolutionRpcCalls leaves shift cancellation upsert available', () => {

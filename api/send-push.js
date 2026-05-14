@@ -117,7 +117,7 @@ const checkRateLimit = (key, weight = 1) => {
 const subscriptionsForNotice = async (supabase, notice) => {
   let query = supabase
     .from('push_subscriptions')
-    .select('id, profile_id, driver_id, role, endpoint, subscription, active')
+    .select('id, profile_id, driver_id, role, endpoint, subscription, active, delivery_failures')
     .eq('active', true)
 
   if (notice.targetDriverId) {
@@ -287,13 +287,24 @@ export default async function handler(req, res) {
           type: notice.type,
           requireInteraction: ['new-shift', 'shift-change', 'swap-offer', 'swap-accepted', 'swap-rejected', 'open-shift-interest'].includes(notice.type),
         }))
+        await supabase
+          .from('push_subscriptions')
+          .update({ last_delivery_at: new Date().toISOString(), last_error: null, delivery_failures: 0, last_seen_at: new Date().toISOString() })
+          .eq('id', sub.id)
         return { id: sub.id, noticeId: notice.id, ok: true }
       } catch (err) {
         const statusCode = err?.statusCode || err?.status
-        if (statusCode === 404 || statusCode === 410) {
-          await supabase.from('push_subscriptions').update({ active: false, last_seen_at: new Date().toISOString() }).eq('id', sub.id)
+        const message = err?.message || String(err)
+        const patch = {
+          last_error: message.slice(0, 500),
+          delivery_failures: Number(sub.delivery_failures || 0) + 1,
+          last_seen_at: new Date().toISOString(),
         }
-        return { id: sub.id, noticeId: notice.id, ok: false, statusCode, error: err?.message || String(err) }
+        if (statusCode === 404 || statusCode === 410) {
+          patch.active = false
+        }
+        await supabase.from('push_subscriptions').update(patch).eq('id', sub.id)
+        return { id: sub.id, noticeId: notice.id, ok: false, statusCode, error: message }
       }
     })
     results.push(...noticeResults)

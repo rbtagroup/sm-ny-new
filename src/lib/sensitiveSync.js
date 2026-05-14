@@ -34,10 +34,51 @@ export function notificationStateRpcCalls(prevNotifications = [], changedNotific
 }
 
 export function swapRequestRpcCalls(prevSwapRequests = [], changedSwapRequests = [], currentDriverId = '') {
+  return swapRequestRpcCallsWithSideEffects(prevSwapRequests, changedSwapRequests, currentDriverId)
+}
+
+const sideEffectPayload = (request, options = {}) => {
+  const consumedNotificationIds = options.consumedNotificationIds || new Set()
+  const consumedAuditIds = options.consumedAuditIds || new Set()
+  const notifications = (options.notifications || [])
+    .filter((notice) => notice?.shiftId === request?.shiftId)
+    .filter((notice) => !notice?.id || !consumedNotificationIds.has(notice.id))
+  const auditRows = (options.auditRows || [])
+    .filter((row) => !row?.id || !consumedAuditIds.has(row.id))
+  return {
+    p_notifications: notifications,
+    p_audit_rows: auditRows,
+    handledNotificationIds: notifications.map((notice) => notice.id).filter(Boolean),
+    handledAuditIds: auditRows.map((row) => row.id).filter(Boolean),
+  }
+}
+
+const withSideEffects = (fn, args, request, options = {}) => {
+  if (!options.includeSideEffects) return { call: { fn, args }, handledNotificationIds: [], handledAuditIds: [] }
+  const { handledNotificationIds, handledAuditIds, ...payload } = sideEffectPayload(request, options)
+  return {
+    call: {
+      fn: `${fn}_with_notifications`,
+      args: { ...args, ...payload },
+    },
+    handledNotificationIds,
+    handledAuditIds,
+  }
+}
+
+export function swapRequestRpcCallsWithSideEffects(prevSwapRequests = [], changedSwapRequests = [], currentDriverId = '', options = {}) {
   if (!currentDriverId) return { calls: [], denied: [] }
   const previousById = new Map((prevSwapRequests || []).map((request) => [request.id, request]))
   const calls = []
   const denied = []
+  const handledNotificationIds = new Set()
+  const handledAuditIds = new Set()
+  const addCall = (fn, args, request) => {
+    const sideEffectCall = withSideEffects(fn, args, request, { ...options, consumedNotificationIds: handledNotificationIds, consumedAuditIds: handledAuditIds })
+    calls.push(sideEffectCall.call)
+    sideEffectCall.handledNotificationIds.forEach((id) => handledNotificationIds.add(id))
+    sideEffectCall.handledAuditIds.forEach((id) => handledAuditIds.add(id))
+  }
 
   for (const request of changedSwapRequests || []) {
     if (!request?.id) continue
@@ -48,30 +89,24 @@ export function swapRequestRpcCalls(prevSwapRequests = [], changedSwapRequests =
         denied.push(request.id)
         continue
       }
-      calls.push({
-        fn: 'rb_request_swap',
-        args: {
-          p_id: request.id,
-          p_shift_id: request.shiftId,
-          p_target_mode: request.targetMode || 'all',
-          p_target_driver_id: request.targetDriverId || null,
-          p_reason: request.reason || null,
-          p_history: request.history || [],
-          p_created_at: request.createdAt || null,
-        },
-      })
+      addCall('rb_request_swap', {
+        p_id: request.id,
+        p_shift_id: request.shiftId,
+        p_target_mode: request.targetMode || 'all',
+        p_target_driver_id: request.targetDriverId || null,
+        p_reason: request.reason || null,
+        p_history: request.history || [],
+        p_created_at: request.createdAt || null,
+      }, request)
       continue
     }
 
     if (before.driverId === currentDriverId && request.status === 'cancelled') {
-      calls.push({
-        fn: 'rb_cancel_swap_request',
-        args: {
-          p_id: request.id,
-          p_history: request.history || [],
-          p_cancelled_at: request.cancelledAt || null,
-        },
-      })
+      addCall('rb_cancel_swap_request', {
+        p_id: request.id,
+        p_history: request.history || [],
+        p_cancelled_at: request.cancelledAt || null,
+      }, request)
       continue
     }
 
@@ -80,14 +115,11 @@ export function swapRequestRpcCalls(prevSwapRequests = [], changedSwapRequests =
       (before.targetMode === 'all' || before.targetDriverId === currentDriverId)
 
     if (canAccept && request.status === 'accepted' && request.acceptedByDriverId === currentDriverId) {
-      calls.push({
-        fn: 'rb_accept_swap_request',
-        args: {
-          p_id: request.id,
-          p_history: request.history || [],
-          p_accepted_at: request.acceptedAt || null,
-        },
-      })
+      addCall('rb_accept_swap_request', {
+        p_id: request.id,
+        p_history: request.history || [],
+        p_accepted_at: request.acceptedAt || null,
+      }, request)
       continue
     }
 
@@ -97,29 +129,28 @@ export function swapRequestRpcCalls(prevSwapRequests = [], changedSwapRequests =
       before.targetDriverId === currentDriverId
 
     if (canDeclineTargeted && request.status === 'rejected') {
-      calls.push({
-        fn: 'rb_decline_swap_request',
-        args: {
-          p_id: request.id,
-          p_history: request.history || [],
-          p_rejected_reason: request.rejectedReason || null,
-          p_resolved_at: request.resolvedAt || null,
-        },
-      })
+      addCall('rb_decline_swap_request', {
+        p_id: request.id,
+        p_history: request.history || [],
+        p_rejected_reason: request.rejectedReason || null,
+        p_resolved_at: request.resolvedAt || null,
+      }, request)
       continue
     }
 
     denied.push(request.id)
   }
 
-  return { calls, denied }
+  return { calls, denied, handledNotificationIds, handledAuditIds }
 }
 
-export function staffSwapResolutionRpcCalls(prevSwapRequests = [], changedSwapRequests = []) {
+export function staffSwapResolutionRpcCalls(prevSwapRequests = [], changedSwapRequests = [], options = {}) {
   const previousById = new Map((prevSwapRequests || []).map((request) => [request.id, request]))
   const calls = []
   const handledIds = new Set()
   const handledShiftIds = new Set()
+  const handledNotificationIds = new Set()
+  const handledAuditIds = new Set()
 
   for (const request of changedSwapRequests || []) {
     if (!request?.id) continue
@@ -131,22 +162,22 @@ export function staffSwapResolutionRpcCalls(prevSwapRequests = [], changedSwapRe
       request.acceptedByDriverId ||
       (request.targetMode === 'open' ? request.driverId : '')
 
-    calls.push({
-      fn: 'rb_resolve_swap_request',
-      args: {
-        p_id: request.id,
-        p_status: request.status,
-        p_approved_driver_id: approvedDriverId || null,
-        p_rejected_reason: request.rejectedReason || null,
-        p_history: request.history || [],
-        p_resolved_at: request.resolvedAt || null,
-      },
-    })
+    const sideEffectCall = withSideEffects('rb_resolve_swap_request', {
+      p_id: request.id,
+      p_status: request.status,
+      p_approved_driver_id: approvedDriverId || null,
+      p_rejected_reason: request.rejectedReason || null,
+      p_history: request.history || [],
+      p_resolved_at: request.resolvedAt || null,
+    }, request, { ...options, consumedNotificationIds: handledNotificationIds, consumedAuditIds: handledAuditIds })
+    calls.push(sideEffectCall.call)
+    sideEffectCall.handledNotificationIds.forEach((id) => handledNotificationIds.add(id))
+    sideEffectCall.handledAuditIds.forEach((id) => handledAuditIds.add(id))
     handledIds.add(request.id)
     if (request.status !== 'cancelled' && request.shiftId) handledShiftIds.add(request.shiftId)
   }
 
-  return { calls, handledIds, handledShiftIds }
+  return { calls, handledIds, handledShiftIds, handledNotificationIds, handledAuditIds }
 }
 
 export function auditInsertRpcCalls(auditRows = []) {

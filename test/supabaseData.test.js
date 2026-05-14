@@ -31,3 +31,24 @@ test('notification mapper normalizes existing driver-targeted rows', () => {
   assert.equal(notice.targetDriverId, 'drv_1')
   assert.equal(notice.targetRole, 'driver')
 })
+
+test('push subscription mapper preserves delivery diagnostics', () => {
+  const sub = fromDb.pushSubscriptions({
+    id: 'push_1',
+    profile_id: 'profile_1',
+    driver_id: 'drv_1',
+    role: 'driver',
+    endpoint: 'https://push.example/device',
+    subscription: { endpoint: 'https://push.example/device' },
+    active: true,
+    last_seen_at: '2026-05-14T10:00:00.000Z',
+    last_delivery_at: '2026-05-14T10:05:00.000Z',
+    last_error: 'Gone',
+    delivery_failures: 2,
+  })
+
+  assert.equal(sub.lastSeenAt, '2026-05-14T10:00:00.000Z')
+  assert.equal(sub.lastDeliveryAt, '2026-05-14T10:05:00.000Z')
+  assert.equal(sub.lastError, 'Gone')
+  assert.equal(sub.deliveryFailures, 2)
+})
