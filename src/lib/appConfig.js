@@ -5,6 +5,7 @@ export const shiftTypeMap = { day: 'Denní', night: 'Noční', backup: 'Záloha'
 export const settlementStatusMap = { draft: 'Rozpracováno', submitted: 'Čeká na schválení', approved: 'Schváleno', returned: 'Vráceno k opravě' }
 export const settlementToneMap = { draft: 'warn', submitted: 'waiting', approved: 'good', returned: 'bad' }
 export const repeatMap = { none: 'Neopakovat', daily7: '7 dnů za sebou', workweek: 'Po–Pá', weekend: 'So–Ne' }
+export const weekdayMap = { 1: 'Po', 2: 'Út', 3: 'St', 4: 'Čt', 5: 'Pá', 6: 'So', 0: 'Ne' }
 export const defaultShiftTimes = { dayStart: '07:00', dayEnd: '19:00', nightStart: '19:00', nightEnd: '07:00', eventStart: '18:00', eventEnd: '03:00' }
 export const defaultShiftTemplates = [
   { id: 'tpl_day', name: 'Denní', start: '07:00', end: '19:00', active: true, type: 'day' },

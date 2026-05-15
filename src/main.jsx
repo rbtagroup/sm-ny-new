@@ -10,7 +10,6 @@ import {
   actualDurationMinutes,
   addDays,
   dateInRange,
-  datePart,
   datetimeLocal,
   durationLabel,
   formatDate,
@@ -21,11 +20,9 @@ import {
   minutes,
   overlapsShift,
   overlapsTimeWindow,
-  plannedDurationMinutes,
   startOfWeek,
   timePart,
   todayISO,
-  weekdayOf,
 } from './lib/dateTime.js'
 import {
   addNotificationsToData,
@@ -50,7 +47,6 @@ import {
 import { createSupabaseMappers, ONLINE_TABLES, tableName } from './lib/supabaseData.js'
 import { appFriendlyError } from './lib/errors.js'
 import {
-  defaultShiftTemplates,
   defaultShiftTimes,
   repeatMap,
   roleMap,
@@ -59,7 +55,48 @@ import {
   shiftTypeMap,
   statusMap,
   statusToneMap,
+  weekdayMap,
 } from './lib/appConfig.js'
+import { showBrowserNotification, subscribeDeviceForPush } from './lib/pushClient.js'
+import {
+  configuredShiftTimes,
+  normalizeShiftTemplates,
+  shiftTemplateOptions,
+  shiftTemplateValue,
+} from './lib/shiftTemplates.js'
+import {
+  activeSwapForShift,
+  calendarDriverLabel,
+  calendarShiftLineClass,
+  deviceLabelFromUserAgent,
+  driverInitials,
+  formatNoticeDate,
+  money,
+  shiftNoticeBody,
+  shiftTypeName,
+  sortByDateTime,
+  staffDisplayName,
+  staffInitials,
+  statusCounts,
+  time,
+  todayRangeTitle,
+} from './lib/display.js'
+import {
+  availabilityCoversShift,
+  availabilityKind,
+  availabilityKindMap,
+  availabilityKindTone,
+  availabilityLabel,
+  availabilityNoteText,
+  availabilityRangeOverlaps,
+  availabilityRelevantToShift,
+} from './lib/availability.js'
+import {
+  attendanceRows,
+  coverageGaps,
+  readinessChecks,
+  readinessText,
+} from './lib/opsMetrics.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const STORAGE_KEY = 'rbshift-manager-data-v4'
@@ -67,73 +104,7 @@ const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2
 const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
 const uid = (prefix = 'id') => `${prefix}_${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2, 11)}`
 const makeNotice = createNoticeFactory(uid)
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = window.atob(base64)
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)))
-}
-async function showBrowserNotification(title, body = '') {
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return false
-  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
-  if (permission !== 'granted') return false
-  const reg = await navigator.serviceWorker.ready
-  await reg.showNotification(title, { body, icon: './icons/notification-icon-192.png', badge: './icons/notification-badge-96.png', tag: `rbshift-${Date.now()}`, data: { url: './' } })
-  return true
-}
-async function subscribeDeviceForPush(vapidPublicKey) {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('Push notifikace nejsou v tomto prohlížeči dostupné.')
-  const permission = await Notification.requestPermission()
-  if (permission !== 'granted') throw new Error('Notifikace nejsou povolené.')
-  const reg = await navigator.serviceWorker.ready
-  if (!vapidPublicKey) return { mode: 'local-test-only', permission, endpoint: '' }
-  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) })
-  return sub.toJSON()
-}
-
-const money = (n) => `${Math.round(Number(n || 0)).toLocaleString('cs-CZ')} Kč`
-const time = (v) => v || '—'
-function configuredShiftTimes(settings = {}) {
-  return { ...defaultShiftTimes, ...(settings.shiftTimes || {}) }
-}
-function inferShiftTemplateType(template = {}) {
-  const name = String(template.name || '').toLowerCase()
-  if (template.type && shiftTypeMap[template.type]) return template.type
-  if (name.includes('noč')) return 'night'
-  if (name.includes('den')) return 'day'
-  return 'custom'
-}
-function normalizeShiftTemplates(settings = {}) {
-  const legacy = configuredShiftTimes(settings)
-  const source = Array.isArray(settings.shiftTemplates) && settings.shiftTemplates.length
-    ? settings.shiftTemplates
-    : [
-      { ...defaultShiftTemplates[0], start: legacy.dayStart, end: legacy.dayEnd },
-      { ...defaultShiftTemplates[1], start: legacy.nightStart, end: legacy.nightEnd },
-    ]
-  return source.map((tpl, index) => ({
-    id: tpl.id || `tpl_${index + 1}`,
-    name: String(tpl.name || `Šablona ${index + 1}`).trim(),
-    start: String(tpl.start || '07:00').slice(0, 5),
-    end: String(tpl.end || '19:00').slice(0, 5),
-    active: tpl.active !== false,
-    type: inferShiftTemplateType(tpl),
-  }))
-}
-function shiftTemplateOptions(settings = {}) {
-  const activeTemplates = normalizeShiftTemplates(settings).filter((tpl) => tpl.active)
-  return {
-    custom: 'Vlastní čas',
-    ...Object.fromEntries(activeTemplates.map((tpl) => [tpl.id, `${tpl.name} ${tpl.start}–${tpl.end}`])),
-  }
-}
-function shiftTemplateValue(key, settings = {}) {
-  const template = normalizeShiftTemplates(settings).find((tpl) => tpl.id === key && tpl.active)
-  if (!template) return null
-  return { start: template.start, end: template.end, type: template.type || 'custom' }
-}
 const swapStatusMap = { pending: 'Nabídnuto', accepted: 'Přijato kolegou', approved: 'Schváleno', rejected: 'Zamítnuto', cancelled: 'Zrušeno řidičem' }
-const weekdayMap = { 1: 'Po', 2: 'Út', 3: 'St', 4: 'Čt', 5: 'Pá', 6: 'So', 0: 'Ne' }
 const pageTitleMap = { planner: 'Plán směn', dashboard: 'Dashboard', audit: 'Audit provozu', settlements: 'Výčetky', notifications: 'Notifikace', shifts: 'Seznam směn', drivers: 'Řidiči', vehicles: 'Vozidla', availability: 'Dostupnost', shiftTemplates: 'Šablony směn', history: 'Historie změn', settings: 'Nastavení' }
 
 const dispatcherNavItems = [
@@ -542,191 +513,15 @@ function writeStore(data) {
   }
 }
 
-function formatNoticeDate(date) {
-  const d = new Date(`${date}T12:00:00`)
-  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`
-}
-function shiftTypeName(shift) {
-  return shiftTypeMap[shift?.type] || 'Vlastní'
-}
-function shiftNoticeBody(shift, helpers, suffix = '') {
-  return [shiftTypeName(shift), `${formatNoticeDate(shift.date)} · ${shift.start}–${shift.end}`, helpers?.vehicleName?.(shift.vehicleId), suffix].filter(Boolean).join(' · ')
-}
 function isPastLocked(shift) {
   if (!shift?.date) return false
   return shift.date < todayISO()
-}
-function deviceLabelFromUserAgent(value = '') {
-  const ua = String(value || '')
-  if (/iPhone/i.test(ua)) return '📱 iPhone (Safari)'
-  if (/iPad/i.test(ua)) return '📱 iPad (Safari)'
-  if (/Android/i.test(ua) && /Firefox/i.test(ua)) return '📱 Android (Firefox)'
-  if (/Android/i.test(ua) && /Chrome/i.test(ua)) return '📱 Android (Chrome)'
-  if (/Macintosh/i.test(ua) && /Chrome/i.test(ua)) return '💻 Mac (Chrome)'
-  if (/Macintosh/i.test(ua) && /Safari/i.test(ua)) return '💻 Mac (Safari)'
-  if (/Windows/i.test(ua) && /Edg/i.test(ua)) return '💻 Windows (Edge)'
-  if (/Windows/i.test(ua) && /Chrome/i.test(ua)) return '💻 Windows (Chrome)'
-  return '📱 Neznámé zařízení'
-}
-function driverInitials(name = '') {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return 'Ř'
-  const first = parts[0]?.[0] || ''
-  const last = parts.length > 1 ? (parts[1]?.[0] || '') : ''
-  return `${first}${last}`.toUpperCase() || 'Ř'
-}
-function staffDisplayName(profile, currentDriver, role) {
-  return profile?.name || profile?.fullName || profile?.full_name || currentDriver?.name || roleMap[role] || 'Uživatel'
-}
-function staffInitials(profile, currentDriver, role) {
-  return driverInitials(staffDisplayName(profile, currentDriver, role))
-}
-const availabilityKindMap = {
-  available: 'Dostupný',
-  unavailable: 'Nedostupný',
-  preferred: 'Preferuje',
-}
-const availabilityKindTone = {
-  available: 'good',
-  unavailable: 'bad',
-  preferred: 'warn',
-}
-function availabilityKind(slot) {
-  const match = String(slot?.note || '').match(/^\[(available|unavailable|preferred)\]/)
-  return match?.[1] || 'available'
-}
-function availabilityNoteText(slot) {
-  return String(slot?.note || '').replace(/^\[(available|unavailable|preferred)\]\s*/, '').trim()
-}
-function availabilityLabel(slot) {
-  if (slot.fromAt || slot.toAt) return `${formatDateTime(slot.fromAt)} → ${formatDateTime(slot.toAt)}`
-  return `${slot.date ? formatDate(slot.date) : weekdayMap[slot.weekday]} ${slot.start}–${slot.end}`
-}
-function availabilityRangeOverlaps(a, b) {
-  if (!a?.fromAt || !a?.toAt || !b?.fromAt || !b?.toAt) return false
-  const a1 = new Date(a.fromAt).getTime()
-  const a2 = new Date(a.toAt).getTime()
-  const b1 = new Date(b.fromAt).getTime()
-  const b2 = new Date(b.toAt).getTime()
-  return Number.isFinite(a1) && Number.isFinite(a2) && Number.isFinite(b1) && Number.isFinite(b2) && a1 < b2 && b1 < a2
-}
-function availabilityRelevantToShift(slot, shift) {
-  if (slot.fromAt || slot.toAt) {
-    const fromDate = datePart(slot.fromAt)
-    const toDate = datePart(slot.toAt || slot.fromAt)
-    return fromDate && toDate && dateInRange(shift.date, fromDate, toDate)
-  }
-  return slot.date ? slot.date === shift.date : Number(slot.weekday) === weekdayOf(shift.date)
-}
-function availabilityCoversShift(slot, shift) {
-  if (slot.fromAt || slot.toAt) {
-    if (!slot.fromAt || !slot.toAt) return false
-    const [s1, s2] = intervalForShift(shift)
-    const a1 = new Date(slot.fromAt).getTime()
-    const a2 = new Date(slot.toAt).getTime()
-    return Number.isFinite(a1) && Number.isFinite(a2) && a1 <= s1 && s2 <= a2
-  }
-  return overlapsTimeWindow(shift.start, shift.end, slot.start, slot.end)
-}
-
-function weekShifts(data, weekStart) {
-  return sortByDateTime((data.shifts || []).filter((s) => s.date >= weekStart && s.date <= addDays(weekStart, 6)))
-}
-function readinessChecks(data, helpers, weekStart = startOfWeek(todayISO())) {
-  const week = weekShifts(data, weekStart)
-  const activeWeek = week.filter((s) => !['cancelled', 'declined'].includes(s.status))
-  const conflicts = activeWeek.flatMap((s) => helpers.conflictMessages(s).map((message) => ({ shift: s, message })))
-  const gaps = coverageGaps(data, weekStart)
-  const pendingSwaps = (data.swapRequests || []).filter((r) => ['pending','accepted'].includes(r.status))
-  const openInterests = pendingSwaps.filter((r) => r.targetMode === 'open')
-  const waiting = week.filter((s) => ['draft', 'assigned'].includes(s.status))
-  const declined = week.filter((s) => s.status === 'declined')
-  const runningOld = (data.shifts || []).filter((s) => s.actualStartAt && !s.actualEndAt && s.date < todayISO())
-  const checks = [
-    { key: 'drivers', label: 'Řidiči vyplnění', ok: data.drivers.some((d) => d.active), detail: `${data.drivers.filter((d) => d.active).length} aktivních řidičů` },
-    { key: 'vehicles', label: 'Auta vyplněná', ok: data.vehicles.some((v) => v.active), detail: `${data.vehicles.filter((v) => v.active).length} aktivních aut` },
-    { key: 'availability', label: 'Dostupnost zadaná', ok: (data.availability || []).length > 0, detail: `${(data.availability || []).length} pravidel dostupnosti` },
-    { key: 'planned', label: 'Směny na týden naplánované', ok: week.length > 0, detail: `${week.length} směn v týdnu` },
-    { key: 'conflicts', label: 'Žádné kolize', ok: conflicts.length === 0, detail: conflicts.length ? `${conflicts.length} kolizí` : 'Bez kolizí' },
-    { key: 'coverage', label: 'Neobsazené směny vyřešené', ok: gaps.length === 0, detail: gaps.length ? `${gaps.length} děr v pokrytí` : 'Pokrytí OK' },
-    { key: 'confirmed', label: 'Všichni řidiči potvrzeni', ok: waiting.length === 0, detail: waiting.length ? `${waiting.length} čeká na reakci` : 'Vše potvrzeno / hotovo' },
-    { key: 'declined', label: 'Odmítnuté směny vyřešené', ok: declined.length === 0, detail: declined.length ? `${declined.length} odmítnuto` : 'Bez odmítnutí' },
-    { key: 'swaps', label: 'Žádné čekající výměny', ok: pendingSwaps.length === 0, detail: pendingSwaps.length ? `${pendingSwaps.length} žádostí` : 'Bez žádostí' },
-    { key: 'attendance', label: 'Nedořešená docházka', ok: runningOld.length === 0, detail: runningOld.length ? `${runningOld.length} starších běžících směn` : 'Docházka OK' },
-  ]
-  return { checks, conflicts, gaps, pendingSwaps, waiting, declined, runningOld, week, activeWeek }
-}
-function attendanceRows(data, helpers, from, to) {
-  const rows = data.drivers.map((driver) => {
-    const shifts = (data.shifts || []).filter((s) => s.driverId === driver.id && s.date >= from && s.date <= to)
-    const plannedMinutes = shifts.reduce((sum, s) => sum + plannedDurationMinutes(s), 0)
-    const actualMinutes = shifts.reduce((sum, s) => sum + (actualDurationMinutes(s) || 0), 0)
-    const completed = shifts.filter((s) => s.status === 'completed').length
-    const open = shifts.filter((s) => s.actualStartAt && !s.actualEndAt).length
-    return { driver, shifts, plannedMinutes, actualMinutes, diffMinutes: actualMinutes - plannedMinutes, completed, open }
-  })
-  return rows.filter((row) => row.shifts.length || row.driver.active)
 }
 function exportAttendanceCSV(data, helpers, from, to) {
   const rows = [['Řidič','Směn','Dokončeno','Plán minut','Reál minut','Rozdíl minut','Otevřené směny']]
   attendanceRows(data, helpers, from, to).forEach((row) => rows.push([row.driver.name, row.shifts.length, row.completed, row.plannedMinutes, row.actualMinutes, row.diffMinutes, row.open]))
   const csv = rows.map((r) => r.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(';')).join('\n')
   download(`rbshift-dochazka-${from}-${to}.csv`, `\ufeff${csv}`, 'text/csv;charset=utf-8')
-}
-function readinessText(data, helpers, weekStart) {
-  const r = readinessChecks(data, helpers, weekStart)
-  const ok = r.checks.filter((c) => c.ok).length
-  const lines = [`RBSHIFT – audit týdne ${formatDate(weekStart)} až ${formatDate(addDays(weekStart, 6))}`, '', `Připravenost: ${ok}/${r.checks.length}`, '']
-  r.checks.forEach((c) => lines.push(`${c.ok ? 'OK' : 'ŘEŠIT'} · ${c.label}: ${c.detail}`))
-  if (r.gaps.length) {
-    lines.push('', 'Chybí obsazení:')
-    r.gaps.slice(0, 20).forEach((g) => lines.push(`${formatDate(g.day)} ${g.name} ${g.start}–${g.end}: chybí ${g.missing}`))
-  }
-  if (r.conflicts.length) {
-    lines.push('', 'Kolize:')
-    r.conflicts.slice(0, 20).forEach((c) => lines.push(`${c.shift.date} ${c.shift.start}–${c.shift.end}: ${c.message}`))
-  }
-  return lines.join('\n')
-}
-function coverageGaps(data, weekStart = startOfWeek(todayISO())) {
-  const slots = data.settings?.coverageSlots || []
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-  const active = data.shifts.filter((s) => !['cancelled', 'declined'].includes(s.status))
-  return days.flatMap((day) => slots.map((slot) => {
-    const planned = active.filter((s) => s.date === day && overlapsTimeWindow(s.start, s.end, slot.start, slot.end)).length
-    return { day, ...slot, planned, missing: Math.max(0, Number(slot.minDrivers || 0) - planned) }
-  })).filter((x) => x.missing > 0)
-}
-function todayRangeTitle() { return new Intl.DateTimeFormat('cs-CZ', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(new Date(`${todayISO()}T12:00:00`)) }
-function statusCounts(shifts) {
-  return shifts.reduce((acc, s) => ({ ...acc, [s.status]: (acc[s.status] || 0) + 1 }), {})
-}
-function sortByDateTime(list) { return [...list].sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`)) }
-function firstNamePart(name = '') {
-  return String(name || '').trim().split(/\s+/).filter(Boolean)[0] || ''
-}
-function lastInitialPart(name = '') {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
-  return parts.length > 1 ? `${parts[parts.length - 1].slice(0, 1).toLocaleUpperCase('cs-CZ')}.` : ''
-}
-function calendarDriverLabel(driverId, data, helpers) {
-  if (!driverId) return 'Volná směna'
-  const fullName = helpers.driverName(driverId)
-  const firstName = firstNamePart(fullName)
-  if (!firstName || fullName === 'Bez řidiče') return fullName || 'Bez řidiče'
-  const sameFirstNameCount = (data.drivers || []).filter((driver) => firstNamePart(driver.name).toLocaleLowerCase('cs-CZ') === firstName.toLocaleLowerCase('cs-CZ')).length
-  const initial = lastInitialPart(fullName)
-  return sameFirstNameCount > 1 && initial ? `${firstName} ${initial}` : firstName
-}
-function activeSwapForShift(shift, data = {}) {
-  return (data.swapRequests || []).find((r) => r.shiftId === shift.id && ['pending','accepted'].includes(r.status))
-}
-function calendarShiftLineClass(shift, conflicts = [], activeSwap = null) {
-  if (conflicts.length || ['declined', 'cancelled'].includes(shift.status)) return 'line-bad'
-  if (activeSwap || ['pending','accepted'].includes(shift.swapRequestStatus)) return 'line-swap'
-  if (['confirmed', 'completed'].includes(shift.status)) return 'line-good'
-  if (shift.status === 'open') return 'line-open'
-  return 'line-waiting'
 }
 function download(filename, content, type = 'application/json') {
   const blob = new Blob([content], { type })
