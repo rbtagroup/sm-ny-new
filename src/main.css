@@ -632,3 +632,80 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   .staff-shift-card-head{display:grid}
   .staff-shift-card-head .pill{justify-self:start}
 }
+
+/* v5.5.8 technical cleanup: shared notification rows + calmer staff mobile */
+.notification-toolbar-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+}
+.staff-notification-row{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(255,255,255,.045);
+  padding:12px;
+  display:grid;
+  gap:8px;
+}
+.staff-notification-row.notification-unread{
+  border-color:rgba(245,199,106,.30);
+  background:rgba(245,199,106,.08);
+  box-shadow:none;
+}
+.staff-notification-row.notification-read{
+  opacity:.74;
+}
+.staff-notification-row p{
+  margin:0;
+  color:#dbeafe;
+}
+.app-with-topbar .danger-mini-text{
+  display:block;
+  padding:8px 10px;
+  border:1px solid rgba(255,207,90,.26);
+  border-radius:12px;
+  background:rgba(255,207,90,.075);
+  color:#ffe6a6;
+}
+@media (max-width:900px){
+  .settlement-table{display:none}
+  .settlement-mobile-list{display:grid;gap:10px}
+  .settlement-list-row{
+    width:100%;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;
+    gap:10px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:rgba(255,255,255,.035);
+    color:var(--text);
+    text-align:left;
+  }
+  .settlement-list-main,
+  .settlement-list-meta{display:grid;gap:6px;min-width:0}
+  .settlement-list-main b{font-size:16px;line-height:1.2;letter-spacing:0}
+  .settlement-list-main small{color:var(--muted);line-height:1.35}
+  .settlement-list-meta{justify-items:end}
+  .settlement-list-amount{
+    display:grid;
+    gap:3px;
+    min-width:138px;
+    padding:9px 10px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:12px;
+    background:rgba(0,0,0,.12);
+  }
+  .settlement-list-amount small{color:var(--muted);font-weight:850}
+  .settlement-list-amount b{font-size:17px;letter-spacing:0}
+  .settlement-list-amount em{color:var(--muted);font-style:normal;font-size:12px}
+}
+@media (max-width:560px){
+  .settlement-list-row{grid-template-columns:1fr}
+  .settlement-list-meta{justify-items:start}
+  .settlement-list-amount{width:100%;min-width:0}
+  .staff-notification-row .driver-notification-row-head{gap:8px}
+  .staff-notification-row .driver-notification-titleline b{white-space:normal}
+}

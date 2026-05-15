@@ -47,6 +47,21 @@ test('legacy deleted readBy tokens are still hidden and can be undone', () => {
   assert.equal(isNoticeDeleted(unmarkNoticeDeleted(legacy, driver, true), driver, true), false)
 })
 
+test('staff read and hidden state is tracked per signed-in staff user', () => {
+  const notice = makeNotice({ title: 'Staff notice', targetRole: 'admin' })
+  const anna = { id: 'staff_anna', role: 'admin' }
+  const boris = { id: 'staff_boris', role: 'dispatcher' }
+  const annaRead = markNoticeRead(notice, null, false, anna)
+  const annaHidden = markNoticeDeleted(annaRead, null, false, anna)
+
+  assert.equal(isNoticeRead(annaHidden, null, false, anna), true)
+  assert.equal(isNoticeRead(annaHidden, null, false, boris), false)
+  assert.equal(isNoticeDeleted(annaHidden, null, false, anna), true)
+  assert.equal(isNoticeDeleted(annaHidden, null, false, boris), false)
+  assert.deepEqual(annaHidden.readBy, ['staff:staff_anna'])
+  assert.deepEqual(annaHidden.deletedBy, ['staff:staff_anna'])
+})
+
 test('driver inbox hides stale swap offer notifications after the request is no longer pending', () => {
   const notice = {
     id: 'ntf_swap',

@@ -292,7 +292,7 @@ async function sendPushForNotifications(notices, accessToken = '') {
 function pushDeliveryWarning(result) {
   if (!result || result.reason === 'no-notifications') return ''
   if (result.skipped) return result.reason || 'push přeskočen'
-  if (result.ok === false) return result.error || result.reason || 'neznámá chyba'
+  if (result.ok === false) return appFriendlyError(result.error || result.reason || 'neznámá chyba')
   if (Number(result.failed || 0) > 0) return `${result.failed} zařízení nedostalo push`
   return ''
 }
@@ -760,11 +760,20 @@ async function copyText(text) {
   }
 }
 
-function driverFriendlyError(message = '') {
+function appFriendlyError(message = '') {
   const text = String(message || '')
   if (!text) return ''
-  if (/row-level security|violates|permission denied|not authorized|audit_logs|notifications|shifts/i.test(text)) {
-    return 'Akci se nepodařilo uložit. Zkus to znovu nebo kontaktuj dispečink.'
+  if (/row-level security|violates|permission denied|not authorized|42501|audit_logs|notifications|shifts|profiles|drivers|settlements|swap_requests/i.test(text)) {
+    return 'Akci se nepodařilo uložit kvůli oprávnění. Obnov aplikaci a zkus to znovu, případně kontaktuj dispečink.'
+  }
+  if (/failed to fetch|network|load failed|timeout|aborted/i.test(text)) {
+    return 'Spojení se serverem vypadlo. Zkontroluj internet a zkus akci zopakovat.'
+  }
+  if (/jwt|token|auth|session|not logged/i.test(text)) {
+    return 'Přihlášení vypršelo. Odhlas se a přihlas znovu.'
+  }
+  if (/duplicate key|unique constraint/i.test(text)) {
+    return 'Tahle akce už je uložená. Obnov aplikaci pro aktuální stav.'
   }
   return text
 }
@@ -785,7 +794,7 @@ function useAppData(session, profile) {
       writeStore(loaded)
       setSyncState((s) => ({ ...s, loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() }))
     } catch (err) {
-      setSyncState((s) => ({ ...s, loading: false, error: err.message || String(err) }))
+      setSyncState((s) => ({ ...s, loading: false, error: appFriendlyError(err.message || String(err)) }))
     }
   }
 
@@ -854,7 +863,7 @@ function useAppData(session, profile) {
             } else {
               writeStore(next)
             }
-            setSyncState((s) => ({ ...s, saving: false, error: err.message || String(err) }))
+            setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)) }))
             options.onError?.(err)
           })
       }
@@ -1002,7 +1011,7 @@ function App({ session = null, profile = null, signOut = null }) {
     if (!isDriver && role !== 'admin' && adminPageKeys.has(page)) setPage('planner')
   }, [isDriver, page, role])
 
-  const unreadNotifications = (data.notifications || []).filter((n) => isNoticeVisibleInInbox(n, currentDriver, isDriver, data.swapRequests) && !isNoticeRead(n, currentDriver, isDriver))
+  const unreadNotifications = (data.notifications || []).filter((n) => isNoticeVisibleInInbox(n, currentDriver, isDriver, data.swapRequests, profile) && !isNoticeRead(n, currentDriver, isDriver, profile))
   const unreadForCurrent = unreadNotifications.length
   const canOpenSettings = role === 'admin'
   const nav = isDriver
@@ -1054,7 +1063,7 @@ function App({ session = null, profile = null, signOut = null }) {
       <div className="sidebar-footer" aria-label="Stav úložiště">
         <div className="sync-line"><span className={onlineMode ? 'status-dot good' : 'status-dot warn'}></span><span>{onlineMode ? 'Supabase online' : 'Demo / localStorage'}</span></div>
         {onlineMode ? <small>{syncState?.saving ? 'Sync: ukládám…' : syncState?.lastSyncAt ? `Sync ${new Date(syncState.lastSyncAt).toLocaleTimeString('cs-CZ')}` : 'Sync aktivní'}</small> : <small>Lokální demo režim</small>}
-        {syncState?.error && <small className="danger-mini-text">{syncState.error}</small>}
+        {syncState?.error && <small className="danger-mini-text">{appFriendlyError(syncState.error)}</small>}
       </div>
     </aside>
     <main className="main">
@@ -2870,7 +2879,7 @@ function DriverHome({ data, helpers, commit, currentDriver, syncState }) {
   return <div className="driver-view driver-mobile-view driver-priority-view">
     {driverToast && <div className="planner-toast" role="status">{driverToast}</div>}
     {syncState?.saving && <div className="driver-sync-banner saving" role="status">Ukládám změny…</div>}
-    {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{driverFriendlyError(syncState.error)}</div>}
+    {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{appFriendlyError(syncState.error)}</div>}
     {focus && <div className="driver-section-kicker">Aktuální směna</div>}
     {focus ? <ShiftMobileCard s={focus} focusCard {...cardProps} /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
     {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
@@ -2991,7 +3000,7 @@ function DriverSettings({ data, commit, currentDriver, profile, session, onlineM
       <div className="compact-list"><div className="log"><b>{currentDriver?.name || profile?.full_name || 'Řidič'}</b><br /><span className="muted">{currentDriver?.email || profile?.email || 'Email nezadaný'}</span>{currentDriver?.phone && <><br /><span className="muted">{currentDriver.phone}</span></>}</div></div>
     </div>
     <div className="card driver-notification-settings-card"><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={true} profile={profile} session={session} /></div>
-    {syncState?.error && <div className="card"><div className="alert warn">{driverFriendlyError(syncState.error)}</div></div>}
+    {syncState?.error && <div className="card"><div className="alert warn">{appFriendlyError(syncState.error)}</div></div>}
     <div className="card"><div className="muted" style={{ fontSize: '0.8em', marginBottom: 8 }}>v{VERSION}</div><button className="danger" onClick={signOut}>Odhlásit</button></div>
   </div>
 }
@@ -3052,7 +3061,7 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
       }
       return `Server push přeskočen: ${labels[result.reason] || result.reason}.`
     }
-    if (!result.ok) return `Server push selhal: ${result.error || `HTTP ${result.status || '?'}`}`
+    if (!result.ok) return `Server push selhal: ${appFriendlyError(result.error || `HTTP ${result.status || '?'}`)}`
     const recipients = (result.deliveries || []).reduce((sum, row) => sum + Number(row.recipients || 0), 0)
     if (!recipients) return 'Server odpověděl OK, ale nenašel žádné aktivní zařízení pro tento účet/roli. Klikni nejdřív na Povolit notifikace na tomto zařízení.'
     return `Server push OK: odesláno ${result.sent || 0}, selhalo ${result.failed || 0}, cílová zařízení ${recipients}.`
@@ -3143,15 +3152,19 @@ function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session
 
 function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile, session }) {
   const visible = (data.notifications || [])
-    .filter((n) => isNoticeVisibleInInbox(n, currentDriver, isDriver, data.swapRequests))
+    .filter((n) => isNoticeVisibleInInbox(n, currentDriver, isDriver, data.swapRequests, profile))
     .sort((a, b) => new Date(b.at || b.createdAt || 0).getTime() - new Date(a.at || a.createdAt || 0).getTime())
-  const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver))
+  const unread = visible.filter((n) => !isNoticeRead(n, currentDriver, isDriver, profile))
   const visibleIds = new Set(visible.map((n) => n.id))
   const [undoDeleteIds, setUndoDeleteIds] = useState([])
-  const [undoBuffer, setUndoBuffer] = useState([])
-  const isPersonalNotice = (n) =>
-    (n?.targetDriverId && currentDriver?.id && n.targetDriverId === currentDriver.id) ||
-    (n?.targetRole === 'admin' && !isDriver)
+  const targetLabel = (n) => {
+    if (n?.targetDriverId) return `Řidič: ${helpers.driverName(n.targetDriverId)}`
+    if (n?.targetRole === 'driver_all') return 'Všichni řidiči'
+    if (n?.targetRole === 'all') return 'Všichni'
+    if (n?.targetRole === 'dispatcher') return 'Dispečink'
+    if (n?.targetRole === 'admin') return 'Staff'
+    return roleMap[n?.targetRole] || n?.targetRole || 'Bez cíle'
+  }
   const dateKey = (value) => {
     const date = value ? new Date(value) : new Date()
     return new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
@@ -3167,68 +3180,41 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
     })],
   ].filter(([, items]) => items.length)
   const hasRead = visible.length > unread.length
-  const markOne = (id) => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označena jako přečtená.')
-  const queueUndo = (ids, notices = []) => {
+  const markOne = (id) => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeRead(n, currentDriver, isDriver, profile) : n) }), 'Notifikace označena jako přečtená.')
+  const queueUndo = (ids) => {
     const clean = [...new Set((ids || []).filter(Boolean))]
     if (!clean.length) return
     setUndoDeleteIds(clean)
-    setUndoBuffer(notices)
     setTimeout(() => {
       setUndoDeleteIds((current) => clean.every((id) => current.includes(id)) ? [] : current)
-      setUndoBuffer([])
     }, 5000)
   }
   const deleteOne = (id) => {
     const notice = visible.find((n) => n.id === id)
     if (!notice) return
-    if (!isDriver && isPersonalNotice(notice)) {
-      commit((prev) => ({ ...prev, notifications: (prev.notifications || []).filter((n) => n.id !== id) }), 'Notifikace smazána.')
-      queueUndo([id], [notice])
-    } else {
-      commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Notifikace skryta.')
-      queueUndo([id])
-    }
+    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => n.id === id ? markNoticeDeleted(n, currentDriver, isDriver, profile) : n) }), 'Notifikace skryta.')
+    queueUndo([id])
   }
   const undoDelete = () => {
     if (!undoDeleteIds.length) return
     const ids = new Set(undoDeleteIds)
-    if (undoBuffer.length) {
-      commit((prev) => ({
-        ...prev,
-        notifications: [
-          ...undoBuffer.filter((n) => !(prev.notifications || []).some((x) => x.id === n.id)),
-          ...(prev.notifications || []).map((n) => ids.has(n.id) ? unmarkNoticeDeleted(n, currentDriver, isDriver) : n),
-        ],
-      }), 'Smazání notifikace vráceno zpět.')
-    } else {
-      commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => ids.has(n.id) ? unmarkNoticeDeleted(n, currentDriver, isDriver) : n) }), 'Smazání notifikace vráceno zpět.')
-    }
+    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => ids.has(n.id) ? unmarkNoticeDeleted(n, currentDriver, isDriver, profile) : n) }), 'Skrytí notifikace vráceno zpět.')
     setUndoDeleteIds([])
-    setUndoBuffer([])
   }
-  const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => visibleIds.has(n.id) ? markNoticeRead(n, currentDriver, isDriver) : n) }), 'Notifikace označeny jako přečtené.')
+  const markAll = () => commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => visibleIds.has(n.id) ? markNoticeRead(n, currentDriver, isDriver, profile) : n) }), 'Notifikace označeny jako přečtené.')
   const clearRead = () => {
-    const toDelete = visible.filter((n) => isNoticeRead(n, currentDriver, isDriver))
+    const toDelete = visible.filter((n) => isNoticeRead(n, currentDriver, isDriver, profile))
     if (!toDelete.length) return
-    const personal = toDelete.filter(isPersonalNotice)
-    const broadcast = toDelete.filter((n) => !isPersonalNotice(n))
-    const personalIds = new Set(personal.map((n) => n.id))
-    const broadcastIds = new Set(broadcast.map((n) => n.id))
     const allToDeleteIds = new Set(toDelete.map((n) => n.id))
-    commit((prev) => ({
-      ...prev,
-      notifications: isDriver
-        ? (prev.notifications || []).map((n) => allToDeleteIds.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver) : n)
-        : (prev.notifications || []).filter((n) => !personalIds.has(n.id)).map((n) => broadcastIds.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver) : n),
-    }), 'Přečtené notifikace smazány.')
-    queueUndo(toDelete.map((n) => n.id), isDriver ? [] : personal)
+    commit((prev) => ({ ...prev, notifications: (prev.notifications || []).map((n) => allToDeleteIds.has(n.id) ? markNoticeDeleted(n, currentDriver, isDriver, profile) : n) }), 'Přečtené notifikace skryty.')
+    queueUndo(toDelete.map((n) => n.id))
   }
   const staffNotificationActions = !isDriver ? <>
-    <button className="ghost" onClick={markAll}>Označit vše jako přečtené</button>
-    <button className="danger" onClick={clearRead}>Smazat přečtené</button>
+    <button className="ghost notification-toolbar-button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>
+    <button className="danger notification-toolbar-button" onClick={clearRead}><Trash2 size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>
   </> : null
   const renderNotice = (n) => {
-    const read = isNoticeRead(n, currentDriver, isDriver)
+    const read = isNoticeRead(n, currentDriver, isDriver, profile)
     const noticeAt = n.at || n.createdAt || new Date().toISOString()
 
     if (isDriver) {
@@ -3247,18 +3233,23 @@ function NotificationsView({ data, helpers, commit, currentDriver, isDriver, pro
       </div>
     }
 
-    return <div className={read ? 'log notification-row notification-read' : 'alert warn notification-row notification-unread'} key={n.id}>
-      <div className="split"><div><b>{n.title}</b><br /><small className="muted">{new Date(noticeAt).toLocaleString('cs-CZ')}</small></div>{!read && <span className="pill warn">nové</span>}</div>
-      <p>{n.body || 'Bez detailu'}</p>
-      <div className="row-actions notification-actions" style={{ marginTop: 8 }}>
-        {!read && <button onClick={() => markOne(n.id)}>Přečteno</button>}
-        <button className="danger-mini" onClick={() => deleteOne(n.id)}>Smazat</button>
+    return <div className={`notification-row staff-notification-row ${read ? 'notification-read' : 'notification-unread'}`} key={n.id}>
+      <div className="driver-notification-row-head">
+        <div className="driver-notification-copy">
+          <div className="driver-notification-titleline">{!read && <span className="driver-notification-dot" aria-hidden="true"></span>}<b>{n.title}</b></div>
+          <small>{new Date(noticeAt).toLocaleString('cs-CZ')} · {targetLabel(n)}</small>
+        </div>
+        <div className="driver-notification-row-actions">
+          {!read && <button className="driver-notification-icon-button good" type="button" onClick={() => markOne(n.id)} aria-label="Označit jako přečtené" title="Přečteno"><Check size={18} strokeWidth={2.4} aria-hidden="true" /></button>}
+          <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => deleteOne(n.id)} aria-label="Skrýt notifikaci" title="Skrýt"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button>
+        </div>
       </div>
+      <p>{n.body || 'Bez detailu'}</p>
     </div>
   }
   return <>
     <PageTitle title="Notifikace">{staffNotificationActions}</PageTitle>
-    {undoDeleteIds.length > 0 && <div className="toast-undo"><span>{undoDeleteIds.length === 1 ? 'Notifikace smazána.' : `${undoDeleteIds.length} notifikací smazáno.`}</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
+    {undoDeleteIds.length > 0 && <div className="toast-undo"><span>{undoDeleteIds.length === 1 ? 'Notifikace skryta.' : `${undoDeleteIds.length} notifikací skryto.`}</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
     <div className={`card notifications-card ${isDriver ? 'driver-notifications-card' : ''}`.trim()}><div className="section-title"><h3>{isDriver ? 'Doručené' : 'Centrum upozornění'}</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div>
       {isDriver && (unread.length > 0 || hasRead) && <div className="driver-notifications-toolbar">
         {unread.length > 0 && <button className="ghost" type="button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>}
