@@ -49,6 +49,17 @@ import {
 } from './lib/settlements.js'
 import { createSupabaseMappers, ONLINE_TABLES, tableName } from './lib/supabaseData.js'
 import { appFriendlyError } from './lib/errors.js'
+import {
+  defaultShiftTemplates,
+  defaultShiftTimes,
+  repeatMap,
+  roleMap,
+  settlementStatusMap,
+  settlementToneMap,
+  shiftTypeMap,
+  statusMap,
+  statusToneMap,
+} from './lib/appConfig.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const STORAGE_KEY = 'rbshift-manager-data-v4'
@@ -82,18 +93,6 @@ async function subscribeDeviceForPush(vapidPublicKey) {
 
 const money = (n) => `${Math.round(Number(n || 0)).toLocaleString('cs-CZ')} Kč`
 const time = (v) => v || '—'
-const statusMap = { open: 'Volná směna', draft: 'Návrh', assigned: 'Čeká na potvrzení', confirmed: 'Potvrzeno', declined: 'Odmítnuto', completed: 'Dokončeno', cancelled: 'Zrušeno' }
-const statusToneMap = { open: 'warn', draft: 'waiting', assigned: 'waiting', pending: 'waiting', confirmed: 'good', in_progress: 'good', declined: 'bad', completed: 'good', cancelled: 'bad' }
-const roleMap = { admin: 'Admin', dispatcher: 'Dispečer', driver: 'Řidič' }
-const shiftTypeMap = { day: 'Denní', night: 'Noční', backup: 'Záloha', transfer: 'Převoz', custom: 'Vlastní' }
-const settlementStatusMap = { draft: 'Rozpracováno', submitted: 'Čeká na schválení', approved: 'Schváleno', returned: 'Vráceno k opravě' }
-const settlementToneMap = { draft: 'warn', submitted: 'waiting', approved: 'good', returned: 'bad' }
-const repeatMap = { none: 'Neopakovat', daily7: '7 dnů za sebou', workweek: 'Po–Pá', weekend: 'So–Ne' }
-const defaultShiftTimes = { dayStart: '07:00', dayEnd: '19:00', nightStart: '19:00', nightEnd: '07:00', eventStart: '18:00', eventEnd: '03:00' }
-const defaultShiftTemplates = [
-  { id: 'tpl_day', name: 'Denní', start: '07:00', end: '19:00', active: true, type: 'day' },
-  { id: 'tpl_night', name: 'Noční', start: '19:00', end: '07:00', active: true, type: 'night' },
-]
 function configuredShiftTimes(settings = {}) {
   return { ...defaultShiftTimes, ...(settings.shiftTimes || {}) }
 }

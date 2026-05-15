@@ -93,6 +93,7 @@ const PUSH_RATE_LIMIT_MAX = Number(process.env.PUSH_RATE_LIMIT_PER_WINDOW || pro
 const PUSH_MAX_NOTIFICATIONS_PER_REQUEST = Number(process.env.PUSH_MAX_NOTIFICATIONS_PER_REQUEST || 20)
 const PUSH_MAX_RECIPIENTS_PER_NOTICE = Number(process.env.PUSH_MAX_RECIPIENTS_PER_NOTICE || 500)
 const pushRateBuckets = (globalThis.__RBSHIFT_PUSH_RATE_BUCKETS__ ||= new Map())
+const pushRateLimitWindowSeconds = () => Math.max(1, Math.ceil(PUSH_RATE_LIMIT_WINDOW_MS / 1000))
 
 const runWithConcurrency = async (items, limit, worker) => {
   const output = []
@@ -126,6 +127,31 @@ const checkRateLimit = (key, weight = 1) => {
   return {
     ok: bucket.count <= PUSH_RATE_LIMIT_MAX,
     retryAfter: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+  }
+}
+
+const checkDurableRateLimit = async (supabase, key, weight = 1) => {
+  if (!PUSH_RATE_LIMIT_MAX || PUSH_RATE_LIMIT_MAX < 1) return { ok: true }
+  const { data, error } = await supabase.rpc('rb_check_push_rate_limit', {
+    bucket_key: key,
+    weight: Math.max(1, Number(weight) || 1),
+    max_count: PUSH_RATE_LIMIT_MAX,
+    window_seconds: pushRateLimitWindowSeconds(),
+  })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    ok: row?.ok !== false,
+    retryAfter: Number(row?.retry_after || 1),
+  }
+}
+
+const checkPushRateLimit = async (supabase, key, weight = 1) => {
+  try {
+    return await checkDurableRateLimit(supabase, key, weight)
+  } catch (err) {
+    console.warn('[send-push] durable rate limit unavailable, using in-memory fallback:', err?.message || err)
+    return checkRateLimit(key, weight)
   }
 }
 
@@ -256,7 +282,7 @@ export default async function handler(req, res) {
   }
 
   if (!internalAuthorized) {
-    const rate = checkRateLimit(callerProfile?.id || bearerTokenFrom(req).slice(0, 16) || 'unknown', notifications.length)
+    const rate = await checkPushRateLimit(supabase, callerProfile?.id || bearerTokenFrom(req).slice(0, 16) || 'unknown', notifications.length)
     if (!rate.ok) {
       res.setHeader('Retry-After', String(rate.retryAfter))
       return json(res, 429, { ok: false, error: 'Push rate limit exceeded', retryAfter: rate.retryAfter })
