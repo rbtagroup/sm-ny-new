@@ -7,11 +7,26 @@ const json = (res, status, payload) => {
   res.end(JSON.stringify(payload))
 }
 
+const PUSH_MAX_BODY_BYTES = Number(process.env.PUSH_MAX_BODY_BYTES || 128 * 1024)
+const pushServerError = (res, err, context = 'push') => {
+  console.error(`[send-push] ${context}:`, err)
+  return json(res, 500, { ok: false, error: 'Push notifikace se teď nepodařilo odeslat. Zkus to prosím znovu.' })
+}
+const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode })
+
 const readBody = async (req) => {
   if (req.body && typeof req.body === 'object') return req.body
-  if (typeof req.body === 'string') return JSON.parse(req.body || '{}')
+  if (typeof req.body === 'string') {
+    if (Buffer.byteLength(req.body, 'utf8') > PUSH_MAX_BODY_BYTES) throw httpError(413, 'Request body too large')
+    return JSON.parse(req.body || '{}')
+  }
   const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
+  let received = 0
+  for await (const chunk of req) {
+    received += chunk.length
+    if (received > PUSH_MAX_BODY_BYTES) throw httpError(413, 'Request body too large')
+    chunks.push(chunk)
+  }
   const raw = Buffer.concat(chunks).toString('utf8')
   return raw ? JSON.parse(raw) : {}
 }
@@ -220,7 +235,10 @@ export default async function handler(req, res) {
   if (!vapidPublicKey || !vapidPrivateKey) return json(res, 500, { ok: false, error: 'Missing VAPID_PUBLIC_KEY/VITE_VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY' })
 
   let input
-  try { input = await readBody(req) } catch { return json(res, 400, { ok: false, error: 'Invalid JSON body' }) }
+  try { input = await readBody(req) } catch (err) {
+    const statusCode = err?.statusCode === 413 ? 413 : 400
+    return json(res, statusCode, { ok: false, error: statusCode === 413 ? 'Request body too large' : 'Invalid JSON body' })
+  }
   const notifications = (Array.isArray(input.notifications) ? input.notifications : [input.notification || input]).map(normalizeNotice).filter((n) => n.title)
   if (!notifications.length) return json(res, 400, { ok: false, error: 'No notifications supplied' })
   if (notifications.length > PUSH_MAX_NOTIFICATIONS_PER_REQUEST) return json(res, 413, { ok: false, error: `Too many notifications supplied. Limit is ${PUSH_MAX_NOTIFICATIONS_PER_REQUEST}.` })
@@ -232,7 +250,7 @@ export default async function handler(req, res) {
   let callerProfile = null
   if (!internalAuthorized) {
     try { callerProfile = await profileForToken(supabase, bearerTokenFrom(req)) } catch (err) {
-      return json(res, 500, { ok: false, error: err?.message || String(err) })
+      return pushServerError(res, err, 'profile lookup')
     }
     if (!callerProfile) return json(res, 401, { ok: false, error: 'Authentication required' })
   }
@@ -248,11 +266,11 @@ export default async function handler(req, res) {
   try {
     for (const notice of notifications) {
       if (!(await canSendNotice(supabase, notice, callerProfile, internalAuthorized))) {
-        return json(res, 403, { ok: false, error: `Forbidden notification target: ${notice.targetRole || notice.targetDriverId}` })
+        return json(res, 403, { ok: false, error: 'Forbidden notification target' })
       }
     }
   } catch (err) {
-    return json(res, 500, { ok: false, error: err?.message || String(err) })
+    return pushServerError(res, err, 'authorization')
   }
 
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
@@ -264,7 +282,7 @@ export default async function handler(req, res) {
     try {
       recipients = await subscriptionsForNotice(supabase, notice)
     } catch (err) {
-      return json(res, 500, { ok: false, error: err?.message || String(err) })
+      return pushServerError(res, err, 'subscription lookup')
     }
     if (recipients.length > PUSH_MAX_RECIPIENTS_PER_NOTICE) {
       return json(res, 413, { ok: false, error: `Too many push recipients for one notice. Limit is ${PUSH_MAX_RECIPIENTS_PER_NOTICE}.`, recipients: recipients.length })
@@ -312,5 +330,8 @@ export default async function handler(req, res) {
 
   const sent = results.filter((r) => r.ok).length
   const failed = results.filter((r) => !r.ok).length
-  return json(res, 200, { ok: true, notifications: notifications.length, sent, failed, deliveries, results })
+  const callerRole = String(callerProfile?.role || '').toLowerCase()
+  const payload = { ok: true, notifications: notifications.length, sent, failed, deliveries }
+  if (internalAuthorized || callerRole === 'admin' || callerRole === 'dispatcher') payload.results = results
+  return json(res, 200, payload)
 }

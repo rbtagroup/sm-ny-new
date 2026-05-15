@@ -212,6 +212,12 @@ async function clickByText(page, selector, text) {
   if (!clicked) throw new Error(`Could not click ${selector} with text "${text}"`)
 }
 
+function appUrlWithParam(key, value) {
+  const url = new URL(appUrl)
+  url.searchParams.set(key, value)
+  return url.toString()
+}
+
 async function runBrowserChecks() {
   const version = await waitForJson(`http://127.0.0.1:${chromePort}/json/version`, 'Chrome debugging endpoint')
   const browser = new CdpClient(version.webSocketDebuggerUrl)
@@ -268,6 +274,19 @@ async function runBrowserChecks() {
   await page.send('Page.navigate', { url: appUrl })
   await waitForEval(page, 'document.body && document.body.innerText.includes("Plán směn")', 'Mobile planner did not render')
   await assertEval(page, 'document.querySelector(".app-topbar-title")?.innerText.trim() === "Plán směn"', 'Mobile topbar title should only show the current page')
+
+  await page.send('Page.navigate', { url: appUrlWithParam('demoRole', 'driver') })
+  await waitForEval(page, 'document.body && document.querySelector(".driver-bottom-nav")', 'Driver mobile shell did not render')
+  await assertEval(page, 'document.body.innerText.includes("Domů") && document.body.innerText.includes("Dostupnost") && document.body.innerText.includes("Notifikace") && document.body.innerText.includes("Nastavení")', 'Driver bottom navigation labels are missing')
+  await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Driver mobile page should not overflow horizontally')
+  await assertEval(page, '!/row-level security|violates row-level security/i.test(document.body.innerText)', 'Driver UI leaked a technical RLS error')
+
+  await clickByText(page, '.driver-bottom-nav button', 'Notifikace')
+  await waitForEval(page, 'document.body.innerText.includes("Doručené")', 'Driver notifications screen did not open')
+  await clickByText(page, '.driver-bottom-nav button', 'Dostupnost')
+  await waitForEval(page, 'document.body.innerText.includes("Nová dostupnost")', 'Driver availability screen did not open')
+  await clickByText(page, '.driver-bottom-nav button', 'Nastavení')
+  await waitForEval(page, 'document.body.innerText.includes("Upozornění na směny")', 'Driver settings screen did not open')
 
   browser.close()
   if (consoleProblems.length) {

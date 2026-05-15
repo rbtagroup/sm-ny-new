@@ -243,7 +243,7 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 /* TASK 2 app top bar */
 .app-with-topbar{grid-template-columns:286px 1fr;grid-template-rows:74px 1fr}.app-with-topbar .app-topbar-shell{grid-column:1/-1;grid-row:1}.app-with-topbar .sidebar{grid-column:1;grid-row:2;top:74px;height:calc(100vh - 74px);display:flex;flex-direction:column;justify-content:space-between}.app-with-topbar .main{grid-column:2;grid-row:2}.app-topbar-shell{position:sticky;top:0;z-index:50;min-height:74px;padding:12px 22px;border-bottom:1px solid var(--line);background:rgba(8,17,31,.92);backdrop-filter:blur(18px);display:flex;align-items:center;justify-content:space-between;gap:16px}.app-topbar-brand,.app-topbar-actions{display:flex;align-items:center;gap:12px;min-width:0}.app-topbar-logo{width:46px;height:46px;border:0;border-radius:16px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#07101d;display:grid;place-items:center;font-weight:950;box-shadow:0 12px 34px rgba(245,199,106,.22);flex:0 0 auto}.app-topbar-title{border:0;background:transparent;color:var(--text);display:flex;align-items:center;gap:9px;min-width:0;padding:0;text-align:left}.app-topbar-title strong{font-size:17px;white-space:nowrap}.app-topbar-title span{color:var(--muted)}.app-topbar-title b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.topbar-menu-wrap{position:relative}.topbar-icon-button,.topbar-user-button{border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--text);border-radius:16px;min-height:44px;padding:9px 12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.18s ease}.topbar-icon-button:hover,.topbar-user-button:hover{border-color:rgba(245,199,106,.55);transform:translateY(-1px)}.topbar-icon-button span{min-width:22px;height:22px;border-radius:999px;background:var(--gold);color:#07101d;font-size:12px;font-weight:950;display:grid;place-items:center;padding:0 6px}.topbar-icon-button:disabled,.topbar-user-button:disabled,.topbar-dropdown button:disabled{opacity:.45;cursor:not-allowed;transform:none}.topbar-user-button span{width:28px;height:28px;border-radius:999px;background:rgba(245,199,106,.18);border:1px solid rgba(245,199,106,.35);display:grid;place-items:center;color:#fff3c7;font-size:12px;font-weight:950}.topbar-user-button b{max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.topbar-user-button em{font-style:normal;color:var(--muted)}.topbar-dropdown{position:absolute;right:0;top:calc(100% + 10px);z-index:70;width:min(360px,calc(100vw - 28px));border:1px solid var(--line);border-radius:18px;background:#0b1423;box-shadow:var(--shadow);padding:12px;display:grid;gap:10px}.topbar-dropdown-list{display:grid;gap:8px;max-height:320px;overflow:auto}.topbar-dropdown-list button,.user-dropdown button{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.045);color:var(--text);padding:10px 12px;text-align:left;display:grid;gap:4px}.topbar-dropdown-list button:hover,.user-dropdown button:hover{border-color:rgba(245,199,106,.45)}.topbar-dropdown-list strong{font-size:13px}.topbar-dropdown-list small{color:var(--muted);line-height:1.35}.topbar-dropdown-action{width:100%;justify-content:center}.user-dropdown{width:220px}.app-with-topbar .sidebar .nav{margin-top:0}.app-with-topbar .sidebar .sidebox{margin-top:auto}
 @media (max-width:1000px){.app-with-topbar{display:grid;grid-template-columns:1fr;grid-template-rows:auto auto 1fr}.app-with-topbar .app-topbar-shell{grid-row:1;position:sticky}.app-with-topbar .sidebar{grid-column:1;grid-row:2;position:relative;top:auto;height:auto;padding:14px}.app-with-topbar .main{grid-column:1;grid-row:3}.app-topbar-shell{padding:10px 14px;align-items:flex-start}.app-topbar-actions{margin-left:auto}.topbar-user-button b,.app-topbar-title strong{display:none}}
-@media (max-width:640px){.app-topbar-shell{gap:10px}.app-topbar-logo{width:40px;height:40px;border-radius:14px}.topbar-icon-button,.topbar-user-button{min-height:40px;padding:8px 10px}.topbar-user-button span{width:24px;height:24px}.app-topbar-title b{max-width:130px}.topbar-dropdown{right:-54px}}
+@media (max-width:640px){.app-topbar-shell{gap:10px}.app-topbar-logo{width:40px;height:40px;border-radius:14px}.topbar-icon-button,.topbar-user-button{min-height:40px;padding:8px 10px}.topbar-user-button span{width:24px;height:24px}.app-topbar-title b{max-width:130px}.topbar-menu-wrap{position:static}.topbar-dropdown{left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));width:auto}.user-dropdown{width:auto}}
 
 /* TASK 1 calendar shift readability */
 .calendar-shift-card{width:100%;border:1px solid var(--line);border-left-width:4px;text-align:left;color:var(--text);gap:3px;line-height:1.25;overflow:visible;background:rgba(0,0,0,.18);padding:8px 9px;margin-bottom:7px}
@@ -709,3 +709,22 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   .staff-notification-row .driver-notification-row-head{gap:8px}
   .staff-notification-row .driver-notification-titleline b{white-space:normal}
 }
+
+/* v5.5.9 icon-only destructive actions */
+.row-actions button.icon-only,.detail-delete-button{
+  width:38px;
+  min-width:38px;
+  height:38px;
+  min-height:38px;
+  padding:0;
+  display:inline-grid;
+  place-items:center;
+  flex:0 0 auto;
+}
+.detail-delete-button{
+  border-radius:12px;
+  border:1px solid rgba(255,107,107,.42);
+  background:rgba(255,107,107,.12);
+  color:#ffd7d7;
+}
+.row-actions button.icon-only svg,.detail-delete-button svg{pointer-events:none}

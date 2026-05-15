@@ -48,6 +48,7 @@ import {
   validateSettlementInputs,
 } from './lib/settlements.js'
 import { createSupabaseMappers, ONLINE_TABLES, tableName } from './lib/supabaseData.js'
+import { appFriendlyError } from './lib/errors.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const STORAGE_KEY = 'rbshift-manager-data-v4'
@@ -760,24 +761,6 @@ async function copyText(text) {
   }
 }
 
-function appFriendlyError(message = '') {
-  const text = String(message || '')
-  if (!text) return ''
-  if (/row-level security|violates|permission denied|not authorized|42501|audit_logs|notifications|shifts|profiles|drivers|settlements|swap_requests/i.test(text)) {
-    return 'Akci se nepodařilo uložit kvůli oprávnění. Obnov aplikaci a zkus to znovu, případně kontaktuj dispečink.'
-  }
-  if (/failed to fetch|network|load failed|timeout|aborted/i.test(text)) {
-    return 'Spojení se serverem vypadlo. Zkontroluj internet a zkus akci zopakovat.'
-  }
-  if (/jwt|token|auth|session|not logged/i.test(text)) {
-    return 'Přihlášení vypršelo. Odhlas se a přihlas znovu.'
-  }
-  if (/duplicate key|unique constraint/i.test(text)) {
-    return 'Tahle akce už je uložená. Obnov aplikaci pro aktuální stav.'
-  }
-  return text
-}
-
 function useAppData(session, profile) {
   const online = Boolean(isConfiguredSupabase && session?.user && profile)
   const [data, setData] = useState(readStore)
@@ -1164,6 +1147,9 @@ function PlannerKpiBar({ periodLabel, totalShifts, confirmedCount, conflictsCoun
 function StatusPill({ status, helpers }) { return <span className={`pill ${helpers.statusClass(status)}`}>{statusMap[status] || status}</span> }
 function Field({ label, children, className = '' }) { return <div className={`field ${className}`}><label>{label}</label>{children}</div> }
 function Select({ value, onChange, options }) { return <select value={value} onChange={(e) => onChange(e.target.value)}>{Object.entries(options).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select> }
+function DeleteIconButton({ label = 'Odstranit', onClick, className = '' }) {
+  return <button className={`danger-mini icon-only ${className}`.trim()} type="button" onClick={onClick} aria-label={label} title={label}><Trash2 size={16} strokeWidth={2.2} aria-hidden="true" /></button>
+}
 function Modal({ title, children, onClose, className = '', backdropClassName = '' }) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -1792,7 +1778,7 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
       <button className="danger" onClick={() => requestStatus('declined')}>Odmítnout</button>
       <button className="ghost" onClick={requestEdit}>Upravit</button>
       <button className="ghost" onClick={() => copyText(driverText(data, helpers, fresh.driverId))}>WhatsApp řidič</button>
-      <button className="danger" onClick={requestHardDelete}>Smazat natrvalo</button>
+      <DeleteIconButton className="detail-delete-button" label="Trvale odstranit směnu" onClick={requestHardDelete} />
     </div>
   </div>
   {settlementOpen && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={fresh} isDriver={false} onClose={() => setSettlementOpen(false)} />}
@@ -1832,10 +1818,10 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing }) 
     <ShiftActionSummary shift={fresh} helpers={helpers} />
   </ConfirmActionModal>}
   {actionDialog?.type === 'hardDelete' && <ConfirmActionModal
-    title="Trvale smazat směnu"
+    title="Trvale odstranit směnu"
     message="Tahle akce odstraní směnu z databáze, řidičské aplikace, související žádosti o výměnu, notifikace a navázané záznamy historie."
     warning="Řidiči se neposílá žádná další notifikace a akce nejde jednoduše vrátit."
-    confirmLabel="Smazat natrvalo"
+    confirmLabel="Trvale odstranit"
     confirmClass="danger"
     onClose={closeActionDialog}
     onConfirm={confirmHardDelete}
@@ -2083,7 +2069,7 @@ function StaffShiftMobileCard({ shift: s, helpers, compact, onStatus, onDuplicat
       <button type="button" onClick={() => onStatus(s, 'completed')}>Hotovo</button>
       <button type="button" onClick={() => onDuplicate(s)}>Duplikovat</button>
       <button className="danger-mini" type="button" onClick={() => onCancel(s)}>Zrušit</button>
-      <button className="danger-mini icon-only" type="button" onClick={() => onHardDelete(s)} aria-label="Trvale smazat směnu" title="Trvale smazat směnu"><Trash2 size={16} strokeWidth={2.2} aria-hidden="true" /></button>
+      <DeleteIconButton label="Trvale odstranit směnu" onClick={() => onHardDelete(s)} />
     </div>}
   </div>
 }
@@ -2126,7 +2112,7 @@ function ShiftTable({ shifts, data, helpers, commit, compact = false }) {
   return <>
   <div className="table-wrap shift-table-desktop"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Řidič</th><th>Vozidlo</th><th>Stav</th><th>Docházka</th><th>Kontrola</th>{!compact && <th>Akce</th>}</tr></thead><tbody>{shifts.map((s) => {
     const conflicts = helpers.conflictMessages(s)
-    return <tr key={s.id}><td><b>{formatDate(s.date)}</b><br /><small>{s.date}</small></td><td>{time(s.start)}–{time(s.end)}<br /><small>{shiftTypeMap[s.type] || s.type}</small></td><td>{helpers.driverName(s.driverId)}<br /><small>{s.note || 'Bez poznámky'}</small>{s.instruction && <><br /><small>Instrukce: {s.instruction}</small></>}{s.declineReason && <><br /><small>Důvod: {s.declineReason}</small></>}</td><td>{helpers.vehicleName(s.vehicleId)}</td><td><StatusPill status={s.status} helpers={helpers} />{['pending','accepted'].includes(s.swapRequestStatus) && <><br /><span className="pill warn">výměna</span></>}</td><td>{s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → {s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}<br /><small>{durationLabel(actualDurationMinutes(s))}</small></td><td>{conflicts.length ? <span className="pill bad">{conflicts.length} kolize</span> : <span className="pill good">OK</span>}</td>{!compact && <td><div className="row-actions"><button onClick={() => requestStatus(s, 'confirmed')}>Potvrdit</button><button onClick={() => requestStatus(s, 'declined')}>Odmítnout</button><button onClick={() => requestStatus(s, 'completed')}>Hotovo</button><button onClick={() => duplicate(s)}>Duplikovat</button><button className="danger-mini" onClick={() => requestCancel(s)}>Zrušit</button><button className="danger-mini" onClick={() => requestHardDelete(s)}>Smazat</button></div></td>}</tr>
+    return <tr key={s.id}><td><b>{formatDate(s.date)}</b><br /><small>{s.date}</small></td><td>{time(s.start)}–{time(s.end)}<br /><small>{shiftTypeMap[s.type] || s.type}</small></td><td>{helpers.driverName(s.driverId)}<br /><small>{s.note || 'Bez poznámky'}</small>{s.instruction && <><br /><small>Instrukce: {s.instruction}</small></>}{s.declineReason && <><br /><small>Důvod: {s.declineReason}</small></>}</td><td>{helpers.vehicleName(s.vehicleId)}</td><td><StatusPill status={s.status} helpers={helpers} />{['pending','accepted'].includes(s.swapRequestStatus) && <><br /><span className="pill warn">výměna</span></>}</td><td>{s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → {s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}<br /><small>{durationLabel(actualDurationMinutes(s))}</small></td><td>{conflicts.length ? <span className="pill bad">{conflicts.length} kolize</span> : <span className="pill good">OK</span>}</td>{!compact && <td><div className="row-actions"><button onClick={() => requestStatus(s, 'confirmed')}>Potvrdit</button><button onClick={() => requestStatus(s, 'declined')}>Odmítnout</button><button onClick={() => requestStatus(s, 'completed')}>Hotovo</button><button onClick={() => duplicate(s)}>Duplikovat</button><button className="danger-mini" onClick={() => requestCancel(s)}>Zrušit</button><DeleteIconButton label="Trvale odstranit směnu" onClick={() => requestHardDelete(s)} /></div></td>}</tr>
   })}</tbody></table></div>
   <div className="staff-shift-mobile-list">
     {shifts.map((s) => <StaffShiftMobileCard key={s.id} shift={s} helpers={helpers} compact={compact} onStatus={requestStatus} onDuplicate={duplicate} onCancel={requestCancel} onHardDelete={requestHardDelete} />)}
@@ -2172,10 +2158,10 @@ function ShiftTable({ shifts, data, helpers, commit, compact = false }) {
     <ShiftActionSummary shift={actionShift} helpers={helpers} />
   </ReasonActionModal>}
   {actionDialog?.type === 'hardDelete' && actionShift && <ConfirmActionModal
-    title="Trvale smazat směnu"
+    title="Trvale odstranit směnu"
     message="Tahle akce odstraní směnu z databáze, řidičské aplikace, související žádosti o výměnu, notifikace a navázané záznamy historie."
     warning="Řidiči se neposílá žádná další notifikace a akce nejde jednoduše vrátit."
-    confirmLabel="Smazat natrvalo"
+    confirmLabel="Trvale odstranit"
     confirmClass="danger"
     onClose={closeActionDialog}
     onConfirm={confirmHardDelete}
@@ -2255,7 +2241,7 @@ function Drivers({ data, commit }) {
         </div>
         <div className="row-actions list-row-actions">
           <button onClick={() => openEdit(d)}>Upravit</button>
-          {d.active === false ? <button onClick={() => restore(d)}>Obnovit</button> : <button className="danger-mini" onClick={() => softDelete(d)}>Smazat</button>}
+          {d.active === false ? <button onClick={() => restore(d)}>Obnovit</button> : <DeleteIconButton label="Deaktivovat řidiče" onClick={() => softDelete(d)} />}
         </div>
       </div>)}</div>
     </div>
@@ -2273,7 +2259,7 @@ function Drivers({ data, commit }) {
           <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>
         </div>
         {editing && <div className="field span2">
-          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingDriver?.active === false}>Smazat řidiče</button>
+          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingDriver?.active === false}>Deaktivovat řidiče</button>
         </div>}
       </form>
     </SideDrawer>
@@ -2326,7 +2312,7 @@ function Vehicles({ data, commit }) {
   const removeBlock = (id) => setServiceBlockToDelete(id)
   const confirmRemoveBlock = () => {
     if (!deleteServiceBlock) return
-    commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((b) => b.id !== deleteServiceBlock.id) }), 'Smazána servisní blokace.')
+    commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((b) => b.id !== deleteServiceBlock.id) }), 'Servisní blokace odstraněna.')
     setServiceBlockToDelete('')
   }
   const softDelete = (vehicle = editingVehicle) => {
@@ -2355,12 +2341,12 @@ function Vehicles({ data, commit }) {
             </div>
             <div className="row-actions list-row-actions">
               <button onClick={() => openEdit(v)}>Upravit</button>
-              {v.active === false ? <button onClick={() => restoreVehicle(v)}>Obnovit</button> : <button className="danger-mini" onClick={() => softDelete(v)}>Smazat</button>}
+              {v.active === false ? <button onClick={() => restoreVehicle(v)}>Obnovit</button> : <DeleteIconButton label="Deaktivovat vozidlo" onClick={() => softDelete(v)} />}
             </div>
           </div>
         })}</div>
       </div>
-      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill warn">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(e) => setBlock({ ...block, vehicleId: e.target.value })}><option value="">Vyber vůz</option>{data.vehicles.filter((v) => v.active !== false).map((v) => <option key={v.id} value={v.id}>{v.name} · {v.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })} /></Field><Field label="Od"><input type="date" value={block.from} onChange={(e) => setBlock({ ...block, from: e.target.value })} /></Field><Field label="Do"><input type="date" value={block.to} onChange={(e) => setBlock({ ...block, to: e.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><div className="stack" style={{ marginTop: 12 }}>{data.serviceBlocks.map((s) => <div className="alert warn" key={s.id}>{data.vehicles.find((v) => v.id === s.vehicleId)?.name || 'Vůz'} · {s.from} až {s.to}<br /><small>{s.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeBlock(s.id)}>Smazat</button></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill warn">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(e) => setBlock({ ...block, vehicleId: e.target.value })}><option value="">Vyber vůz</option>{data.vehicles.filter((v) => v.active !== false).map((v) => <option key={v.id} value={v.id}>{v.name} · {v.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })} /></Field><Field label="Od"><input type="date" value={block.from} onChange={(e) => setBlock({ ...block, from: e.target.value })} /></Field><Field label="Do"><input type="date" value={block.to} onChange={(e) => setBlock({ ...block, to: e.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><div className="stack" style={{ marginTop: 12 }}>{data.serviceBlocks.map((s) => <div className="alert warn" key={s.id}>{data.vehicles.find((v) => v.id === s.vehicleId)?.name || 'Vůz'} · {s.from} až {s.to}<br /><small>{s.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit servisní blokaci" onClick={() => removeBlock(s.id)} /></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div>
     </div>
     <SideDrawer title={editing ? 'Detail vozidla' : 'Přidat vozidlo'} open={drawerOpen} onClose={closeDrawer}>
       <form className="form two-col" onSubmit={submit}>
@@ -2374,7 +2360,7 @@ function Vehicles({ data, commit }) {
           <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>
         </div>
         {editing && <div className="field span2">
-          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingVehicle?.active === false}>Smazat vozidlo</button>
+          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingVehicle?.active === false}>Deaktivovat vozidlo</button>
         </div>}
       </form>
     </SideDrawer>
@@ -2389,9 +2375,9 @@ function Vehicles({ data, commit }) {
       <ActionSummary eyebrow="Vozidlo" title={`${deleteVehicle.name || 'Bez modelu'} · ${deleteVehicle.plate || 'Bez SPZ'}`} meta={vehicleNoteBody(deleteVehicle.note) || 'Bez poznámky'} />
     </ConfirmActionModal>}
     {deleteServiceBlock && <ConfirmActionModal
-      title="Smazat servisní blokaci"
+      title="Odstranit servisní blokaci"
       message="Servisní blokace se odstraní z plánování dostupnosti vozidla."
-      confirmLabel="Smazat blokaci"
+      confirmLabel="Odstranit blokaci"
       confirmClass="danger"
       onClose={() => setServiceBlockToDelete('')}
       onConfirm={confirmRemoveBlock}
@@ -2461,9 +2447,9 @@ function Availability({ data, commit, currentDriver }) {
   const confirmDelete = () => {
     if (!deleteTarget || !deleteDialog) return
     if (deleteDialog.type === 'absence') {
-      commit((prev) => ({ ...prev, absences: prev.absences.filter((a) => a.id !== deleteTarget.id) }), 'Smazána nepřítomnost řidiče.')
+      commit((prev) => ({ ...prev, absences: prev.absences.filter((a) => a.id !== deleteTarget.id) }), 'Nepřítomnost řidiče odstraněna.')
     } else {
-      commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((a) => a.id !== deleteTarget.id) }), 'Smazána dostupnost řidiče.')
+      commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((a) => a.id !== deleteTarget.id) }), 'Dostupnost řidiče odstraněna.')
     }
     setDeleteDialog(null)
   }
@@ -2496,15 +2482,15 @@ function Availability({ data, commit, currentDriver }) {
         return <div className={kind === 'unavailable' ? 'alert bad' : kind === 'preferred' ? 'alert warn' : 'alert good'} key={a.id}>
           <div className="split"><div><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {availabilityLabel(a)}</div><span className={`pill ${availabilityKindTone[kind] || 'good'}`}>{availabilityKindMap[kind] || 'Dostupný'}</span></div>
           {note && <small>{note}</small>}
-          <div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeSlot(a.id)}>Smazat</button></div>
+          <div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit dostupnost" onClick={() => removeSlot(a.id)} /></div>
         </div>
       })}{!availability.length && <div className="empty">Není zadaná žádná dostupnost.</div>}</div></div>
-      <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack compact-list">{absences.map((a) => <div className="alert warn" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {a.from} až {a.to}<br /><small>{a.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => removeAbsence(a.id)}>Smazat</button></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack compact-list">{absences.map((a) => <div className="alert warn" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {a.from} až {a.to}<br /><small>{a.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit nepřítomnost" onClick={() => removeAbsence(a.id)} /></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
     </div>
     {deleteTarget && <ConfirmActionModal
-      title={deleteDialog.type === 'absence' ? 'Smazat nepřítomnost' : 'Smazat dostupnost'}
+      title={deleteDialog.type === 'absence' ? 'Odstranit nepřítomnost' : 'Odstranit dostupnost'}
       message={deleteDialog.type === 'absence' ? 'Nepřítomnost se odstraní z plánování dostupnosti řidiče.' : 'Záznam dostupnosti se odstraní z plánování směn.'}
-      confirmLabel={deleteDialog.type === 'absence' ? 'Smazat nepřítomnost' : 'Smazat dostupnost'}
+      confirmLabel={deleteDialog.type === 'absence' ? 'Odstranit nepřítomnost' : 'Odstranit dostupnost'}
       confirmClass="danger"
       onClose={() => setDeleteDialog(null)}
       onConfirm={confirmDelete}
