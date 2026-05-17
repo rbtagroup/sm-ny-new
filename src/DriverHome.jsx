@@ -3,7 +3,8 @@ import { DriverActionModal, DriverTwoWeekCalendar, ShiftMobileCard } from './Dri
 import { addDays, formatDate, intervalForShift, localStamp, todayISO } from './lib/dateTime.js'
 import { statusMap } from './lib/appConfig.js'
 import { appFriendlyError } from './lib/errors.js'
-import { addNotificationsToData, isNoticeRead, isNoticeVisibleInInbox } from './lib/notifications.js'
+import { addNotificationsToData } from './lib/notifications.js'
+import { notificationInboxState } from './lib/notificationInbox.js'
 import {
   canOpenSettlement,
   settlementForShift,
@@ -44,8 +45,7 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
   const shifts = sortByDateTime(data.shifts.filter(driverShiftIsDashboardVisible)).slice(0, 30)
   const openShifts = sortByDateTime((data.shifts || []).filter((s) => s.status === 'open' && !s.driverId && s.date >= todayISO())).slice(0, 30)
   const myOpenInterests = (data.swapRequests || []).filter((r) => r.targetMode === 'open' && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
-  const visibleNotices = (data.notifications || []).filter((n) => isNoticeVisibleInInbox(n, currentDriver, true, data.swapRequests))
-  const unreadNotices = visibleNotices.filter((n) => !isNoticeRead(n, currentDriver, true))
+  const { visible: visibleNotices, unread: unreadNotices } = notificationInboxState(data, { currentDriver, isDriver: true })
   const swapShift = swapDraft ? data.shifts.find((s) => s.id === swapDraft.shiftId) : null
   const swapColleagues = (data.drivers || []).filter((d) => d.active !== false && d.id !== currentDriver?.id)
   const actionRequest = actionDialog?.requestId ? (data.swapRequests || []).find((r) => r.id === actionDialog.requestId) : null

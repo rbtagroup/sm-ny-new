@@ -89,11 +89,19 @@ const profileForToken = async (supabase, token) => {
 const SWAP_DRIVER_NOTICE_TYPES = new Set(['swap-offer', 'swap-accepted', 'swap-rejected'])
 const PUSH_CONCURRENCY = Number(process.env.PUSH_DELIVERY_CONCURRENCY || 8)
 const PUSH_RATE_LIMIT_WINDOW_MS = Number(process.env.PUSH_RATE_LIMIT_WINDOW_MS || 60_000)
-const PUSH_RATE_LIMIT_MAX = Number(process.env.PUSH_RATE_LIMIT_PER_WINDOW || process.env.PUSH_RATE_LIMIT_PER_MINUTE || 30)
+const PUSH_REQUEST_RATE_LIMIT_MAX = Number(process.env.PUSH_RATE_LIMIT_PER_WINDOW || process.env.PUSH_RATE_LIMIT_PER_MINUTE || 30)
+const PUSH_DELIVERY_RATE_LIMIT_MAX = Number(process.env.PUSH_DELIVERY_RATE_LIMIT_PER_WINDOW || process.env.PUSH_RECIPIENT_RATE_LIMIT_PER_WINDOW || 1000)
 const PUSH_MAX_NOTIFICATIONS_PER_REQUEST = Number(process.env.PUSH_MAX_NOTIFICATIONS_PER_REQUEST || 20)
 const PUSH_MAX_RECIPIENTS_PER_NOTICE = Number(process.env.PUSH_MAX_RECIPIENTS_PER_NOTICE || 500)
 const pushRateBuckets = (globalThis.__RBSHIFT_PUSH_RATE_BUCKETS__ ||= new Map())
-const pushRateLimitWindowSeconds = () => Math.max(1, Math.ceil(PUSH_RATE_LIMIT_WINDOW_MS / 1000))
+const pushRateLimitWindowSeconds = (windowMs = PUSH_RATE_LIMIT_WINDOW_MS) => Math.max(1, Math.ceil((Number(windowMs) || PUSH_RATE_LIMIT_WINDOW_MS) / 1000))
+const cleanRateLimitKeyPart = (value) => String(value || 'unknown').toLowerCase().replace(/[^a-z0-9:_-]+/g, '_').slice(0, 96)
+
+const rateLimitKeyForProfile = (scope, profile, fallback = 'unknown') => {
+  const role = cleanRateLimitKeyPart(profile?.role || 'unknown')
+  const id = cleanRateLimitKeyPart(profile?.id || fallback || 'unknown')
+  return `push:${cleanRateLimitKeyPart(scope)}:${role}:${id}`
+}
 
 const runWithConcurrency = async (items, limit, worker) => {
   const output = []
@@ -109,13 +117,14 @@ const runWithConcurrency = async (items, limit, worker) => {
   return output
 }
 
-const checkRateLimit = (key, weight = 1) => {
-  if (!PUSH_RATE_LIMIT_MAX || PUSH_RATE_LIMIT_MAX < 1) return { ok: true }
+const checkRateLimit = (key, weight = 1, maxCount = PUSH_REQUEST_RATE_LIMIT_MAX, windowMs = PUSH_RATE_LIMIT_WINDOW_MS) => {
+  if (!maxCount || maxCount < 1) return { ok: true }
   const now = Date.now()
-  const bucket = pushRateBuckets.get(key) || { count: 0, resetAt: now + PUSH_RATE_LIMIT_WINDOW_MS }
+  const safeWindowMs = Math.max(1000, Number(windowMs) || PUSH_RATE_LIMIT_WINDOW_MS)
+  const bucket = pushRateBuckets.get(key) || { count: 0, resetAt: now + safeWindowMs }
   if (bucket.resetAt <= now) {
     bucket.count = 0
-    bucket.resetAt = now + PUSH_RATE_LIMIT_WINDOW_MS
+    bucket.resetAt = now + safeWindowMs
   }
   bucket.count += Math.max(1, Number(weight) || 1)
   pushRateBuckets.set(key, bucket)
@@ -125,18 +134,18 @@ const checkRateLimit = (key, weight = 1) => {
   }
 
   return {
-    ok: bucket.count <= PUSH_RATE_LIMIT_MAX,
+    ok: bucket.count <= maxCount,
     retryAfter: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
   }
 }
 
-const checkDurableRateLimit = async (supabase, key, weight = 1) => {
-  if (!PUSH_RATE_LIMIT_MAX || PUSH_RATE_LIMIT_MAX < 1) return { ok: true }
+const checkDurableRateLimit = async (supabase, key, weight = 1, maxCount = PUSH_REQUEST_RATE_LIMIT_MAX, windowMs = PUSH_RATE_LIMIT_WINDOW_MS) => {
+  if (!maxCount || maxCount < 1) return { ok: true }
   const { data, error } = await supabase.rpc('rb_check_push_rate_limit', {
     bucket_key: key,
     weight: Math.max(1, Number(weight) || 1),
-    max_count: PUSH_RATE_LIMIT_MAX,
-    window_seconds: pushRateLimitWindowSeconds(),
+    max_count: maxCount,
+    window_seconds: pushRateLimitWindowSeconds(windowMs),
   })
   if (error) throw error
   const row = Array.isArray(data) ? data[0] : data
@@ -146,13 +155,21 @@ const checkDurableRateLimit = async (supabase, key, weight = 1) => {
   }
 }
 
-const checkPushRateLimit = async (supabase, key, weight = 1) => {
+const checkPushRateLimit = async (supabase, key, weight = 1, maxCount = PUSH_REQUEST_RATE_LIMIT_MAX, windowMs = PUSH_RATE_LIMIT_WINDOW_MS) => {
   try {
-    return await checkDurableRateLimit(supabase, key, weight)
+    return await checkDurableRateLimit(supabase, key, weight, maxCount, windowMs)
   } catch (err) {
     console.warn('[send-push] durable rate limit unavailable, using in-memory fallback:', err?.message || err)
-    return checkRateLimit(key, weight)
+    return checkRateLimit(key, weight, maxCount, windowMs)
   }
+}
+
+const pushSubscriptionFilterPlan = (notice) => {
+  if (notice.targetDriverId) return { driverId: notice.targetDriverId, roles: null }
+  if (notice.targetRole === 'driver_all' || notice.targetRole === 'driver') return { driverId: '', roles: ['driver'] }
+  if (notice.targetRole === 'admin' || !notice.targetRole) return { driverId: '', roles: ['admin', 'dispatcher'] }
+  if (notice.targetRole === 'dispatcher') return { driverId: '', roles: ['dispatcher', 'admin'] }
+  return { driverId: '', roles: null }
 }
 
 const subscriptionsForNotice = async (supabase, notice) => {
@@ -160,16 +177,11 @@ const subscriptionsForNotice = async (supabase, notice) => {
     .from('push_subscriptions')
     .select('id, profile_id, driver_id, role, endpoint, subscription, active, delivery_failures')
     .eq('active', true)
+  const filterPlan = pushSubscriptionFilterPlan(notice)
 
-  if (notice.targetDriverId) {
-    query = query.eq('driver_id', notice.targetDriverId)
-  } else if (notice.targetRole === 'driver_all' || notice.targetRole === 'driver') {
-    query = query.eq('role', 'driver')
-  } else if (notice.targetRole === 'admin' || !notice.targetRole) {
-    query = query.in('role', ['admin', 'dispatcher'])
-  } else if (notice.targetRole === 'dispatcher') {
-    query = query.in('role', ['dispatcher', 'admin'])
-  }
+  if (filterPlan.driverId) query = query.eq('driver_id', filterPlan.driverId)
+  if (filterPlan.roles?.length === 1) query = query.eq('role', filterPlan.roles[0])
+  if (filterPlan.roles?.length > 1) query = query.in('role', filterPlan.roles)
 
   const { data, error } = await query
   if (error) throw error
@@ -248,6 +260,17 @@ const canSendNotice = async (supabase, notice, profile, internalAuthorized) => {
   return false
 }
 
+export {
+  checkDurableRateLimit,
+  checkPushRateLimit,
+  checkRateLimit,
+  matchesNotice,
+  normalizeNotice,
+  pushSubscriptionFilterPlan,
+  rateLimitKeyForProfile,
+  subscriptionsForNotice,
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, error: 'Method not allowed' })
 
@@ -273,19 +296,25 @@ export default async function handler(req, res) {
   const expectedInternalSecret = process.env.PUSH_DELIVERY_SECRET || process.env.SCHEDULER_SECRET || process.env.DRIVER_REMINDER_SECRET
   const receivedInternalSecret = internalSecretFrom(req)
   const internalAuthorized = Boolean(expectedInternalSecret && receivedInternalSecret && receivedInternalSecret === expectedInternalSecret)
+  const bearerToken = bearerTokenFrom(req)
   let callerProfile = null
   if (!internalAuthorized) {
-    try { callerProfile = await profileForToken(supabase, bearerTokenFrom(req)) } catch (err) {
+    try { callerProfile = await profileForToken(supabase, bearerToken) } catch (err) {
       return pushServerError(res, err, 'profile lookup')
     }
     if (!callerProfile) return json(res, 401, { ok: false, error: 'Authentication required' })
   }
 
   if (!internalAuthorized) {
-    const rate = await checkPushRateLimit(supabase, callerProfile?.id || bearerTokenFrom(req).slice(0, 16) || 'unknown', notifications.length)
+    const rate = await checkPushRateLimit(
+      supabase,
+      rateLimitKeyForProfile('request', callerProfile, bearerToken.slice(0, 16)),
+      notifications.length,
+      PUSH_REQUEST_RATE_LIMIT_MAX,
+    )
     if (!rate.ok) {
       res.setHeader('Retry-After', String(rate.retryAfter))
-      return json(res, 429, { ok: false, error: 'Push rate limit exceeded', retryAfter: rate.retryAfter })
+      return json(res, 429, { ok: false, error: 'Push request rate limit exceeded', retryAfter: rate.retryAfter })
     }
   }
 
@@ -301,8 +330,9 @@ export default async function handler(req, res) {
 
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
-  const results = []
   const deliveries = []
+  const preparedDeliveries = []
+  let totalRecipients = 0
   for (const notice of notifications) {
     let recipients
     try {
@@ -313,6 +343,8 @@ export default async function handler(req, res) {
     if (recipients.length > PUSH_MAX_RECIPIENTS_PER_NOTICE) {
       return json(res, 413, { ok: false, error: `Too many push recipients for one notice. Limit is ${PUSH_MAX_RECIPIENTS_PER_NOTICE}.`, recipients: recipients.length })
     }
+    totalRecipients += recipients.length
+    preparedDeliveries.push({ notice, recipients })
     deliveries.push({
       noticeId: notice.id,
       type: notice.type,
@@ -320,6 +352,23 @@ export default async function handler(req, res) {
       targetDriverId: notice.targetDriverId,
       recipients: recipients.length,
     })
+  }
+
+  if (!internalAuthorized && totalRecipients > 0) {
+    const deliveryRate = await checkPushRateLimit(
+      supabase,
+      rateLimitKeyForProfile('delivery', callerProfile, bearerToken.slice(0, 16)),
+      totalRecipients,
+      PUSH_DELIVERY_RATE_LIMIT_MAX,
+    )
+    if (!deliveryRate.ok) {
+      res.setHeader('Retry-After', String(deliveryRate.retryAfter))
+      return json(res, 429, { ok: false, error: 'Push delivery rate limit exceeded', retryAfter: deliveryRate.retryAfter, recipients: totalRecipients })
+    }
+  }
+
+  const results = []
+  for (const { notice, recipients } of preparedDeliveries) {
     const noticeResults = await runWithConcurrency(recipients, PUSH_CONCURRENCY, async (sub) => {
       try {
         await webpush.sendNotification(sub.subscription, JSON.stringify({
