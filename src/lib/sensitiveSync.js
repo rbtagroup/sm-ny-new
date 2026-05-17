@@ -33,6 +33,32 @@ export function notificationStateRpcCalls(prevNotifications = [], changedNotific
     .filter(Boolean)
 }
 
+export function removedNotificationStateRpcCalls(prevNotifications = [], removedNotificationIds = [], currentDriverId = '') {
+  if (!currentDriverId) return []
+  const removedIds = removedNotificationIds instanceof Set
+    ? removedNotificationIds
+    : new Set((removedNotificationIds || []).filter(Boolean))
+  if (!removedIds.size) return []
+
+  const key = driverNoticeKey(currentDriverId)
+  const canDriverSeeNotice = (notice) =>
+    notice?.targetDriverId === currentDriverId ||
+    notice?.targetRole === 'all' ||
+    notice?.targetRole === 'driver_all'
+
+  return (prevNotifications || [])
+    .filter((notice) => notice?.id && removedIds.has(notice.id) && canDriverSeeNotice(notice))
+    .filter((notice) => !hasState(notice.deletedBy, key) && !hasLegacyDeletedState(notice.readBy, currentDriverId))
+    .map((notice) => ({
+      fn: 'rb_set_notification_state',
+      args: {
+        p_notification_id: notice.id,
+        p_read: null,
+        p_deleted: true,
+      },
+    }))
+}
+
 export function swapRequestRpcCalls(prevSwapRequests = [], changedSwapRequests = [], currentDriverId = '') {
   return swapRequestRpcCallsWithSideEffects(prevSwapRequests, changedSwapRequests, currentDriverId)
 }

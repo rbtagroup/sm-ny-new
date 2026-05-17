@@ -8,7 +8,7 @@ import { DriverHome } from './DriverHome.jsx'
 import { DriverSettings } from './DriverSettings.jsx'
 import { NotificationsView } from './NotificationsView.jsx'
 import { addedRows, changedRows, stableFingerprint } from './lib/syncDiff.js'
-import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCallsWithSideEffects } from './lib/sensitiveSync.js'
+import { auditInsertRpcCalls, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCallsWithSideEffects } from './lib/sensitiveSync.js'
 import {
   actualDurationMinutes,
   addDays,
@@ -310,7 +310,7 @@ async function syncChangedRows(prev, next, profile) {
       const nextIds = new Set((next.notifications || []).map((n) => n.id))
       const insertedRows = changed.filter((row) => row.id && !previousIds.has(row.id)).map(toDb.notifications)
       const removedPersonalIds = (prev.notifications || [])
-        .filter((n) => n.id && !nextIds.has(n.id) && n.targetDriverId === currentDriverId)
+        .filter((n) => n.id && !nextIds.has(n.id))
         .map((n) => n.id)
       if (insertedRows.length) {
         const { error } = await supabase.rpc('rb_insert_notifications', { p_notifications: insertedRows })
@@ -327,9 +327,13 @@ async function syncChangedRows(prev, next, profile) {
           if (critical.has(key)) throw new Error(errors.join('\n'))
         }
       }
-      if (removedPersonalIds.length) {
-        const { error } = await supabase.from('notifications').delete().in('id', removedPersonalIds)
-        if (error) errors.push(`notifications delete: ${error.message}`)
+      const removalStateCalls = removedNotificationStateRpcCalls(prev.notifications, removedPersonalIds, currentDriverId)
+      if (removalStateCalls.length) {
+        try { await runRpcCalls(removalStateCalls) }
+        catch (error) {
+          errors.push(error.message)
+          if (critical.has(key)) throw new Error(errors.join('\n'))
+        }
       }
       continue
     }

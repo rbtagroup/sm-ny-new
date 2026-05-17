@@ -1,0 +1,139 @@
+{
+  "sourceOfTruth": "supabase/migrations",
+  "topLevelSqlPolicy": "Top-level SQL files are snapshots, manual ops scripts, diagnostics, or legacy patches. Deployable schema changes must be copied into a timestamped migration before production rollout.",
+  "files": [
+    {
+      "path": "driver-reminder-cron.sql",
+      "category": "manual-ops",
+      "manualExecutionAllowed": true,
+      "requiresPlaceholderReview": true,
+      "notes": "Configures pg_cron/pg_net/Vault for the driver reminder Edge Function."
+    },
+    {
+      "path": "driver-reminder-manual-test.sql",
+      "category": "manual-test",
+      "manualExecutionAllowed": true,
+      "requiresPlaceholderReview": true,
+      "notes": "Manual pg_net test for the driver-reminder Edge Function."
+    },
+    {
+      "path": "driver-reminder-ui-rpc-grant.sql",
+      "category": "manual-ops",
+      "manualExecutionAllowed": true,
+      "requiresPlaceholderReview": false,
+      "notes": "Targeted grant for refresh_driver_reminder_cron when needed."
+    },
+    {
+      "path": "hard-delete-v5-4-2.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical hard-delete patch. Move required changes into a new migration before reuse."
+    },
+    {
+      "path": "notification-hardening.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical notification hardening patch. Current DB history belongs in migrations."
+    },
+    {
+      "path": "notification-review-fixes.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical notification review patch. Move required changes into a new migration before reuse."
+    },
+    {
+      "path": "notification-security-cron-fix.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": true,
+      "notes": "Historical combined security/cron patch. Do not run directly on migration-managed DBs."
+    },
+    {
+      "path": "open-shifts-v5-4-1.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical open-shifts patch. Use migrations as source of truth."
+    },
+    {
+      "path": "push-subscription-hardening.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical push subscription hardening patch. Use migrations as source of truth."
+    },
+    {
+      "path": "realtime-live-sync-fix.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical realtime publication patch. Move required changes into a migration before reuse."
+    },
+    {
+      "path": "rls-final-fix.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical pre-migration RLS patch. Use migrations as source of truth."
+    },
+    {
+      "path": "rls-regression-tests.sql",
+      "category": "regression-probe",
+      "manualExecutionAllowed": true,
+      "requiresPlaceholderReview": false,
+      "notes": "Owner-role SQL probes that roll back their test data."
+    },
+    {
+      "path": "scheduler-cron.sql",
+      "category": "manual-ops",
+      "manualExecutionAllowed": true,
+      "requiresPlaceholderReview": true,
+      "notes": "Configures pg_cron/pg_net/Vault for the daily scheduler Edge Function."
+    },
+    {
+      "path": "scheduler-manual-test.sql",
+      "category": "manual-test",
+      "manualExecutionAllowed": true,
+      "requiresPlaceholderReview": true,
+      "notes": "Manual pg_net test for the scheduler Edge Function."
+    },
+    {
+      "path": "schema.sql",
+      "category": "schema-snapshot",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Reference snapshot for orientation only. New projects should apply migrations."
+    },
+    {
+      "path": "seed-users-template.sql",
+      "category": "seed-template",
+      "manualExecutionAllowed": true,
+      "requiresPlaceholderReview": true,
+      "notes": "Manual seed template after Auth users are created."
+    },
+    {
+      "path": "senior-refactor-v5-4-7.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical availability refactor patch. Use migrations as source of truth."
+    },
+    {
+      "path": "ux-cleanup-v5-4-5.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical availability date patch. Use migrations as source of truth."
+    },
+    {
+      "path": "vycetka-integration.sql",
+      "category": "legacy-patch",
+      "manualExecutionAllowed": false,
+      "requiresPlaceholderReview": false,
+      "notes": "Historical settlement integration patch. Use migrations as source of truth."
+    }
+  ]
+}

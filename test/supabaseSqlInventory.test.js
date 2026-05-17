@@ -1,0 +1,52 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const root = process.cwd()
+const supabaseDir = join(root, 'supabase')
+const migrationsDir = join(supabaseDir, 'migrations')
+const inventory = JSON.parse(readFileSync(join(supabaseDir, 'sql-inventory.json'), 'utf8'))
+
+const topLevelSqlFiles = () => readdirSync(supabaseDir)
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+
+const migrationFiles = () => readdirSync(migrationsDir)
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+
+test('top-level Supabase SQL files are inventoried and not treated as source of truth', () => {
+  assert.equal(inventory.sourceOfTruth, 'supabase/migrations')
+
+  const actual = topLevelSqlFiles()
+  const listed = inventory.files.map((file) => file.path).sort()
+
+  assert.deepEqual(listed, actual)
+  assert.equal(new Set(listed).size, listed.length)
+})
+
+test('legacy top-level SQL patches are blocked from direct production execution', () => {
+  const allowedCategories = new Set(['manual-ops', 'manual-test', 'regression-probe', 'seed-template'])
+
+  for (const file of inventory.files) {
+    assert.equal(typeof file.notes, 'string', `${file.path} needs notes`)
+    assert.ok(file.notes.length >= 20, `${file.path} notes should explain why it exists`)
+    if (file.manualExecutionAllowed) {
+      assert.ok(allowedCategories.has(file.category), `${file.path} cannot be manually executable as ${file.category}`)
+    }
+    if (file.category === 'legacy-patch' || file.category === 'schema-snapshot') {
+      assert.equal(file.manualExecutionAllowed, false, `${file.path} must not be marked manually executable`)
+    }
+  }
+})
+
+test('migration filenames are timestamped and unique', () => {
+  const files = migrationFiles()
+  assert.ok(files.length > 0, 'expected at least one migration')
+  assert.equal(new Set(files).size, files.length)
+
+  for (const file of files) {
+    assert.match(file, /^\d{14}_[a-z0-9_]+\.sql$/, `${file} must use Supabase timestamp migration naming`)
+  }
+})

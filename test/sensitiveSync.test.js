@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { auditInsertRpcCalls, notificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls, swapRequestRpcCallsWithSideEffects } from '../src/lib/sensitiveSync.js'
+import { auditInsertRpcCalls, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls, swapRequestRpcCallsWithSideEffects } from '../src/lib/sensitiveSync.js'
 
 test('notificationStateRpcCalls emits only changed read/delete state for current driver', () => {
   const calls = notificationStateRpcCalls(
@@ -12,6 +12,23 @@ test('notificationStateRpcCalls emits only changed read/delete state for current
   assert.deepEqual(calls, [{
     fn: 'rb_set_notification_state',
     args: { p_notification_id: 'n1', p_read: true, p_deleted: true },
+  }])
+})
+
+test('removedNotificationStateRpcCalls hides removed driver-visible notices without physical delete', () => {
+  const calls = removedNotificationStateRpcCalls([
+    { id: 'own', targetDriverId: 'drv_1', readBy: ['driver:drv_1'], deletedBy: [] },
+    { id: 'broadcast', targetRole: 'driver_all', readBy: [], deletedBy: [] },
+    { id: 'other', targetDriverId: 'drv_2', readBy: [], deletedBy: [] },
+    { id: 'already-hidden', targetDriverId: 'drv_1', readBy: [], deletedBy: ['driver:drv_1'] },
+  ], ['own', 'broadcast', 'other', 'already-hidden'], 'drv_1')
+
+  assert.deepEqual(calls, [{
+    fn: 'rb_set_notification_state',
+    args: { p_notification_id: 'own', p_read: null, p_deleted: true },
+  }, {
+    fn: 'rb_set_notification_state',
+    args: { p_notification_id: 'broadcast', p_read: null, p_deleted: true },
   }])
 })
 

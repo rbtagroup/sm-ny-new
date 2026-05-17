@@ -50,13 +50,15 @@ Ve Vercelu nastav stejný `PUSH_DELIVERY_SECRET`, aby `/api/send-push` přijíma
 
 ## DB hardening
 
-Po nasazení spusť v Supabase SQL editoru:
+U migration-managed projektu nespouštěj historický top-level patch ručně. Ověř, že jsou aplikované timestampované migrace ze `supabase/migrations/`, které obsahují notification/push hardening.
+
+U starého ručně spravovaného projektu bez migrací byl dřívější helper:
 
 ```text
 supabase/notification-hardening.sql
 ```
 
-Soubor zúží RLS pro `notifications`, přidá `payload` sloupec a vytvoří idempotency indexy pro `daily-coverage` a `driver-signup-reminder`.
+Ten je dnes vedený jako `legacy-patch` v `supabase/sql-inventory.json`. Pokud z něj bude potřeba část znovu použít, přenes ji do nové timestampované migrace místo přímého spuštění.
 
 ## Cron
 
