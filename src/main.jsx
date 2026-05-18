@@ -32,6 +32,9 @@ import {
   createNoticeFactory,
 } from './lib/notifications.js'
 import { notificationInboxState } from './lib/notificationInbox.js'
+import { readStore, seed, writeStore } from './lib/appStore.js'
+import { uid } from './lib/ids.js'
+import { pushDeliveryWarning, sendPushForNotifications } from './lib/pushDelivery.js'
 import {
   canOpenSettlement,
   computeSettlementMetrics,
@@ -46,7 +49,6 @@ import {
 import { createSupabaseMappers, ONLINE_TABLES, tableName } from './lib/supabaseData.js'
 import { appFriendlyError } from './lib/errors.js'
 import {
-  defaultShiftTimes,
   repeatMap,
   settlementStatusMap,
   settlementToneMap,
@@ -94,10 +96,6 @@ import {
 } from './lib/opsMetrics.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
-const STORAGE_KEY = 'rbshift-manager-data-v4'
-const LEGACY_STORAGE_KEYS = ['rbshift-manager-data-v3', 'rbshift-manager-data-v2', 'rbshift-manager-data']
-const AUTOBACKUP_KEY = `${STORAGE_KEY}-autobackup`
-const uid = (prefix = 'id') => `${prefix}_${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2, 11)}`
 const makeNotice = createNoticeFactory(uid)
 const swapStatusMap = { pending: 'Nabídnuto', accepted: 'Přijato kolegou', approved: 'Schváleno', rejected: 'Zamítnuto', cancelled: 'Zrušeno řidičem' }
 const pageTitleMap = { planner: 'Plán směn', dashboard: 'Dashboard', audit: 'Audit provozu', settlements: 'Výčetky', notifications: 'Notifikace', shifts: 'Seznam směn', drivers: 'Řidiči', vehicles: 'Vozidla', availability: 'Dostupnost', shiftTemplates: 'Šablony směn', history: 'Historie změn', settings: 'Nastavení' }
@@ -235,36 +233,7 @@ async function loadDataFromSupabase() {
   if (errors.length) throw new Error(errors.join('\n'))
   return output
 }
-async function sendPushForNotifications(notices, accessToken = '') {
-  const clean = (Array.isArray(notices) ? notices : [notices]).filter((n) => n?.title)
-  if (!clean.length) return { skipped: true, reason: 'no-notifications' }
-  if (!isConfiguredSupabase) return { skipped: true, reason: 'supabase-not-configured' }
-  if (!import.meta.env.VITE_VAPID_PUBLIC_KEY) return { skipped: true, reason: 'missing-vapid-public-key' }
-  if (!accessToken) return { skipped: true, reason: 'missing-auth-token' }
-  try {
-    const res = await fetch('/api/send-push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-      body: JSON.stringify({ notifications: clean }),
-    })
-    const payload = await res.json().catch(async () => ({ ok: false, error: await res.text().catch(() => res.statusText) }))
-    if (!res.ok) {
-      console.warn('RBSHIFT push send failed:', payload?.error || res.statusText)
-    }
-    return { status: res.status, ...payload }
-  } catch (err) {
-    console.warn('RBSHIFT push send unavailable:', err)
-    return { ok: false, error: err?.message || String(err) }
-  }
-}
 const notificationServices = { uid, makeNotice, sendPushForNotifications }
-function pushDeliveryWarning(result) {
-  if (!result || result.reason === 'no-notifications') return ''
-  if (result.skipped) return result.reason || 'push přeskočen'
-  if (result.ok === false) return appFriendlyError(result.error || result.reason || 'neznámá chyba')
-  if (Number(result.failed || 0) > 0) return `${result.failed} zařízení nedostalo push`
-  return ''
-}
 async function runRpcCalls(calls = []) {
   const errors = []
   for (const call of calls) {
@@ -429,93 +398,6 @@ async function seedSupabaseFromLocal(localData) {
     }
   }
   await supabase.from('app_settings').upsert({ id: 'default', payload: localData.settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-}
-
-function seed() {
-  const t = todayISO()
-  const w = startOfWeek(t)
-  return {
-    drivers: [
-      { id: 'drv_roman', name: 'Roman', phone: '+420 600 000 001', email: 'roman@demo.example', active: true, note: 'Stálý řidič' },
-      { id: 'drv_lukas', name: 'Lukáš', phone: '+420 600 000 002', email: 'lukas@demo.example', active: true, note: 'Admin / záskok' },
-      { id: 'drv_petra', name: 'Petra', phone: '+420 600 000 003', email: 'petra@demo.example', active: true, note: 'Víkendy' },
-      { id: 'drv_milan', name: 'Milan', phone: '+420 600 000 004', email: 'milan@demo.example', active: true, note: 'Noční směny' },
-    ],
-    vehicles: [
-      { id: 'car_tesla_1', name: 'Tesla Model 3', plate: 'RB 001', active: true, note: 'Hlavní vůz' },
-      { id: 'car_tesla_2', name: 'Tesla Model 3', plate: 'RB 002', active: true, note: 'Noční provoz' },
-      { id: 'car_van_1', name: 'VAN 7 míst', plate: 'RB 007', active: true, note: 'Skupiny / letiště' },
-    ],
-    shifts: [
-      { id: 'sh_1', date: w, start: '07:00', end: '19:00', driverId: 'drv_roman', vehicleId: 'car_tesla_1', type: 'day', status: 'confirmed', note: 'Denní Hodonín', declineReason: '' },
-      { id: 'sh_2', date: w, start: '14:00', end: '22:00', driverId: 'drv_petra', vehicleId: 'car_tesla_2', type: 'day', status: 'assigned', note: 'Odpolední špička', declineReason: '' },
-      { id: 'sh_3', date: w, start: '19:00', end: '07:00', driverId: 'drv_milan', vehicleId: 'car_tesla_1', type: 'night', status: 'assigned', note: 'Noční provoz', declineReason: '' },
-      { id: 'sh_4', date: addDays(w, 1), start: '06:00', end: '14:00', driverId: 'drv_lukas', vehicleId: 'car_van_1', type: 'day', status: 'draft', note: 'Záskok / převozy', declineReason: '' },
-    ],
-    absences: [],
-    availability: [
-      { id: 'av_roman_1', driverId: 'drv_roman', weekday: 1, start: '06:00', end: '18:00', note: 'Preferuje denní provoz' },
-      { id: 'av_roman_2', driverId: 'drv_roman', weekday: 2, start: '06:00', end: '18:00', note: '' },
-      { id: 'av_petra_6', driverId: 'drv_petra', weekday: 6, start: '10:00', end: '23:00', note: 'Víkendy' },
-      { id: 'av_milan_5', driverId: 'drv_milan', weekday: 5, start: '18:00', end: '06:00', note: 'Noční' },
-      { id: 'av_milan_6', driverId: 'drv_milan', weekday: 6, start: '18:00', end: '06:00', note: 'Noční' },
-    ],
-    serviceBlocks: [],
-    settlements: [],
-    swapRequests: [],
-    notifications: [],
-    pushSubscriptions: [],
-    audit: [{ id: uid('log'), at: new Date().toISOString(), text: 'Vytvořena demo data aplikace.' }],
-    settings: { companyName: 'RBSHIFT', mode: 'demo', lastBackupAt: '', mobileCompact: true, shiftTimes: { ...defaultShiftTimes }, coverageSlots: [
-      { id: 'cov_day', name: 'Denní', start: '07:00', end: '19:00', minDrivers: 1 },
-      { id: 'cov_night', name: 'Noční', start: '19:00', end: '07:00', minDrivers: 1 },
-      { id: 'cov_peak_fri', name: 'Pá/Sobota špička', start: '20:00', end: '03:00', minDrivers: 2 },
-      { id: 'cov_event', name: 'Akce / plesy', start: '18:00', end: '02:00', minDrivers: 2 },
-    ], deploymentChecklist: [] },
-  }
-}
-
-function readStore() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY) || LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean)
-    if (!raw) return seed()
-    const parsed = JSON.parse(raw)
-    const base = seed()
-    return {
-      ...base,
-      ...parsed,
-      drivers: parsed.drivers || base.drivers,
-      vehicles: parsed.vehicles || base.vehicles,
-      shifts: (parsed.shifts || base.shifts).map((s) => ({ declineReason: '', instruction: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '', ...s })),
-      absences: parsed.absences || [],
-      availability: (parsed.availability || base.availability || []).map((a) => ({ fromAt: '', toAt: '', ...a })),
-      serviceBlocks: parsed.serviceBlocks || [],
-      settlements: (parsed.settlements || []).map((s) => ({ inputs: {}, metrics: {}, config: {}, note: '', submittedAt: '', approvedAt: '', approvedBy: '', returnedReason: '', ...s })),
-      swapRequests: (parsed.swapRequests || []).map((r) => ({ targetMode: 'all', targetDriverId: '', acceptedByDriverId: '', acceptedAt: '', resolvedAt: '', approvedDriverId: '', rejectedReason: '', cancelledAt: '', history: [], ...r })),
-      notifications: (parsed.notifications || []).map((n) => ({ readBy: [], deletedBy: [], ...n })),
-      pushSubscriptions: parsed.pushSubscriptions || [],
-      audit: parsed.audit || [],
-      settings: { ...base.settings, ...(parsed.settings || {}) },
-    }
-  } catch {
-    return seed()
-  }
-}
-function writeStore(data) {
-  // pushSubscriptions obsahují endpoint URL a šifrovací klíče — neukládáme do localStorage.
-  // Po reconnectu se načtou znovu ze Supabase.
-  const { pushSubscriptions: _omit, ...rest } = data
-  const enriched = { ...rest, pushSubscriptions: [], settings: { ...(data.settings || {}), lastSavedAt: new Date().toISOString() } }
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(enriched))
-    localStorage.setItem(AUTOBACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: enriched }))
-  } catch (e) {
-    if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-      // Záloha se nevešla — odstraň ji a zkus uložit alespoň hlavní snapshot
-      try { localStorage.removeItem(AUTOBACKUP_KEY) } catch {}
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(enriched)) } catch {}
-    }
-  }
 }
 
 function isPastLocked(shift) {
