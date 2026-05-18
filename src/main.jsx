@@ -8,7 +8,7 @@ import { DriverHome } from './DriverHome.jsx'
 import { DriverSettings } from './DriverSettings.jsx'
 import { NotificationsView } from './NotificationsView.jsx'
 import { addedRows, changedRows, stableFingerprint } from './lib/syncDiff.js'
-import { auditInsertRpcCalls, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCallsWithSideEffects } from './lib/sensitiveSync.js'
+import { auditInsertRpcCalls, driverPushSubscriptionRowsForSync, driverSettlementRowsForSync, driverShiftUpdatePatch, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCallsWithSideEffects } from './lib/sensitiveSync.js'
 import {
   actualDurationMinutes,
   addDays,
@@ -304,7 +304,8 @@ async function syncChangedRows(prev, next, profile) {
     }
     // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
     if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId && !driverSwapShiftIds.has(row.id))
-    if (!isStaff && key === 'settlements') changed = changed.filter((row) => row.driverId === currentDriverId)
+    if (!isStaff && key === 'settlements') changed = driverSettlementRowsForSync(changed, currentDriverId)
+    if (!isStaff && key === 'pushSubscriptions') changed = driverPushSubscriptionRowsForSync(changed, { profileId: profile.id, currentDriverId })
     if (!isStaff && key === 'notifications') {
       const previousIds = new Set((prev.notifications || []).map((n) => n.id))
       const nextIds = new Set((next.notifications || []).map((n) => n.id))
@@ -371,7 +372,9 @@ async function syncChangedRows(prev, next, profile) {
       }
       const rowsToUpdate = changed.filter((row) => row.id && previousIds.has(row.id)).map(toDb.shifts)
       for (const row of rowsToUpdate) {
-        const { id, ...patch } = row
+        const { id } = row
+        const patch = driverShiftUpdatePatch(row)
+        if (!Object.keys(patch).length) continue
         const { data: updatedRows, error } = await supabase.from('shifts').update(patch).eq('id', id).select('id')
         if (error) {
           errors.push(`shifts: ${error.message}`)

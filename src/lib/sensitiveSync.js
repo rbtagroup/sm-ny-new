@@ -6,6 +6,37 @@ const hasLegacyDeletedState = (items = [], driverId) => {
   const key = legacyDeletedKey(driverId)
   return (items || []).some((item) => item === key || String(item).startsWith(`${key}:`))
 }
+const pickDefined = (row = {}, keys = []) => Object.fromEntries(keys
+  .filter((key) => row[key] !== undefined)
+  .map((key) => [key, row[key]]))
+
+export function driverShiftUpdatePatch(dbShiftRow = {}) {
+  return pickDefined(dbShiftRow, [
+    'status',
+    'decline_reason',
+    'actual_start_at',
+    'actual_end_at',
+    'swap_request_status',
+  ])
+}
+
+export function driverSettlementRowsForSync(settlements = [], currentDriverId = '') {
+  if (!currentDriverId) return []
+  const editableStatuses = new Set(['draft', 'submitted', 'returned'])
+  return (settlements || []).filter((settlement) =>
+    settlement?.driverId === currentDriverId &&
+    editableStatuses.has(settlement.status || 'draft'),
+  )
+}
+
+export function driverPushSubscriptionRowsForSync(pushSubscriptions = [], { profileId = '', currentDriverId = '' } = {}) {
+  if (!profileId || !currentDriverId) return []
+  return (pushSubscriptions || []).filter((subscription) =>
+    subscription?.profileId === profileId &&
+    subscription?.driverId === currentDriverId &&
+    (subscription.role || 'driver') === 'driver',
+  )
+}
 
 export function notificationStateRpcCalls(prevNotifications = [], changedNotifications = [], currentDriverId = '') {
   if (!currentDriverId) return []

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { auditInsertRpcCalls, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls, swapRequestRpcCallsWithSideEffects } from '../src/lib/sensitiveSync.js'
+import { auditInsertRpcCalls, driverPushSubscriptionRowsForSync, driverSettlementRowsForSync, driverShiftUpdatePatch, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls, swapRequestRpcCallsWithSideEffects } from '../src/lib/sensitiveSync.js'
 
 test('notificationStateRpcCalls emits only changed read/delete state for current driver', () => {
   const calls = notificationStateRpcCalls(
@@ -30,6 +30,52 @@ test('removedNotificationStateRpcCalls hides removed driver-visible notices with
     fn: 'rb_set_notification_state',
     args: { p_notification_id: 'broadcast', p_read: null, p_deleted: true },
   }])
+})
+
+test('driverShiftUpdatePatch keeps driver shift sync inside RLS guard columns', () => {
+  const patch = driverShiftUpdatePatch({
+    id: 'sh_1',
+    shift_date: '2026-05-18',
+    start_time: '07:00',
+    end_time: '19:00',
+    driver_id: 'drv_1',
+    vehicle_id: 'car_1',
+    type: 'day',
+    note: 'Do not sync from driver',
+    instruction: 'Do not sync from driver',
+    status: 'completed',
+    decline_reason: '',
+    actual_start_at: '2026-05-18T07:00:00.000Z',
+    actual_end_at: '2026-05-18T19:00:00.000Z',
+    swap_request_status: 'cancelled',
+  })
+
+  assert.deepEqual(patch, {
+    status: 'completed',
+    decline_reason: '',
+    actual_start_at: '2026-05-18T07:00:00.000Z',
+    actual_end_at: '2026-05-18T19:00:00.000Z',
+    swap_request_status: 'cancelled',
+  })
+})
+
+test('driverSettlementRowsForSync excludes foreign and approved settlement rows', () => {
+  assert.deepEqual(driverSettlementRowsForSync([
+    { id: 'draft', driverId: 'drv_1', status: 'draft' },
+    { id: 'submitted', driverId: 'drv_1', status: 'submitted' },
+    { id: 'returned', driverId: 'drv_1', status: 'returned' },
+    { id: 'approved', driverId: 'drv_1', status: 'approved' },
+    { id: 'foreign', driverId: 'drv_2', status: 'draft' },
+  ], 'drv_1').map((row) => row.id), ['draft', 'submitted', 'returned'])
+})
+
+test('driverPushSubscriptionRowsForSync keeps only current driver device rows', () => {
+  assert.deepEqual(driverPushSubscriptionRowsForSync([
+    { id: 'own', profileId: 'profile_1', driverId: 'drv_1', role: 'driver' },
+    { id: 'staff-role', profileId: 'profile_1', driverId: 'drv_1', role: 'admin' },
+    { id: 'foreign-driver', profileId: 'profile_1', driverId: 'drv_2', role: 'driver' },
+    { id: 'foreign-profile', profileId: 'profile_2', driverId: 'drv_1', role: 'driver' },
+  ], { profileId: 'profile_1', currentDriverId: 'drv_1' }).map((row) => row.id), ['own'])
 })
 
 test('swapRequestRpcCalls routes new driver request to rb_request_swap', () => {
