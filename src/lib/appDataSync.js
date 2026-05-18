@@ -290,6 +290,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
             .then(async () => {
               const freshToken = pushNotices.length ? (await supabase.auth.getSession()).data.session?.access_token || '' : ''
               const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, freshToken) : null
+              if (pushResult) options.onPushResult?.(pushResult)
               const warning = pushDeliveryWarning(pushResult)
               pendingSyncs.current -= 1
               if (pendingSyncs.current === 0) {

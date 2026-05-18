@@ -686,6 +686,27 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   justify-content:center;
   gap:7px;
 }
+.staff-message-composer{
+  margin-bottom:16px;
+}
+.staff-message-composer textarea{
+  min-height:96px;
+}
+.staff-message-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.staff-message-actions button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.staff-message-status{
+  margin-top:12px;
+}
 .staff-notification-row{
   border:1px solid var(--line);
   border-radius:16px;
