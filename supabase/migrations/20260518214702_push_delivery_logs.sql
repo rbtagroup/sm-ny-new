@@ -29,7 +29,7 @@ drop policy if exists "push_delivery_logs_select_staff" on public.push_delivery_
 create policy "push_delivery_logs_select_staff"
 on public.push_delivery_logs
 for select
-using (public.current_role() in ('dispatcher','admin'));
+using ((select public.rb_is_staff()));
 
 revoke all on table public.push_delivery_logs from anon;
 grant select on table public.push_delivery_logs to authenticated;

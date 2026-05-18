@@ -78,7 +78,7 @@ test('push delivery log migration keeps delivery data staff-only and API-readabl
   assert.match(sql, /create table if not exists public\.push_delivery_logs/, 'delivery log table should be created')
   assert.match(sql, /alter table public\.push_delivery_logs enable row level security/, 'delivery log table must enable RLS')
   assert.match(sql, /push_delivery_logs_select_staff/, 'staff-only select policy should exist')
-  assert.match(sql, /public\.current_role\(\) in \('dispatcher','admin'\)/, 'select policy should be staff-only')
+  assert.match(sql, /public\.rb_is_staff\(\)/, 'select policy should use the current staff helper')
   assert.match(sql, /revoke all on table public\.push_delivery_logs from anon/, 'anon must not get delivery logs')
   assert.match(sql, /grant select on table public\.push_delivery_logs to authenticated/, 'authenticated Data API select must be explicit')
   assert.match(sql, /grant all on table public\.push_delivery_logs to service_role/, 'service role API must be able to write delivery logs')
