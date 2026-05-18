@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  checkPushRateLimit,
   checkRateLimit,
   matchesNotice,
   normalizeNotice,
@@ -97,4 +98,37 @@ test('in-memory fallback rate limiter uses weighted counts', () => {
 
   assert.equal(blocked.ok, false)
   assert.equal(blocked.retryAfter >= 1, true)
+})
+
+test('push rate limiter uses durable Supabase RPC when available', async () => {
+  const calls = []
+  const result = await checkPushRateLimit({
+    async rpc(name, params) {
+      calls.push([name, params])
+      return { data: [{ ok: false, retry_after: 12 }], error: null }
+    },
+  }, 'push:request:admin:user_1', 4, 10, 120_000)
+
+  assert.deepEqual(calls, [[
+    'rb_check_push_rate_limit',
+    {
+      bucket_key: 'push:request:admin:user_1',
+      weight: 4,
+      max_count: 10,
+      window_seconds: 120,
+    },
+  ]])
+  assert.deepEqual(result, { ok: false, retryAfter: 12 })
+})
+
+test('push rate limiter falls back locally if durable RPC is unavailable', async () => {
+  const key = `fallback:${Date.now()}:${Math.random()}`
+  const supabase = {
+    async rpc() {
+      return { data: null, error: new Error('missing function') }
+    },
+  }
+
+  assert.equal((await checkPushRateLimit(supabase, key, 2, 3, 60_000)).ok, true)
+  assert.equal((await checkPushRateLimit(supabase, key, 2, 3, 60_000)).ok, false)
 })

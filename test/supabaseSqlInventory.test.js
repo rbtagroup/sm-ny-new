@@ -50,3 +50,14 @@ test('migration filenames are timestamped and unique', () => {
     assert.match(file, /^\d{14}_[a-z0-9_]+\.sql$/, `${file} must use Supabase timestamp migration naming`)
   }
 })
+
+test('RLS regression probes cover driver notification and audit RPC flows', () => {
+  const sql = readFileSync(join(supabaseDir, 'rls-regression-tests.sql'), 'utf8')
+
+  assert.match(sql, /rb_insert_notifications/, 'driver notification RPC should be covered')
+  assert.match(sql, /rb_insert_audit_log/, 'driver audit RPC should be covered')
+  assert.match(sql, /driver notification read state update/, 'driver notification state update should be covered')
+  assert.match(sql, /driver notification title rewrite/, 'driver notification rewrite denial should be covered')
+  assert.match(sql, /driver audit log select/, 'driver audit visibility denial should be covered')
+  assert.match(sql, /staff audit log select/, 'staff audit visibility allow path should be covered')
+})

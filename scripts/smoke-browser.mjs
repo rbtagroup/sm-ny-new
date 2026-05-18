@@ -274,6 +274,17 @@ async function runBrowserChecks() {
   await page.send('Page.navigate', { url: appUrl })
   await waitForEval(page, 'document.body && document.body.innerText.includes("Plán směn")', 'Mobile planner did not render')
   await assertEval(page, 'document.querySelector(".app-topbar-title")?.innerText.trim() === "Plán směn"', 'Mobile topbar title should only show the current page')
+  await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile planner should not overflow horizontally')
+
+  await clickByText(page, '.sidebar-nav button', 'Výčetky')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Výčetky")', 'Mobile settlements screen did not open')
+  await assertEval(page, 'getComputedStyle(document.querySelector(".settlement-mobile-list")).display !== "none"', 'Mobile settlements list should replace the desktop table')
+  await assertEval(page, 'getComputedStyle(document.querySelector(".settlement-table")).display === "none"', 'Desktop settlement table should be hidden on mobile')
+  await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile settlements should not overflow horizontally')
+
+  await clickByText(page, '.sidebar-nav button', 'Notifikace')
+  await waitForEval(page, 'document.body.innerText.includes("Centrum upozornění") || document.body.innerText.includes("Zatím žádné notifikace")', 'Mobile staff notifications did not open')
+  await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile notifications should not overflow horizontally')
 
   await page.send('Page.navigate', { url: appUrlWithParam('demoRole', 'driver') })
   await waitForEval(page, 'document.body && document.querySelector(".driver-bottom-nav")', 'Driver mobile shell did not render')
