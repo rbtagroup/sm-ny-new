@@ -7,8 +7,7 @@ import { AuthGate, MissingProfile } from './AuthViews.jsx'
 import { DriverHome } from './DriverHome.jsx'
 import { DriverSettings } from './DriverSettings.jsx'
 import { NotificationsView } from './NotificationsView.jsx'
-import { addedRows, changedRows, stableFingerprint } from './lib/syncDiff.js'
-import { auditInsertRpcCalls, driverPushSubscriptionRowsForSync, driverSettlementRowsForSync, driverShiftUpdatePatch, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCallsWithSideEffects } from './lib/sensitiveSync.js'
+import { createAppDataSync } from './lib/appDataSync.js'
 import {
   actualDurationMinutes,
   addDays,
@@ -32,9 +31,8 @@ import {
   createNoticeFactory,
 } from './lib/notifications.js'
 import { notificationInboxState } from './lib/notificationInbox.js'
-import { readStore, seed, writeStore } from './lib/appStore.js'
 import { uid } from './lib/ids.js'
-import { pushDeliveryWarning, sendPushForNotifications } from './lib/pushDelivery.js'
+import { sendPushForNotifications } from './lib/pushDelivery.js'
 import {
   canOpenSettlement,
   computeSettlementMetrics,
@@ -46,7 +44,6 @@ import {
   shiftNeedsSettlementAction,
   validateSettlementInputs,
 } from './lib/settlements.js'
-import { createSupabaseMappers, ONLINE_TABLES, tableName } from './lib/supabaseData.js'
 import { appFriendlyError } from './lib/errors.js'
 import {
   repeatMap,
@@ -193,212 +190,8 @@ const driverHomeServices = { uid, makeNotice, adminNotice, appendSwapHistory }
 
 const isConfiguredSupabase = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY)
 const supabase = isConfiguredSupabase ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY) : null
-const { toDb, fromDb } = createSupabaseMappers({ uid, timePart })
-
-async function loadDataFromSupabase() {
-  if (!supabase) return readStore()
-  const base = seed()
-  const output = { ...base }
-  const errors = []
-  const tableResults = await Promise.all(ONLINE_TABLES.map(async (key) => {
-    const tn = tableName(key)
-    let q = supabase.from(tn).select('*').order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
-    if (key === 'notifications') {
-      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-      q = q.gte('created_at', cutoff)
-    }
-    const { data: rows, error } = await q
-    return { key, tn, rows, error }
-  }))
-  for (const { key, tn, rows, error } of tableResults) {
-    if (!error) {
-      output[key] = (rows || []).map(fromDb[key])
-      continue
-    }
-    if (key === 'settlements' && /does not exist|schema cache/i.test(error.message || '')) { output[key] = []; continue }
-    if (key === 'audit') { output[key] = []; continue }
-    errors.push(`${tn}: ${error.message}`)
-  }
-  const activeSwapStatusByShift = new Map(
-    (output.swapRequests || [])
-      .filter((request) => ['pending', 'accepted'].includes(request.status))
-      .map((request) => [request.shiftId, request.status]),
-  )
-  output.shifts = (output.shifts || []).map((shift) => ({
-    ...shift,
-    swapRequestStatus: activeSwapStatusByShift.get(shift.id) || (['pending', 'accepted'].includes(shift.swapRequestStatus) ? '' : shift.swapRequestStatus),
-  }))
-  const { data: settingsRow } = await supabase.from('app_settings').select('payload').eq('id','default').maybeSingle()
-  output.settings = { ...base.settings, ...(settingsRow?.payload || {}) }
-  if (errors.length) throw new Error(errors.join('\n'))
-  return output
-}
+const { useAppData } = createAppDataSync({ supabase, isConfiguredSupabase, timePart, sendPushForNotifications })
 const notificationServices = { uid, makeNotice, sendPushForNotifications }
-async function runRpcCalls(calls = []) {
-  const errors = []
-  for (const call of calls) {
-    const { error } = await supabase.rpc(call.fn, call.args)
-    if (error) errors.push(`${call.fn}: ${error.message}`)
-  }
-  if (errors.length) throw new Error(errors.join('\n'))
-}
-async function syncChangedRows(prev, next, profile) {
-  if (!supabase || !profile) return
-  const isStaff = ['admin','dispatcher'].includes(profile.role)
-  const currentDriver = !isStaff ? (next.drivers || []).find((d) => d.profileId === profile.id || (d.email && profile.email && d.email.toLowerCase() === profile.email.toLowerCase())) : null
-  const currentDriverId = currentDriver?.id || ''
-  const allowedForDriver = new Set(['shifts','settlements','absences','availability','swapRequests','notifications','pushSubscriptions','audit'])
-  const errors = []
-  const critical = new Set(['shifts','settlements','swapRequests','notifications','pushSubscriptions'])
-  const previousNotificationIds = new Set((prev.notifications || []).map((n) => n.id))
-  const previousAuditIds = new Set((prev.audit || []).map((n) => n.id))
-  const insertedNotifications = changedRows(prev.notifications, next.notifications).filter((row) => row.id && !previousNotificationIds.has(row.id))
-  const insertedAuditRows = changedRows(prev.audit, next.audit).filter((row) => row.id && !previousAuditIds.has(row.id))
-  const changedSwapRequests = changedRows(prev.swapRequests, next.swapRequests)
-  const handledNotificationIds = new Set()
-  const handledAuditIds = new Set()
-  const driverSwapShiftIds = new Set(!isStaff ? changedSwapRequests.map((row) => row.shiftId).filter(Boolean) : [])
-  const staffSwapResolution = isStaff
-    ? staffSwapResolutionRpcCalls(prev.swapRequests, changedSwapRequests, { includeSideEffects: true, notifications: insertedNotifications, auditRows: insertedAuditRows })
-    : { calls: [], handledIds: new Set(), handledShiftIds: new Set() }
-  ;(staffSwapResolution.handledNotificationIds || new Set()).forEach((id) => handledNotificationIds.add(id))
-  ;(staffSwapResolution.handledAuditIds || new Set()).forEach((id) => handledAuditIds.add(id))
-  for (const key of ONLINE_TABLES) {
-    if (!isStaff && !allowedForDriver.has(key)) continue
-    let changed = changedRows(prev[key], next[key])
-    if (key === 'notifications' && handledNotificationIds.size) changed = changed.filter((row) => !handledNotificationIds.has(row.id))
-    if (key === 'audit' && handledAuditIds.size) changed = changed.filter((row) => !handledAuditIds.has(row.id))
-    if (isStaff && key === 'shifts' && staffSwapResolution.handledShiftIds.size) {
-      changed = changed.filter((row) => !staffSwapResolution.handledShiftIds.has(row.id))
-    }
-    // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
-    if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId && !driverSwapShiftIds.has(row.id))
-    if (!isStaff && key === 'settlements') changed = driverSettlementRowsForSync(changed, currentDriverId)
-    if (!isStaff && key === 'pushSubscriptions') changed = driverPushSubscriptionRowsForSync(changed, { profileId: profile.id, currentDriverId })
-    if (!isStaff && key === 'notifications') {
-      const previousIds = new Set((prev.notifications || []).map((n) => n.id))
-      const nextIds = new Set((next.notifications || []).map((n) => n.id))
-      const insertedRows = changed.filter((row) => row.id && !previousIds.has(row.id)).map(toDb.notifications)
-      const removedPersonalIds = (prev.notifications || [])
-        .filter((n) => n.id && !nextIds.has(n.id))
-        .map((n) => n.id)
-      if (insertedRows.length) {
-        const { error } = await supabase.rpc('rb_insert_notifications', { p_notifications: insertedRows })
-        if (error) {
-          errors.push(`notifications: ${error.message}`)
-          if (critical.has(key)) throw new Error(errors.join('\n'))
-        }
-      }
-      const stateCalls = notificationStateRpcCalls(prev.notifications, changed.filter((row) => row.id && previousIds.has(row.id)), currentDriverId)
-      if (stateCalls.length) {
-        try { await runRpcCalls(stateCalls) }
-        catch (error) {
-          errors.push(error.message)
-          if (critical.has(key)) throw new Error(errors.join('\n'))
-        }
-      }
-      const removalStateCalls = removedNotificationStateRpcCalls(prev.notifications, removedPersonalIds, currentDriverId)
-      if (removalStateCalls.length) {
-        try { await runRpcCalls(removalStateCalls) }
-        catch (error) {
-          errors.push(error.message)
-          if (critical.has(key)) throw new Error(errors.join('\n'))
-        }
-      }
-      continue
-    }
-    if (!isStaff && key === 'swapRequests') {
-      const { calls, denied, handledNotificationIds: swapNotificationIds, handledAuditIds: swapAuditIds } = swapRequestRpcCallsWithSideEffects(prev.swapRequests, changed, currentDriverId, { includeSideEffects: true, notifications: insertedNotifications, auditRows: insertedAuditRows })
-      ;(swapNotificationIds || new Set()).forEach((id) => handledNotificationIds.add(id))
-      ;(swapAuditIds || new Set()).forEach((id) => handledAuditIds.add(id))
-      if (denied.length) errors.push(`swap_requests: nepovolene akce ${denied.join(', ')}`)
-      if (calls.length) {
-        try { await runRpcCalls(calls) }
-        catch (error) { errors.push(error.message) }
-      }
-      if (errors.length && critical.has(key)) throw new Error(errors.join('\n'))
-      continue
-    }
-    if (isStaff && key === 'swapRequests') {
-      if (staffSwapResolution.calls.length) {
-        try { await runRpcCalls(staffSwapResolution.calls) }
-        catch (error) { errors.push(error.message) }
-      }
-      if (errors.length && critical.has(key)) throw new Error(errors.join('\n'))
-      changed = changed.filter((row) => !staffSwapResolution.handledIds.has(row.id))
-    }
-    if (key === 'audit') {
-      try { await runRpcCalls(auditInsertRpcCalls(changed)) }
-      catch (error) { errors.push(error.message) }
-      continue
-    }
-    if (!isStaff && key === 'shifts') {
-      const previousIds = new Set((prev.shifts || []).map((s) => s.id))
-      const insertedShiftIds = changed.filter((row) => row.id && !previousIds.has(row.id)).map((row) => row.id)
-      if (insertedShiftIds.length) {
-        errors.push(`shifts: řidič nemůže vytvořit směnu (${insertedShiftIds.join(', ')})`)
-        if (critical.has(key)) throw new Error(errors.join('\n'))
-      }
-      const rowsToUpdate = changed.filter((row) => row.id && previousIds.has(row.id)).map(toDb.shifts)
-      for (const row of rowsToUpdate) {
-        const { id } = row
-        const patch = driverShiftUpdatePatch(row)
-        if (!Object.keys(patch).length) continue
-        const { data: updatedRows, error } = await supabase.from('shifts').update(patch).eq('id', id).select('id')
-        if (error) {
-          errors.push(`shifts: ${error.message}`)
-          if (critical.has(key)) throw new Error(errors.join('\n'))
-        } else if (!updatedRows?.length) {
-          errors.push(`shifts: směnu ${id} se nepodařilo aktualizovat`)
-          if (critical.has(key)) throw new Error(errors.join('\n'))
-        }
-      }
-      continue
-    }
-    const rows = changed.map(toDb[key]).filter((r) => r.id)
-    if (rows.length) {
-      const { error } = await supabase.from(tableName(key)).upsert(rows, { onConflict: 'id' })
-      if (error) {
-        errors.push(`${tableName(key)}: ${error.message}`)
-        if (critical.has(key)) throw new Error(errors.join('\n'))
-      }
-    }
-    if (isStaff) {
-      const nextIds = new Set((next[key] || []).map((x) => x.id))
-      const removed = (prev[key] || []).filter((x) => x.id && !nextIds.has(x.id)).map((x) => x.id)
-      if (removed.length) {
-        const { error } = await supabase.from(tableName(key)).delete().in('id', removed)
-        if (error) {
-          errors.push(`${tableName(key)} delete: ${error.message}`)
-          if (critical.has(key)) throw new Error(errors.join('\n'))
-        }
-      }
-    } else if (!isStaff && key === 'absences' && currentDriverId) {
-      const nextAbsIds = new Set((next.absences || []).map((x) => x.id))
-      const rmAbsences = (prev.absences || []).filter((x) => x.id && !nextAbsIds.has(x.id) && x.driverId === currentDriverId).map((x) => x.id)
-      if (rmAbsences.length) {
-        const { error: absErr } = await supabase.from('absences').delete().in('id', rmAbsences)
-        if (absErr) errors.push('absences delete: ' + absErr.message)
-      }
-    }
-  }
-  if (isStaff && stableFingerprint(prev.settings || {}) !== stableFingerprint(next.settings || {})) {
-    const { error } = await supabase.from('app_settings').upsert({ id: 'default', payload: next.settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-    if (error) errors.push(`app_settings: ${error.message}`)
-  }
-  if (errors.length) throw new Error(errors.join('\n'))
-}
-async function seedSupabaseFromLocal(localData) {
-  if (!supabase) return
-  for (const key of ONLINE_TABLES) {
-    const rows = (localData[key] || []).map(toDb[key]).filter((r) => r.id)
-    if (rows.length) {
-      const { error } = await supabase.from(tableName(key)).upsert(rows, { onConflict: 'id' })
-      if (error) throw new Error(`${tableName(key)}: ${error.message}`)
-    }
-  }
-  await supabase.from('app_settings').upsert({ id: 'default', payload: localData.settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-}
 
 function isPastLocked(shift) {
   if (!shift?.date) return false
@@ -440,101 +233,6 @@ async function copyText(text) {
     try { execCopy(); alert('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.') }
     catch { alert('Kopírování se nepodařilo. Označ text ručně a zkopíruj ho přes Ctrl/Cmd+C.') }
   }
-}
-
-function useAppData(session, profile) {
-  const online = Boolean(isConfiguredSupabase && session?.user && profile)
-  const [data, setData] = useState(readStore)
-  const [syncState, setSyncState] = useState({ loading: online, saving: false, error: '', lastSyncAt: '' })
-  const pendingSyncs = useRef(0)
-
-  const reloadOnline = async (silent = false) => {
-    if (!online) return
-    if (silent && pendingSyncs.current > 0) return
-    if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '' }))
-    try {
-      const loaded = await loadDataFromSupabase()
-      setData(loaded)
-      writeStore(loaded)
-      setSyncState((s) => ({ ...s, loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() }))
-    } catch (err) {
-      setSyncState((s) => ({ ...s, loading: false, error: appFriendlyError(err.message || String(err)) }))
-    }
-  }
-
-  useEffect(() => { if (!online) writeStore(data) }, [data, online])
-  useEffect(() => { reloadOnline() }, [online, session?.user?.id])
-  useEffect(() => {
-    if (!online || !supabase) return
-    let timer = null
-    const pendingTables = new Set()
-    const reloadSoon = (payload = {}) => {
-      if (payload?.table) pendingTables.add(payload.table)
-      clearTimeout(timer)
-      timer = setTimeout(() => {
-        pendingTables.clear()
-        reloadOnline(true)
-      }, 700)
-    }
-    const realtimeTables = ['drivers', 'vehicles', 'shifts', 'shift_settlements', 'absences', 'availability', 'service_blocks', 'swap_requests', 'notifications', 'push_subscriptions', 'audit_logs', 'app_settings']
-    const ch = supabase.channel(`rbshift-live-${session?.user?.id || 'user'}`)
-    realtimeTables.forEach((table) => {
-      ch.on('postgres_changes', { event: '*', schema: 'public', table }, reloadSoon)
-    })
-    let rtConnected = false
-    ch.subscribe((status) => {
-      rtConnected = status === 'SUBSCRIBED'
-      if (status === 'SUBSCRIBED') reloadSoon()
-    })
-    const poll = setInterval(() => { if (!rtConnected) reloadOnline(true) }, 30000)
-    const handleOnline = () => reloadOnline(true)
-    window.addEventListener('online', handleOnline)
-    return () => { clearTimeout(timer); clearInterval(poll); window.removeEventListener('online', handleOnline); supabase.removeChannel(ch) }
-  }, [online, session?.user?.id])
-
-  const commit = (updater, text, options = {}) => {
-    setData((prev) => {
-      const rawNext = typeof updater === 'function' ? updater(prev) : updater
-      const audit = text ? [{ id: uid('log'), at: new Date().toISOString(), text, actorId: session?.user?.id || null }, ...(rawNext.audit || [])].slice(0, 250) : rawNext.audit
-      const next = { ...rawNext, audit }
-      writeStore(next)
-      if (online) {
-        pendingSyncs.current += 1
-        setSyncState((s) => ({ ...s, saving: true, error: '' }))
-        const pushNotices = addedRows(prev.notifications, next.notifications)
-        syncChangedRows(prev, next, profile)
-          .then(async () => {
-            const freshToken = pushNotices.length ? (await supabase.auth.getSession()).data.session?.access_token || '' : ''
-            const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, freshToken) : null
-            const warning = pushDeliveryWarning(pushResult)
-            pendingSyncs.current -= 1
-            if (pendingSyncs.current === 0) {
-              setSyncState({
-                loading: false,
-                saving: false,
-                error: warning ? `Uloženo, ale push notifikace se nepodařilo doručit: ${warning}` : '',
-                lastSyncAt: new Date().toISOString(),
-              })
-            }
-            options.onSuccess?.()
-          })
-          .catch((err) => {
-            pendingSyncs.current -= 1
-            const shouldRollback = options.rollbackOnError !== false
-            if (shouldRollback) {
-              writeStore(prev)
-              setData(prev)
-            } else {
-              writeStore(next)
-            }
-            setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)) }))
-            options.onError?.(err)
-          })
-      }
-      return next
-    })
-  }
-  return [data, commit, syncState, reloadOnline]
 }
 
 function buildHelpers(data) {
