@@ -61,3 +61,13 @@ test('RLS regression probes cover driver notification and audit RPC flows', () =
   assert.match(sql, /driver audit log select/, 'driver audit visibility denial should be covered')
   assert.match(sql, /staff audit log select/, 'staff audit visibility allow path should be covered')
 })
+
+test('push rate-limit migrations avoid ambiguous bucket_key conflict target', () => {
+  const fixSql = readFileSync(join(migrationsDir, '20260518072143_fix_push_rate_limit_bucket_key_ambiguity.sql'), 'utf8')
+
+  assert.match(fixSql, /drop function if exists public\.rb_check_push_rate_limit/, 'public wrapper should be dropped before parameter rename')
+  assert.match(fixSql, /drop function if exists private\.rb_check_push_rate_limit/, 'private function should be dropped before parameter rename')
+  assert.match(fixSql, /p_bucket_key text/, 'private function should use unambiguous parameter names')
+  assert.match(fixSql, /on conflict on constraint push_rate_limits_pkey/, 'upsert should use the primary key constraint name')
+  assert.match(fixSql, /private\.rb_check_push_rate_limit\(\$1, \$2, \$3, \$4\)/, 'public wrapper should pass positional args')
+})
