@@ -4,16 +4,20 @@ import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 import { Bell, Clock, House, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { AuthGate, MissingProfile } from './AuthViews.jsx'
+import { Availability } from './AvailabilityView.jsx'
+import { Drivers } from './DriversView.jsx'
 import { DriverHome } from './DriverHome.jsx'
 import { DriverSettings } from './DriverSettings.jsx'
+import { History } from './HistoryView.jsx'
 import { NotificationsView } from './NotificationsView.jsx'
 import { SettingsView } from './SettingsView.jsx'
+import { ShiftTemplates } from './ShiftTemplatesView.jsx'
+import { Vehicles } from './VehiclesView.jsx'
 import { createAppDataSync } from './lib/appDataSync.js'
 import {
   actualDurationMinutes,
   addDays,
   dateInRange,
-  datetimeLocal,
   durationLabel,
   formatDate,
   hoursLabel,
@@ -76,12 +80,6 @@ import {
 } from './lib/display.js'
 import {
   availabilityCoversShift,
-  availabilityKind,
-  availabilityKindMap,
-  availabilityKindTone,
-  availabilityLabel,
-  availabilityNoteText,
-  availabilityRangeOverlaps,
   availabilityRelevantToShift,
 } from './lib/availability.js'
 import {
@@ -392,7 +390,7 @@ function App({ session = null, profile = null, signOut = null }) {
     <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>
       {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} syncState={syncState} ui={driverHomeUi} services={driverHomeServices} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
-      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} />}
+      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} ui={availabilityUi} />}
       {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} session={session} onlineMode={onlineMode} signOut={signOut} syncState={syncState} version={VERSION} ui={driverSettingsUi} notificationUi={notificationUi} notificationServices={notificationServices} />}
     </main>
     <nav className="driver-bottom-nav" aria-label="Řidičská navigace">
@@ -434,12 +432,12 @@ function App({ session = null, profile = null, signOut = null }) {
       {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
-      {page === 'drivers' && <Drivers data={data} commit={commit} />}
-      {page === 'vehicles' && <Vehicles data={data} commit={commit} />}
-      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={null} />}
-      {page === 'shiftTemplates' && <ShiftTemplates data={data} commit={commit} />}
-      {page === 'history' && <History data={data} />}
-      {page === 'settings' && <SettingsView data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} version={VERSION} ui={{ PageTitle, Field, Kpi }} />}
+      {page === 'drivers' && <Drivers data={data} commit={commit} ui={driversUi} services={driversServices} />}
+      {page === 'vehicles' && <Vehicles data={data} commit={commit} ui={vehiclesUi} services={vehiclesServices} />}
+      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={null} ui={availabilityUi} />}
+      {page === 'shiftTemplates' && <ShiftTemplates data={data} commit={commit} ui={shiftTemplatesUi} />}
+      {page === 'history' && <History data={data} ui={historyUi} services={historyServices} />}
+      {page === 'settings' && <SettingsView data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} version={VERSION} ui={settingsUi} />}
     </main>
     {updateToast}
   </div>
@@ -749,8 +747,17 @@ function SettlementFormModal({ data, helpers, commit, shift, currentDriver = nul
 }
 
 const driverHomeUi = { ConflictBox, Field, Kpi, Modal, SettlementFormModal, SettlementStatusPill, SettlementSummary, StatusPill }
+const availabilityUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle }
+const driversUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
+const driversServices = { uid }
 const notificationUi = { Kpi, Modal, PageTitle }
 const driverSettingsUi = { PageTitle }
+const historyUi = { Field, PageTitle }
+const historyServices = { download }
+const settingsUi = { Field, Kpi, PageTitle }
+const shiftTemplatesUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, Select, SideDrawer }
+const vehiclesUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
+const vehiclesServices = { todayISO, uid }
 
 const blankShift = (date = todayISO(), settings = {}) => { const firstTemplate = normalizeShiftTemplates(settings).find((tpl) => tpl.active); const preset = firstTemplate ? shiftTemplateValue(firstTemplate.id, settings) : null; const t = configuredShiftTimes(settings); return ({ date, start: preset?.start || t.dayStart, end: preset?.end || t.dayEnd, driverId: '', vehicleId: '', type: preset?.type || 'day', status: 'assigned', note: '', instruction: '', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }) }
 function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, onSaved, onCancel, onDirtyChange, variant = 'card' }) {
@@ -1555,532 +1562,6 @@ function ShiftTable({ shifts, data, helpers, commit, compact = false }) {
   >
     <ShiftActionSummary shift={actionShift} helpers={helpers} />
   </ConfirmActionModal>}
-  </>
-}
-
-const isValidEmail = (email = '') => !String(email || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())
-const normalizePlate = (plate = '') => String(plate || '').toUpperCase().replace(/\s+/g, ' ').trim()
-const isValidPlate = (plate = '') => {
-  const value = normalizePlate(plate)
-  return value.length >= 2 && value.length <= 16 && !/[^\p{L}\p{N} -]/u.test(value)
-}
-const extractVehicleYear = (note = '') => {
-  const match = String(note || '').match(/^Rok výroby:\s*(\d{4})(?:\s*·\s*)?/)
-  return match?.[1] || ''
-}
-const vehicleNoteBody = (note = '') => String(note || '').replace(/^Rok výroby:\s*\d{4}(?:\s*·\s*)?/, '').trim()
-const composeVehicleNote = (year = '', note = '') => [year ? `Rok výroby: ${year}` : '', String(note || '').trim()].filter(Boolean).join(' · ')
-const isValidVehicleYear = (year = '') => {
-  if (!String(year || '').trim()) return true
-  const value = Number(year)
-  const current = new Date().getFullYear() + 1
-  return Number.isInteger(value) && value >= 1990 && value <= current
-}
-// TODO: mimo scope - avatar upload a samostatné role řidičů vyžadují Storage/sloupce v Supabase schématu.
-
-function Drivers({ data, commit }) {
-  const empty = { name: '', phone: '', email: '', profileId: '', active: true, note: '' }
-  const [form, setForm] = useState(empty)
-  const [editing, setEditing] = useState(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [driverToDelete, setDriverToDelete] = useState('')
-  const editingDriver = editing ? data.drivers.find((d) => d.id === editing) : null
-  const deleteDriver = driverToDelete ? data.drivers.find((d) => d.id === driverToDelete) : null
-  const activeCount = data.drivers.filter((d) => d.active !== false).length
-  const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(empty) }
-  const openCreate = () => { setForm(empty); setEditing(null); setDrawerOpen(true) }
-  const openEdit = (d) => {
-    setForm({ ...empty, ...d, name: d.name || '', email: d.email || '', phone: d.phone || '', note: d.note || '' })
-    setEditing(d.id)
-    setDrawerOpen(true)
-  }
-  const submit = (e) => {
-    e.preventDefault()
-    const name = form.name.trim()
-    const email = form.email.trim().toLowerCase()
-    if (!name) return alert('Vyplň jméno řidiče.')
-    if (!isValidEmail(email)) return alert('Vyplň platný e-mail řidiče, nebo pole nech prázdné.')
-    const payload = { name, phone: form.phone.trim(), email, profileId: form.profileId?.trim() || '', active: form.active !== false, note: form.note.trim() }
-    if (editing) commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === editing ? { ...d, ...payload } : d) }), 'Řidič upraven.')
-    else commit((prev) => ({ ...prev, drivers: [{ id: uid('drv'), ...payload }, ...prev.drivers] }), 'Řidič vytvořen.')
-    closeDrawer()
-  }
-  const softDelete = (driver = editingDriver) => {
-    if (!driver) return
-    setDriverToDelete(driver.id)
-  }
-  const confirmSoftDelete = () => {
-    if (!deleteDriver) return
-    commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === deleteDriver.id ? { ...d, active: false } : d) }), 'Řidič deaktivován.')
-    const wasEditing = editing === deleteDriver.id
-    setDriverToDelete('')
-    if (wasEditing) closeDrawer()
-  }
-  const restore = (driver) => commit((prev) => ({ ...prev, drivers: prev.drivers.map((d) => d.id === driver.id ? { ...d, active: true } : d) }), 'Řidič znovu aktivován.')
-  return <>
-    <PageTitle title="Řidiči"><button className="primary" onClick={openCreate}>+ Přidat řidiče</button></PageTitle>
-    <div className="card">
-      <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem</span></div>
-      <div className="stack compact-list">{data.drivers.map((d) => <div className="log list-row" key={d.id}>
-        <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(d) } }}>
-          <div className="split"><div><b>{d.name || 'Bez jména'}</b><br /><small className="muted">{d.phone || 'Bez telefonu'} · {d.email || 'Bez e-mailu'}{d.profileId ? ' · profil: ' + d.profileId.slice(0, 8) + '…' : ''}</small></div><span className={d.active ? 'pill good' : 'pill bad'}>{d.active ? 'Aktivní' : 'Neaktivní'}</span></div>
-          {d.note && <p className="muted compact-note">{d.note}</p>}
-        </div>
-        <div className="row-actions list-row-actions">
-          <button onClick={() => openEdit(d)}>Upravit</button>
-          {d.active === false ? <button onClick={() => restore(d)}>Obnovit</button> : <DeleteIconButton label="Deaktivovat řidiče" onClick={() => softDelete(d)} />}
-        </div>
-      </div>)}</div>
-    </div>
-    <SideDrawer title={editing ? 'Detail řidiče' : 'Přidat řidiče'} open={drawerOpen} onClose={closeDrawer}>
-      <form className="form two-col" onSubmit={submit}>
-        <Field label="Jméno řidiče" className="span2"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required placeholder="Např. Aleš Novák" /></Field>
-        <Field label="E-mail"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="volitelné" /></Field>
-        <Field label="Telefon"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-        <Field label="Role"><input value="Řidič" readOnly /></Field>
-        <Field label="Aktivní"><select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
-        <Field label="Profile/Auth ID" className="span2"><input value={form.profileId || ''} onChange={(e) => setForm({ ...form, profileId: e.target.value })} placeholder="volitelné" /></Field>
-        <Field label="Poznámka" className="span2"><textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-        <div className="field span2 drawer-form-actions">
-          <button className="primary" type="submit">{editing ? 'Uložit změny' : 'Vytvořit řidiče'}</button>
-          <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>
-        </div>
-        {editing && <div className="field span2">
-          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingDriver?.active === false}>Deaktivovat řidiče</button>
-        </div>}
-      </form>
-    </SideDrawer>
-    {deleteDriver && <ConfirmActionModal
-      title="Deaktivovat řidiče"
-      message="Řidič se skryje jako neaktivní, ale jeho historické směny a záznamy zůstanou zachované."
-      confirmLabel="Deaktivovat řidiče"
-      confirmClass="danger"
-      onClose={() => setDriverToDelete('')}
-      onConfirm={confirmSoftDelete}
-    >
-      <ActionSummary eyebrow="Řidič" title={deleteDriver.name || 'Bez jména'} meta={deleteDriver.email || deleteDriver.phone || 'Bez kontaktu'} />
-    </ConfirmActionModal>}
-  </>
-}
-
-function Vehicles({ data, commit }) {
-  const empty = { name: '', plate: '', year: '', active: true, note: '' }
-  const [form, setForm] = useState(empty)
-  const [editing, setEditing] = useState(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [vehicleToDelete, setVehicleToDelete] = useState('')
-  const [serviceBlockToDelete, setServiceBlockToDelete] = useState('')
-  const [block, setBlock] = useState({ vehicleId: '', from: todayISO(), to: todayISO(), reason: '' })
-  const editingVehicle = editing ? data.vehicles.find((v) => v.id === editing) : null
-  const deleteVehicle = vehicleToDelete ? data.vehicles.find((v) => v.id === vehicleToDelete) : null
-  const deleteServiceBlock = serviceBlockToDelete ? data.serviceBlocks.find((item) => item.id === serviceBlockToDelete) : null
-  const activeCount = data.vehicles.filter((v) => v.active !== false).length
-  const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(empty) }
-  const openCreate = () => { setForm(empty); setEditing(null); setDrawerOpen(true) }
-  const openEdit = (v) => {
-    setForm({ ...empty, ...v, year: extractVehicleYear(v.note), note: vehicleNoteBody(v.note), plate: v.plate || '', name: v.name || '' })
-    setEditing(v.id)
-    setDrawerOpen(true)
-  }
-  const submit = (e) => {
-    e.preventDefault()
-    const name = form.name.trim()
-    const plate = normalizePlate(form.plate)
-    const year = String(form.year || '').trim()
-    if (!name) return alert('Vyplň model vozidla.')
-    if (!plate || !isValidPlate(plate)) return alert('Vyplň platnou SPZ. Použij 2–16 znaků: písmena, čísla, mezery nebo pomlčky.')
-    if (!isValidVehicleYear(year)) return alert('Rok výroby musí být mezi 1990 a příštím rokem.')
-    const payload = { name, plate, active: form.active !== false, note: composeVehicleNote(year, form.note) }
-    if (editing) commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === editing ? { ...v, ...payload } : v) }), 'Vozidlo upraveno.')
-    else commit((prev) => ({ ...prev, vehicles: [{ id: uid('car'), ...payload }, ...prev.vehicles] }), 'Vozidlo vytvořeno.')
-    closeDrawer()
-  }
-  const addBlock = (e) => { e.preventDefault(); if (!block.vehicleId) return alert('Vyber vozidlo.'); commit((prev) => ({ ...prev, serviceBlocks: [{ id: uid('srv'), ...block }, ...prev.serviceBlocks] }), 'Přidána servisní blokace vozidla.'); setBlock({ vehicleId: '', from: todayISO(), to: todayISO(), reason: '' }) }
-  const removeBlock = (id) => setServiceBlockToDelete(id)
-  const confirmRemoveBlock = () => {
-    if (!deleteServiceBlock) return
-    commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((b) => b.id !== deleteServiceBlock.id) }), 'Servisní blokace odstraněna.')
-    setServiceBlockToDelete('')
-  }
-  const softDelete = (vehicle = editingVehicle) => {
-    if (!vehicle) return
-    setVehicleToDelete(vehicle.id)
-  }
-  const confirmSoftDelete = () => {
-    if (!deleteVehicle) return
-    commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === deleteVehicle.id ? { ...v, active: false } : v) }), 'Vozidlo deaktivováno.')
-    const wasEditing = editing === deleteVehicle.id
-    setVehicleToDelete('')
-    if (wasEditing) closeDrawer()
-  }
-  const restoreVehicle = (vehicle) => commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((v) => v.id === vehicle.id ? { ...v, active: true } : v) }), 'Vozidlo znovu aktivováno.')
-  return <>
-    <PageTitle title="Vozidla"><button className="primary" onClick={openCreate}>+ Přidat vozidlo</button></PageTitle>
-    <div className="grid two">
-      <div className="card">
-        <div className="section-title"><h3>Seznam vozidel</h3><span className="pill">{activeCount} aktivní / {data.vehicles.length} celkem</span></div>
-        <div className="stack compact-list">{data.vehicles.map((v) => {
-          const year = extractVehicleYear(v.note)
-          const note = vehicleNoteBody(v.note)
-          return <div className="log list-row" key={v.id}>
-            <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(v) } }}>
-              <div className="split"><div><b>{v.name || 'Bez modelu'}</b><br /><small className="muted">{v.plate || 'Bez SPZ'}{year ? ` · ${year}` : ''}{note ? ' · ' + note : ''}</small></div><span className={v.active ? 'pill good' : 'pill bad'}>{v.active ? 'Aktivní' : 'Neaktivní'}</span></div>
-            </div>
-            <div className="row-actions list-row-actions">
-              <button onClick={() => openEdit(v)}>Upravit</button>
-              {v.active === false ? <button onClick={() => restoreVehicle(v)}>Obnovit</button> : <DeleteIconButton label="Deaktivovat vozidlo" onClick={() => softDelete(v)} />}
-            </div>
-          </div>
-        })}</div>
-      </div>
-      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill warn">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(e) => setBlock({ ...block, vehicleId: e.target.value })}><option value="">Vyber vůz</option>{data.vehicles.filter((v) => v.active !== false).map((v) => <option key={v.id} value={v.id}>{v.name} · {v.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(e) => setBlock({ ...block, reason: e.target.value })} /></Field><Field label="Od"><input type="date" value={block.from} onChange={(e) => setBlock({ ...block, from: e.target.value })} /></Field><Field label="Do"><input type="date" value={block.to} onChange={(e) => setBlock({ ...block, to: e.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><div className="stack" style={{ marginTop: 12 }}>{data.serviceBlocks.map((s) => <div className="alert warn" key={s.id}>{data.vehicles.find((v) => v.id === s.vehicleId)?.name || 'Vůz'} · {s.from} až {s.to}<br /><small>{s.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit servisní blokaci" onClick={() => removeBlock(s.id)} /></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div>
-    </div>
-    <SideDrawer title={editing ? 'Detail vozidla' : 'Přidat vozidlo'} open={drawerOpen} onClose={closeDrawer}>
-      <form className="form two-col" onSubmit={submit}>
-        <Field label="Model"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required placeholder="Např. Tesla Model 3" /></Field>
-        <Field label="SPZ"><input value={form.plate} onChange={(e) => setForm({ ...form, plate: normalizePlate(e.target.value) })} placeholder="např. 1AB 2345" required /></Field>
-        <Field label="Rok výroby"><input inputMode="numeric" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="volitelné" /></Field>
-        <Field label="Aktivní"><select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
-        <Field label="Poznámka" className="span2"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-        <div className="field span2 drawer-form-actions">
-          <button className="primary" type="submit">{editing ? 'Uložit změny' : 'Vytvořit vozidlo'}</button>
-          <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>
-        </div>
-        {editing && <div className="field span2">
-          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingVehicle?.active === false}>Deaktivovat vozidlo</button>
-        </div>}
-      </form>
-    </SideDrawer>
-    {deleteVehicle && <ConfirmActionModal
-      title="Deaktivovat vozidlo"
-      message="Vozidlo se skryje jako neaktivní, ale historické směny a záznamy zůstanou zachované."
-      confirmLabel="Deaktivovat vozidlo"
-      confirmClass="danger"
-      onClose={() => setVehicleToDelete('')}
-      onConfirm={confirmSoftDelete}
-    >
-      <ActionSummary eyebrow="Vozidlo" title={`${deleteVehicle.name || 'Bez modelu'} · ${deleteVehicle.plate || 'Bez SPZ'}`} meta={vehicleNoteBody(deleteVehicle.note) || 'Bez poznámky'} />
-    </ConfirmActionModal>}
-    {deleteServiceBlock && <ConfirmActionModal
-      title="Odstranit servisní blokaci"
-      message="Servisní blokace se odstraní z plánování dostupnosti vozidla."
-      confirmLabel="Odstranit blokaci"
-      confirmClass="danger"
-      onClose={() => setServiceBlockToDelete('')}
-      onConfirm={confirmRemoveBlock}
-    >
-      <ActionSummary eyebrow="Blokace" title={`${deleteServiceBlock.from} až ${deleteServiceBlock.to}`} meta={deleteServiceBlock.reason || 'Bez důvodu'} />
-    </ConfirmActionModal>}
-  </>
-}
-
-
-function Availability({ data, commit, currentDriver }) {
-  const firstDriverId = currentDriver?.id || data.drivers.find((d) => d.active !== false)?.id || data.drivers[0]?.id || ''
-  const [absence, setAbsence] = useState({ driverId: firstDriverId, from: todayISO(), to: todayISO(), reason: '' })
-  const [slot, setSlot] = useState({ driverId: firstDriverId, kind: 'available', fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), note: '' })
-  const [availabilityToast, setAvailabilityToast] = useState('')
-  const [deleteDialog, setDeleteDialog] = useState(null)
-  useEffect(() => {
-    if (currentDriver?.id) {
-      setAbsence((f) => ({ ...f, driverId: currentDriver.id }))
-      setSlot((f) => ({ ...f, driverId: currentDriver.id }))
-    }
-  }, [currentDriver?.id])
-  useEffect(() => {
-    if (!availabilityToast) return undefined
-    const timer = setTimeout(() => setAvailabilityToast(''), 4200)
-    return () => clearTimeout(timer)
-  }, [availabilityToast])
-  const driversForSelect = currentDriver ? [currentDriver] : data.drivers.filter((d) => d.active !== false)
-  const absences = data.absences.filter((a) => !currentDriver || a.driverId === currentDriver.id)
-  const availability = (data.availability || []).filter((a) => !currentDriver || a.driverId === currentDriver.id)
-  const deleteTarget = deleteDialog?.type === 'absence'
-    ? data.absences.find((item) => item.id === deleteDialog.id)
-    : deleteDialog?.type === 'slot'
-      ? (data.availability || []).find((item) => item.id === deleteDialog.id)
-      : null
-  const submitAbsence = (e) => {
-    e.preventDefault()
-    if (!absence.driverId || !absence.from || !absence.to) return alert('Vyplň řidiče a datum.')
-    if (absence.to < absence.from) return alert('Datum Do musí být stejné nebo pozdější než Od.')
-    commit((prev) => ({ ...prev, absences: [{ id: uid('abs'), ...absence }, ...prev.absences] }), 'Přidána nepřítomnost řidiče.')
-    setAbsence({ ...absence, from: todayISO(), to: todayISO(), reason: '' })
-  }
-  const submitSlot = (e) => {
-    e.preventDefault()
-    if (!slot.driverId) return alert('Vyber řidiče.')
-    if (!slot.fromAt || !slot.toAt) return alert('Vyplň datum a čas od/do.')
-    if (new Date(slot.toAt) <= new Date(slot.fromAt)) return alert('Čas Do musí být později než Od.')
-    const payload = {
-      id: uid('av'),
-      driverId: slot.driverId,
-      fromAt: slot.fromAt,
-      toAt: slot.toAt,
-      date: '',
-      weekday: '',
-      start: timePart(slot.fromAt),
-      end: timePart(slot.toAt),
-      note: `[${slot.kind}] ${slot.note || ''}`.trim(),
-    }
-    const overlaps = (data.availability || []).filter((a) => a.driverId === slot.driverId && availabilityRangeOverlaps(a, payload))
-    if (overlaps.length) setAvailabilityToast(`Pozor: překryv s ${overlaps.length} existující dostupností. Záznam byl přidán bez přepsání.`)
-    commit((prev) => ({ ...prev, availability: [payload, ...(prev.availability || [])] }), 'Přidána dostupnost řidiče.')
-    setSlot({ ...slot, fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), note: '' })
-  }
-  const requestDelete = (type, id) => {
-    setDeleteDialog({ type, id })
-  }
-  const confirmDelete = () => {
-    if (!deleteTarget || !deleteDialog) return
-    if (deleteDialog.type === 'absence') {
-      commit((prev) => ({ ...prev, absences: prev.absences.filter((a) => a.id !== deleteTarget.id) }), 'Nepřítomnost řidiče odstraněna.')
-    } else {
-      commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((a) => a.id !== deleteTarget.id) }), 'Dostupnost řidiče odstraněna.')
-    }
-    setDeleteDialog(null)
-  }
-  const removeAbsence = (id) => requestDelete('absence', id)
-  const removeSlot = (id) => requestDelete('slot', id)
-  const DriverSelect = ({ value, onChange }) => currentDriver ? null : <Field label="Řidič"><select value={value} onChange={(e) => onChange(e.target.value)}>{driversForSelect.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
-  return <><PageTitle title="Dostupnost řidičů" />
-    {availabilityToast && <div className="planner-toast" role="status">{availabilityToast}</div>}
-    <div className="grid two">
-      <div className="card"><div className="section-title"><h3>Nová dostupnost</h3><span className="pill">od–do</span></div><form className="form two-col" onSubmit={submitSlot}>
-        <DriverSelect value={slot.driverId} onChange={(v) => setSlot({ ...slot, driverId: v })} />
-        <Field label="Typ"><select value={slot.kind} onChange={(e) => setSlot({ ...slot, kind: e.target.value })}><option value="available">Dostupný</option><option value="unavailable">Nedostupný</option><option value="preferred">Preferuje</option></select></Field>
-        <Field label="Od"><input type="datetime-local" value={slot.fromAt} onChange={(e) => setSlot({ ...slot, fromAt: e.target.value })} /></Field>
-        <Field label="Do"><input type="datetime-local" value={slot.toAt} onChange={(e) => setSlot({ ...slot, toAt: e.target.value })} /></Field>
-        <Field label="Poznámka" className="span2"><input value={slot.note} onChange={(e) => setSlot({ ...slot, note: e.target.value })} placeholder="Např. jen denní, po domluvě…" /></Field>
-        <div className="field span2"><button className="primary" type="submit">Uložit dostupnost</button></div>
-      </form></div>
-      <div className="card"><h3>Nová nepřítomnost</h3><form className="form two-col" onSubmit={submitAbsence}>
-        <DriverSelect value={absence.driverId} onChange={(v) => setAbsence({ ...absence, driverId: v })} />
-        <Field label="Od"><input type="date" value={absence.from} onChange={(e) => setAbsence({ ...absence, from: e.target.value })} /></Field>
-        <Field label="Do"><input type="date" value={absence.to} onChange={(e) => setAbsence({ ...absence, to: e.target.value })} /></Field>
-        <Field label="Důvod" className="span2"><input value={absence.reason} onChange={(e) => setAbsence({ ...absence, reason: e.target.value })} placeholder="Volno, nemoc, dovolená…" /></Field>
-        <div className="field span2"><button className="primary" type="submit">Uložit nepřítomnost</button></div>
-      </form></div>
-    </div>
-    <div className="grid two" style={{ marginTop: 16 }}>
-      <div className="card"><div className="section-title"><h3>Dostupnost</h3><span className="pill">{availability.length}</span></div><div className="stack compact-list">{availability.map((a) => {
-        const kind = availabilityKind(a)
-        const note = availabilityNoteText(a)
-        return <div className={kind === 'unavailable' ? 'alert bad' : kind === 'preferred' ? 'alert warn' : 'alert good'} key={a.id}>
-          <div className="split"><div><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {availabilityLabel(a)}</div><span className={`pill ${availabilityKindTone[kind] || 'good'}`}>{availabilityKindMap[kind] || 'Dostupný'}</span></div>
-          {note && <small>{note}</small>}
-          <div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit dostupnost" onClick={() => removeSlot(a.id)} /></div>
-        </div>
-      })}{!availability.length && <div className="empty">Není zadaná žádná dostupnost.</div>}</div></div>
-      <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack compact-list">{absences.map((a) => <div className="alert warn" key={a.id}><b>{data.drivers.find((d) => d.id === a.driverId)?.name}</b> · {a.from} až {a.to}<br /><small>{a.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit nepřítomnost" onClick={() => removeAbsence(a.id)} /></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
-    </div>
-    {deleteTarget && <ConfirmActionModal
-      title={deleteDialog.type === 'absence' ? 'Odstranit nepřítomnost' : 'Odstranit dostupnost'}
-      message={deleteDialog.type === 'absence' ? 'Nepřítomnost se odstraní z plánování dostupnosti řidiče.' : 'Záznam dostupnosti se odstraní z plánování směn.'}
-      confirmLabel={deleteDialog.type === 'absence' ? 'Odstranit nepřítomnost' : 'Odstranit dostupnost'}
-      confirmClass="danger"
-      onClose={() => setDeleteDialog(null)}
-      onConfirm={confirmDelete}
-    >
-      <ActionSummary
-        eyebrow={deleteDialog.type === 'absence' ? 'Nepřítomnost' : 'Dostupnost'}
-        title={deleteDialog.type === 'absence' ? `${deleteTarget.from} až ${deleteTarget.to}` : availabilityLabel(deleteTarget)}
-        meta={`${data.drivers.find((d) => d.id === deleteTarget.driverId)?.name || 'Řidič'} · ${deleteDialog.type === 'absence' ? (deleteTarget.reason || 'Bez důvodu') : (availabilityNoteText(deleteTarget) || availabilityKindMap[availabilityKind(deleteTarget)] || 'Dostupnost')}`}
-      />
-    </ConfirmActionModal>}
-  </>
-}
-
-function ShiftTemplates({ data, commit }) {
-  const empty = { name: '', start: '07:00', end: '19:00', active: true, type: 'custom' }
-  const templates = normalizeShiftTemplates(data.settings)
-  const [form, setForm] = useState(empty)
-  const [editing, setEditing] = useState(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [templateToDeactivate, setTemplateToDeactivate] = useState(null)
-  const activeCount = templates.filter((tpl) => tpl.active).length
-  const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(empty) }
-  const openCreate = () => { setForm(empty); setEditing(null); setDrawerOpen(true) }
-  const openEdit = (tpl) => { setForm({ ...empty, ...tpl }); setEditing(tpl.id); setDrawerOpen(true) }
-  const saveTemplates = (updater, message) => commit((prev) => {
-    const current = normalizeShiftTemplates(prev.settings)
-    const nextTemplates = updater(current)
-    return { ...prev, settings: { ...prev.settings, shiftTemplates: nextTemplates } }
-  }, message)
-  const submit = (e) => {
-    e.preventDefault()
-    const name = form.name.trim()
-    if (!name) return alert('Vyplň název šablony.')
-    if (!form.start || !form.end) return alert('Vyplň začátek a konec šablony.')
-    const payload = { id: editing || uid('tpl'), name, start: form.start, end: form.end, active: form.active !== false, type: form.type || 'custom' }
-    if (editing) saveTemplates((items) => items.map((tpl) => tpl.id === editing ? { ...tpl, ...payload } : tpl), 'Šablona směny upravena.')
-    else saveTemplates((items) => [payload, ...items], 'Šablona směny vytvořena.')
-    closeDrawer()
-  }
-  const deactivate = (tpl) => {
-    if (!tpl?.id) return
-    setTemplateToDeactivate(tpl)
-  }
-  const confirmDeactivate = () => {
-    if (!templateToDeactivate?.id) return
-    saveTemplates((items) => items.map((item) => item.id === templateToDeactivate.id ? { ...item, active: false } : item), 'Šablona směny deaktivována.')
-    setTemplateToDeactivate(null)
-    closeDrawer()
-  }
-  const restore = (tpl) => saveTemplates((items) => items.map((item) => item.id === tpl.id ? { ...item, active: true } : item), 'Šablona směny znovu aktivována.')
-  return <>
-    <PageTitle title="Šablony směn"><button className="primary" onClick={openCreate}>+ Přidat šablonu</button></PageTitle>
-    <div className="card">
-      <div className="section-title"><h3>Časy směn</h3><span className="pill">{activeCount} aktivní / {templates.length} celkem</span></div>
-      <div className="stack compact-list">
-        {templates.map((tpl) => <div className="log list-row" key={tpl.id}>
-          <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(tpl)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(tpl) } }}>
-            <div className="split">
-              <div><b>{tpl.name}</b><br /><small className="muted">{tpl.start}–{tpl.end} · {shiftTypeMap[tpl.type] || 'Vlastní'}</small></div>
-              <span className={tpl.active ? 'pill good' : 'pill bad'}>{tpl.active ? 'Aktivní' : 'Neaktivní'}</span>
-            </div>
-          </div>
-          <div className="row-actions list-row-actions">
-            <button onClick={() => openEdit(tpl)}>Upravit</button>
-            {tpl.active === false ? <button onClick={() => restore(tpl)}>Obnovit</button> : <button className="danger-mini" onClick={() => deactivate(tpl)}>Deaktivovat</button>}
-          </div>
-        </div>)}
-      </div>
-    </div>
-    <div className="card" style={{ marginTop: 16 }}>
-      <div className="section-title"><h3>Použití při tvorbě směny</h3></div>
-      <div className="log"><b>Dropdown „Šablona směny“</b><br /><span className="muted">Při vytváření nové směny se v nabídce zobrazují jen aktivní šablony. Volba „Vlastní čas“ zůstává dostupná vždy.</span></div>
-    </div>
-    <SideDrawer title={editing ? 'Detail šablony' : 'Přidat šablonu'} open={drawerOpen} onClose={closeDrawer}>
-      <form className="form two-col" onSubmit={submit}>
-        <Field label="Název šablony" className="span2"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required /></Field>
-        <Field label="Začátek"><input type="time" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} required /></Field>
-        <Field label="Konec"><input type="time" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} required /></Field>
-        <Field label="Typ směny"><Select value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={shiftTypeMap} /></Field>
-        <Field label="Aktivní"><select value={String(form.active)} onChange={(e) => setForm({ ...form, active: e.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
-        <div className="field span2 drawer-form-actions">
-          <button className="primary" type="submit">{editing ? 'Uložit změny' : 'Vytvořit šablonu'}</button>
-          <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>
-        </div>
-        {editing && <div className="field span2">
-          <button className="danger" type="button" onClick={() => deactivate(form)} disabled={form.active === false}>Deaktivovat šablonu</button>
-        </div>}
-      </form>
-    </SideDrawer>
-    {templateToDeactivate && <ConfirmActionModal
-      title="Deaktivovat šablonu směny"
-      message="Šablona se přestane nabízet při tvorbě nových směn. Existující směny se nezmění."
-      confirmLabel="Deaktivovat šablonu"
-      confirmClass="danger"
-      onClose={() => setTemplateToDeactivate(null)}
-      onConfirm={confirmDeactivate}
-    >
-      <ActionSummary eyebrow="Šablona" title={templateToDeactivate.name} meta={`${templateToDeactivate.start}–${templateToDeactivate.end} · ${shiftTypeMap[templateToDeactivate.type] || 'Vlastní'}`} />
-    </ConfirmActionModal>}
-  </>
-}
-
-
-function History({ data }) {
-  const pageSize = 50
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [userFilter, setUserFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [page, setPage] = useState(1)
-  const logs = [...(data.audit || [])].sort((a, b) => String(b.at || b.createdAt || '').localeCompare(String(a.at || a.createdAt || '')))
-  const typeOptions = {
-    all: 'Všechny typy',
-    shifts: 'Směny',
-    drivers: 'Řidiči',
-    vehicles: 'Vozidla',
-    availability: 'Dostupnost',
-    notifications: 'Notifikace',
-    settings: 'Nastavení',
-    other: 'Ostatní',
-  }
-  const logDate = (log) => String(log.at || log.createdAt || '').slice(0, 10)
-  const logText = (log) => String(log.text || log.action || '')
-  const logType = (log) => {
-    const text = logText(log).toLocaleLowerCase('cs-CZ')
-    if (/směn|smen|shift|výměn|vymen|koliz/.test(text)) return 'shifts'
-    if (/řidič|ridic|driver/.test(text)) return 'drivers'
-    if (/vozidl|vozidlo|vůz|vuz|auto|car|spz/.test(text)) return 'vehicles'
-    if (/dostupnost|nepřítomnost|nepritomnost|absence/.test(text)) return 'availability'
-    if (/notifik|upozorn/.test(text)) return 'notifications'
-    if (/nastaven|šablon|sablon|firma|integrac|supabase/.test(text)) return 'settings'
-    return 'other'
-  }
-  const logActor = (log) => log.actor || log.user || log.userName || log.payload?.user || log.payload?.actor || ''
-  const filtered = logs.filter((log) => {
-    const d = logDate(log)
-    const text = logText(log).toLocaleLowerCase('cs-CZ')
-    const actor = String(logActor(log)).toLocaleLowerCase('cs-CZ')
-    const q = userFilter.trim().toLocaleLowerCase('cs-CZ')
-    if (dateFrom && d && d < dateFrom) return false
-    if (dateTo && d && d > dateTo) return false
-    if (typeFilter !== 'all' && logType(log) !== typeFilter) return false
-    if (q && !actor.includes(q) && !text.includes(q)) return false
-    return true
-  })
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const safePage = Math.min(page, totalPages)
-  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
-  useEffect(() => setPage(1), [dateFrom, dateTo, userFilter, typeFilter])
-  const resetFilters = () => { setDateFrom(''); setDateTo(''); setUserFilter(''); setTypeFilter('all'); setPage(1) }
-  const exportFiltered = () => {
-    const rows = [['Datum','Typ','Uživatel','Popis']]
-    filtered.forEach((log) => rows.push([new Date(log.at || log.createdAt || '').toLocaleString('cs-CZ'), typeOptions[logType(log)] || 'Ostatní', logActor(log) || '', logText(log)]))
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(';')).join('\n')
-    download(`rbshift-historie-${todayISO()}.csv`, `\ufeff${csv}`, 'text/csv;charset=utf-8')
-  }
-  return <>
-    <PageTitle title="Historie změn">
-      <button className="ghost" onClick={resetFilters}>Reset filtrů</button>
-      <button className="primary" onClick={exportFiltered}>Export CSV</button>
-    </PageTitle>
-    <div className="card">
-      <div className="section-title"><h3>Filtry</h3><span className="pill">{filtered.length} / {logs.length}</span></div>
-      <div className="form four">
-        <Field label="Datum od"><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></Field>
-        <Field label="Datum do"><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></Field>
-        <Field label="Uživatel / text"><input value={userFilter} onChange={(e) => setUserFilter(e.target.value)} placeholder="jméno, e-mail nebo text akce" /></Field>
-        <Field label="Typ akce"><select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>{Object.entries(typeOptions).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
-      </div>
-    </div>
-    <div className="card" style={{ marginTop: 16 }}>
-      <div className="section-title">
-        <h3>Záznamy</h3>
-        <span className="pill">strana {safePage}/{totalPages} · {pageRows.length} záznamů</span>
-      </div>
-      <div className="stack">
-        {pageRows.map((log) => {
-          const type = logType(log)
-          const date = log.at || log.createdAt || ''
-          const text = logText(log)
-          const actor = logActor(log)
-          return <details className="collapse-card history-item" key={log.id || `${date}-${text}`} style={{ border: '1px solid var(--line)', borderRadius: 16, background: 'rgba(255,255,255,.035)' }}>
-            <summary>
-              <span><b>{text || 'Záznam bez popisu'}</b><small>{date ? new Date(date).toLocaleString('cs-CZ') : 'bez data'}{actor ? ` · ${actor}` : ''}</small></span>
-              <span className="pill">{typeOptions[type] || 'Ostatní'}</span>
-            </summary>
-            <div className="collapse-content">
-              <div className="grid two">
-                <div className="log"><b>Detail akce</b><br /><span className="muted">{text || 'Bez detailu'}</span></div>
-                <div className="log"><b>Metadata</b><br /><span className="muted">ID: {log.id || '—'}<br />Typ: {typeOptions[type] || 'Ostatní'}<br />Uživatel: {actor || 'nezjištěno'}</span></div>
-              </div>
-              {log.payload && <pre className="log" style={{ overflow: 'auto', marginTop: 12 }}>{JSON.stringify(log.payload, null, 2)}</pre>}
-            </div>
-          </details>
-        })}
-        {!pageRows.length && <div className="empty">Žádné záznamy neodpovídají filtrům.</div>}
-      </div>
-      <div className="row-actions" style={{ marginTop: 14, justifyContent: 'space-between' }}>
-        <button className="ghost" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>← Předchozí</button>
-        <span className="muted">Zobrazeno {(safePage - 1) * pageSize + (pageRows.length ? 1 : 0)}–{(safePage - 1) * pageSize + pageRows.length} z {filtered.length}</span>
-        <button className="ghost" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}>Další →</button>
-      </div>
-    </div>
   </>
 }
 
