@@ -1,11 +1,49 @@
 export const driverMessageLimits = Object.freeze({ title: 80, body: 240 })
 
+function messageCreatedAt(message) {
+  return message?.at || message?.createdAt || ''
+}
+
 export function activeDriverPushDeviceCount(data = {}, form = {}) {
   const subscriptions = data.pushSubscriptions || []
   if (form.targetMode === 'driver') {
     return subscriptions.filter((item) => item.active !== false && item.role === 'driver' && item.driverId === form.targetDriverId).length
   }
   return subscriptions.filter((item) => item.active !== false && item.role === 'driver').length
+}
+
+export function driverMessageHistory(data = {}) {
+  return [...(data.notifications || [])]
+    .filter((notice) => notice?.type === 'staff-message')
+    .sort((a, b) => new Date(messageCreatedAt(b) || 0).getTime() - new Date(messageCreatedAt(a) || 0).getTime())
+}
+
+export function driverMessageReadCount(message = {}) {
+  return new Set((message.readBy || []).filter((key) => String(key).startsWith('driver:'))).size
+}
+
+export function driverMessageTargetDeviceCount(data = {}, message = {}) {
+  return activeDriverPushDeviceCount(data, {
+    targetMode: message.targetDriverId ? 'driver' : 'driver_all',
+    targetDriverId: message.targetDriverId || '',
+  })
+}
+
+export function latestDriverMessageDeliveryLog(data = {}, message = {}) {
+  return [...(data.pushDeliveryLogs || [])]
+    .filter((log) => log.notificationId === message.id)
+    .sort((a, b) => new Date((b.createdAt || 0)).getTime() - new Date((a.createdAt || 0)).getTime())[0] || null
+}
+
+export function driverMessageDeliveryLabel(data = {}, message = {}) {
+  const log = latestDriverMessageDeliveryLog(data, message)
+  if (!log) return `${driverMessageTargetDeviceCount(data, message)} zařízení`
+  const sent = Number(log.sent || 0)
+  const failed = Number(log.failed || 0)
+  const recipients = Number(log.recipients || 0)
+  if (!recipients) return '0 zařízení'
+  if (failed) return `${sent}/${recipients} push · ${failed} chyba`
+  return `${sent}/${recipients} push OK`
 }
 
 export function createDriverMessageNotice(makeNotice, form = {}) {

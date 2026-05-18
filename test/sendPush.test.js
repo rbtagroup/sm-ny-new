@@ -5,8 +5,10 @@ import {
   checkRateLimit,
   matchesNotice,
   normalizeNotice,
+  pushDeliveryLogRows,
   pushSubscriptionFilterPlan,
   rateLimitKeyForProfile,
+  recordPushDeliveryLogs,
   subscriptionsForNotice,
 } from '../api/send-push.js'
 
@@ -131,4 +133,44 @@ test('push rate limiter falls back locally if durable RPC is unavailable', async
 
   assert.equal((await checkPushRateLimit(supabase, key, 2, 3, 60_000)).ok, true)
   assert.equal((await checkPushRateLimit(supabase, key, 2, 3, 60_000)).ok, false)
+})
+
+test('pushDeliveryLogRows aggregates per-notification delivery results', () => {
+  const rows = pushDeliveryLogRows([
+    { notice: normalizeNotice({ id: 'n1', title: 'A', targetRole: 'driver_all', type: 'staff-message' }), recipients: [{ id: 'p1' }, { id: 'p2' }] },
+  ], [
+    { id: 'p1', noticeId: 'n1', ok: true },
+    { id: 'p2', noticeId: 'n1', ok: false, statusCode: 410, error: 'Gone' },
+  ], { id: 'staff_1' }, new Date('2026-05-18T12:00:00.000Z'))
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].notification_id, 'n1')
+  assert.equal(rows[0].notification_type, 'staff-message')
+  assert.equal(rows[0].target_role, 'driver_all')
+  assert.equal(rows[0].requested_by, 'staff_1')
+  assert.equal(rows[0].recipients, 2)
+  assert.equal(rows[0].sent, 1)
+  assert.equal(rows[0].failed, 1)
+  assert.equal(rows[0].ok, false)
+  assert.equal(rows[0].error, 'Gone')
+  assert.equal(rows[0].created_at, '2026-05-18T12:00:00.000Z')
+})
+
+test('recordPushDeliveryLogs is tolerant when delivery log table is unavailable', async () => {
+  const calls = []
+  const result = await recordPushDeliveryLogs({
+    from(table) {
+      calls.push(['from', table])
+      return {
+        async insert(rows) {
+          calls.push(['insert', rows.length])
+          return { error: new Error('relation "push_delivery_logs" does not exist') }
+        },
+      }
+    },
+  }, [{ id: 'log_1', notification_id: 'ntf_1' }])
+
+  assert.deepEqual(calls, [['from', 'push_delivery_logs'], ['insert', 1]])
+  assert.equal(result.ok, false)
+  assert.match(result.error, /push_delivery_logs/)
 })

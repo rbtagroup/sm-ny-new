@@ -45,6 +45,16 @@ test('notification inbox keeps stale swap offers out of driver counts', () => {
   assert.deepEqual(rejected.visible, [])
 })
 
+test('staff message history is kept out of staff inbox but remains visible to drivers', () => {
+  const notice = { id: 'msg_1', at: '2026-05-18T08:00:00.000Z', title: 'Info', targetRole: 'driver_all', type: 'staff-message', readBy: [], deletedBy: [] }
+
+  const staffState = notificationInboxState({ notifications: [notice] }, { isDriver: false, profile: { id: 'staff_1', role: 'admin' } })
+  const driverState = notificationInboxState({ notifications: [notice] }, { currentDriver: driver, isDriver: true })
+
+  assert.deepEqual(staffState.visible, [])
+  assert.deepEqual(driverState.visible.map((item) => item.id), ['msg_1'])
+})
+
 test('notification inbox mutations are scoped to the current recipient', () => {
   const notice = { id: 'n1', title: 'Notice', targetRole: 'admin', readBy: [], deletedBy: [] }
   const anna = { id: 'staff_anna', role: 'admin' }

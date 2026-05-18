@@ -40,6 +40,7 @@ export function seed() {
     swapRequests: [],
     notifications: [],
     pushSubscriptions: [],
+    pushDeliveryLogs: [],
     audit: [{ id: uid('log'), at: new Date().toISOString(), text: 'Vytvořena demo data aplikace.' }],
     settings: { companyName: 'RBSHIFT', mode: 'demo', lastBackupAt: '', mobileCompact: true, shiftTimes: { ...defaultShiftTimes }, coverageSlots: [
       { id: 'cov_day', name: 'Denní', start: '07:00', end: '19:00', minDrivers: 1 },
@@ -69,6 +70,7 @@ export function readStore() {
       swapRequests: (parsed.swapRequests || []).map((r) => ({ targetMode: 'all', targetDriverId: '', acceptedByDriverId: '', acceptedAt: '', resolvedAt: '', approvedDriverId: '', rejectedReason: '', cancelledAt: '', history: [], ...r })),
       notifications: (parsed.notifications || []).map((n) => ({ readBy: [], deletedBy: [], ...n })),
       pushSubscriptions: parsed.pushSubscriptions || [],
+      pushDeliveryLogs: parsed.pushDeliveryLogs || [],
       audit: parsed.audit || [],
       settings: { ...base.settings, ...(parsed.settings || {}) },
     }

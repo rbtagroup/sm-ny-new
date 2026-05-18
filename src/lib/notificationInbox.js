@@ -22,6 +22,7 @@ export function sortNotificationsNewestFirst(items = []) {
 export function visibleInboxNotifications(data = {}, contextInput = {}) {
   const context = notificationContext({ ...contextInput, swapRequests: contextInput.swapRequests || data.swapRequests || [] })
   return sortNotificationsNewestFirst((data.notifications || []).filter((notice) =>
+    (context.isDriver || notice?.type !== 'staff-message') &&
     isNoticeVisibleInInbox(notice, context.currentDriver, context.isDriver, context.swapRequests, context.profile),
   ))
 }

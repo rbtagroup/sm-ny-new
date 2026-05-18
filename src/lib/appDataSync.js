@@ -30,6 +30,9 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       if (key === 'notifications') {
         const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
         q = q.gte('created_at', cutoff)
+      } else if (key === 'pushDeliveryLogs') {
+        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+        q = q.gte('created_at', cutoff).order('created_at', { ascending: false })
       }
       const { data: rows, error } = await q
       return { key, tn, rows, error }
@@ -40,6 +43,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
         continue
       }
       if (key === 'settlements' && /does not exist|schema cache/i.test(error.message || '')) { output[key] = []; continue }
+      if (key === 'pushDeliveryLogs' && /does not exist|schema cache/i.test(error.message || '')) { output[key] = []; continue }
       if (key === 'audit') { output[key] = []; continue }
       errors.push(`${tn}: ${error.message}`)
     }
@@ -260,7 +264,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
           reloadOnline(true)
         }, 700)
       }
-      const realtimeTables = ['drivers', 'vehicles', 'shifts', 'shift_settlements', 'absences', 'availability', 'service_blocks', 'swap_requests', 'notifications', 'push_subscriptions', 'audit_logs', 'app_settings']
+      const realtimeTables = ['drivers', 'vehicles', 'shifts', 'shift_settlements', 'absences', 'availability', 'service_blocks', 'swap_requests', 'notifications', 'push_subscriptions', 'push_delivery_logs', 'audit_logs', 'app_settings']
       const ch = supabase.channel(`rbshift-live-${session?.user?.id || 'user'}`)
       realtimeTables.forEach((table) => {
         ch.on('postgres_changes', { event: '*', schema: 'public', table }, reloadSoon)

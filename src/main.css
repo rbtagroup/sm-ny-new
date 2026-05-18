@@ -707,6 +707,60 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 .staff-message-status{
   margin-top:12px;
 }
+.staff-message-history{
+  margin-bottom:16px;
+}
+.staff-message-history-list{
+  display:grid;
+  gap:10px;
+  max-height:360px;
+  overflow:auto;
+  padding-right:2px;
+}
+.staff-message-history-row{
+  display:grid;
+  gap:8px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(255,255,255,.045);
+  padding:12px;
+}
+.staff-message-history-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+}
+.staff-message-history-title{
+  display:grid;
+  gap:4px;
+  min-width:0;
+}
+.staff-message-history-title b{
+  line-height:1.2;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.staff-message-history-title small{
+  color:var(--muted);
+}
+.staff-message-history-badges{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  flex:0 0 auto;
+}
+.staff-message-history-row p{
+  margin:0;
+  color:#dbeafe;
+  line-height:1.42;
+  white-space:pre-wrap;
+}
+.staff-message-delivery-error{
+  color:#ffd7d7;
+  line-height:1.35;
+}
 .staff-notification-row{
   border:1px solid var(--line);
   border-radius:16px;
@@ -773,6 +827,8 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   .settlement-list-row{grid-template-columns:1fr}
   .settlement-list-meta{justify-items:start}
   .settlement-list-amount{width:100%;min-width:0}
+  .staff-message-history-head{display:grid}
+  .staff-message-history-badges{justify-content:flex-start}
   .staff-notification-row .driver-notification-row-head{gap:8px}
   .staff-notification-row .driver-notification-titleline b{white-space:normal}
 }

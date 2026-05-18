@@ -71,3 +71,15 @@ test('push rate-limit migrations avoid ambiguous bucket_key conflict target', ()
   assert.match(fixSql, /on conflict on constraint push_rate_limits_pkey/, 'upsert should use the primary key constraint name')
   assert.match(fixSql, /private\.rb_check_push_rate_limit\(\$1, \$2, \$3, \$4\)/, 'public wrapper should pass positional args')
 })
+
+test('push delivery log migration keeps delivery data staff-only and API-readable', () => {
+  const sql = readFileSync(join(migrationsDir, '20260518214702_push_delivery_logs.sql'), 'utf8')
+
+  assert.match(sql, /create table if not exists public\.push_delivery_logs/, 'delivery log table should be created')
+  assert.match(sql, /alter table public\.push_delivery_logs enable row level security/, 'delivery log table must enable RLS')
+  assert.match(sql, /push_delivery_logs_select_staff/, 'staff-only select policy should exist')
+  assert.match(sql, /public\.current_role\(\) in \('dispatcher','admin'\)/, 'select policy should be staff-only')
+  assert.match(sql, /revoke all on table public\.push_delivery_logs from anon/, 'anon must not get delivery logs')
+  assert.match(sql, /grant select on table public\.push_delivery_logs to authenticated/, 'authenticated Data API select must be explicit')
+  assert.match(sql, /grant all on table public\.push_delivery_logs to service_role/, 'service role API must be able to write delivery logs')
+})

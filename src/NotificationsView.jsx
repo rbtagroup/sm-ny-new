@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Bell, Check, Trash2 } from 'lucide-react'
 import { formatDateTime } from './lib/dateTime.js'
-import { activeDriverPushDeviceCount, createDriverMessageNotice, driverMessageLimits } from './lib/driverMessages.js'
+import {
+  activeDriverPushDeviceCount,
+  createDriverMessageNotice,
+  driverMessageDeliveryLabel,
+  driverMessageHistory,
+  driverMessageLimits,
+  driverMessageReadCount,
+  latestDriverMessageDeliveryLog,
+} from './lib/driverMessages.js'
 import { appFriendlyError } from './lib/errors.js'
 import { addNotificationsToData } from './lib/notifications.js'
 import {
@@ -247,6 +255,41 @@ function StaffMessageComposer({ data, commit, session, ui, services }) {
   </div>
 }
 
+function StaffMessageHistory({ data, helpers }) {
+  const messages = driverMessageHistory(data)
+
+  return <div className="card staff-message-history">
+    <div className="section-title">
+      <h3>Historie zpráv řidičům</h3>
+      <span className={messages.length ? 'pill good' : 'pill warn'}>{messages.length} odesláno</span>
+    </div>
+    {messages.length ? <div className="staff-message-history-list">
+      {messages.map((message) => {
+        const deliveryLog = latestDriverMessageDeliveryLog(data, message)
+        const deliveryLabel = driverMessageDeliveryLabel(data, message)
+        const readCount = driverMessageReadCount(message)
+        const createdAt = message.at || message.createdAt || ''
+
+        return <div className="staff-message-history-row" key={message.id}>
+          <div className="staff-message-history-head">
+            <div className="staff-message-history-title">
+              <b>{message.title || 'Bez titulku'}</b>
+              <small>{createdAt ? formatDateTime(createdAt) : 'bez času'} · {notificationTargetLabel(message, helpers)}</small>
+            </div>
+            <div className="staff-message-history-badges">
+              <span className={deliveryLog?.failed ? 'pill warn' : (deliveryLog?.recipients || deliveryLabel !== '0 zařízení' ? 'pill good' : 'pill warn')}>{deliveryLabel}</span>
+              <span className="pill">{readCount} přečteno</span>
+            </div>
+          </div>
+          <p>{message.body || 'Bez textu'}</p>
+          {deliveryLog?.error && <small className="staff-message-delivery-error">Push chyba: {deliveryLog.error}</small>}
+        </div>
+      })}
+    </div> : <div className="empty">Zatím nebyla odeslána žádná zpráva řidičům.</div>}
+    <p className="hintline">Pokud už backend zapsal delivery log, historie ukazuje skutečný výsledek push odeslání. Jinak ukazuje aktuální počet cílových zařízení.</p>
+  </div>
+}
+
 export function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile, session, ui, services }) {
   const { PageTitle } = ui
   const inboxContext = { currentDriver, isDriver, profile, swapRequests: data.swapRequests }
@@ -323,6 +366,7 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
     <PageTitle title="Notifikace">{staffNotificationActions}</PageTitle>
     {undoDeleteIds.length > 0 && <div className="toast-undo"><span>{undoDeleteIds.length === 1 ? 'Notifikace skryta.' : `${undoDeleteIds.length} notifikací skryto.`}</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
     {!isDriver && <StaffMessageComposer data={data} commit={commit} session={session} ui={ui} services={services} />}
+    {!isDriver && <StaffMessageHistory data={data} helpers={helpers} />}
     <div className={`card notifications-card ${isDriver ? 'driver-notifications-card' : ''}`.trim()}><div className="section-title"><h3>{isDriver ? 'Doručené' : 'Centrum upozornění'}</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div>
       {isDriver && (unread.length > 0 || hasRead) && <div className="driver-notifications-toolbar">
         {unread.length > 0 && <button className="ghost" type="button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>}

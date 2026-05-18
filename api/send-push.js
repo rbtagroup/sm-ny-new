@@ -1,5 +1,6 @@
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 const json = (res, status, payload) => {
   res.statusCode = status
@@ -188,6 +189,51 @@ const subscriptionsForNotice = async (supabase, notice) => {
   return (data || []).filter((sub) => matchesNotice(sub, notice))
 }
 
+const pushDeliveryLogRows = (preparedDeliveries = [], results = [], callerProfile = null, now = new Date()) => {
+  const createdAt = now.toISOString()
+  return preparedDeliveries.map(({ notice, recipients }) => {
+    const noticeResults = results.filter((row) => row.noticeId === notice.id)
+    const sent = noticeResults.filter((row) => row.ok).length
+    const failed = noticeResults.filter((row) => !row.ok).length
+    const firstError = noticeResults.find((row) => !row.ok)?.error || ''
+
+    return {
+      id: `pushlog_${randomUUID()}`,
+      notification_id: notice.id || null,
+      notification_type: notice.type || 'info',
+      target_driver_id: notice.targetDriverId || null,
+      target_role: notice.targetRole || 'admin',
+      requested_by: callerProfile?.id || null,
+      recipients: recipients.length,
+      sent,
+      failed,
+      ok: failed === 0,
+      error: firstError ? String(firstError).slice(0, 500) : null,
+      result: {
+        noticeId: notice.id || '',
+        results: noticeResults.map((row) => ({
+          id: row.id,
+          ok: Boolean(row.ok),
+          statusCode: row.statusCode || null,
+          error: row.error ? String(row.error).slice(0, 500) : null,
+        })),
+      },
+      created_at: createdAt,
+    }
+  })
+}
+
+const recordPushDeliveryLogs = async (supabase, rows = []) => {
+  const clean = rows.filter((row) => row.notification_id)
+  if (!clean.length) return { skipped: true, reason: 'no-delivery-logs' }
+  const { error } = await supabase.from('push_delivery_logs').insert(clean)
+  if (error) {
+    console.warn('[send-push] delivery log unavailable:', error?.message || error)
+    return { ok: false, error: error.message || String(error) }
+  }
+  return { ok: true, rows: clean.length }
+}
+
 const canSendSwapNotice = async (supabase, notice, callerDriverId) => {
   if (!callerDriverId || !notice.targetDriverId || !notice.shiftId || !SWAP_DRIVER_NOTICE_TYPES.has(notice.type)) return false
   if (notice.targetDriverId === callerDriverId) return true
@@ -266,8 +312,10 @@ export {
   checkRateLimit,
   matchesNotice,
   normalizeNotice,
+  pushDeliveryLogRows,
   pushSubscriptionFilterPlan,
   rateLimitKeyForProfile,
+  recordPushDeliveryLogs,
   subscriptionsForNotice,
 }
 
@@ -405,8 +453,10 @@ export default async function handler(req, res) {
 
   const sent = results.filter((r) => r.ok).length
   const failed = results.filter((r) => !r.ok).length
+  const deliveryLogRows = pushDeliveryLogRows(preparedDeliveries, results, callerProfile)
+  const deliveryLog = await recordPushDeliveryLogs(supabase, deliveryLogRows)
   const callerRole = String(callerProfile?.role || '').toLowerCase()
-  const payload = { ok: true, notifications: notifications.length, sent, failed, deliveries }
+  const payload = { ok: true, notifications: notifications.length, sent, failed, deliveries, deliveryLog }
   if (internalAuthorized || callerRole === 'admin' || callerRole === 'dispatcher') payload.results = results
   return json(res, 200, payload)
 }

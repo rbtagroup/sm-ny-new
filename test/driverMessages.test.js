@@ -1,6 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { activeDriverPushDeviceCount, createDriverMessageNotice, driverMessageLimits } from '../src/lib/driverMessages.js'
+import {
+  activeDriverPushDeviceCount,
+  createDriverMessageNotice,
+  driverMessageDeliveryLabel,
+  driverMessageHistory,
+  driverMessageLimits,
+  driverMessageReadCount,
+  driverMessageTargetDeviceCount,
+  latestDriverMessageDeliveryLog,
+} from '../src/lib/driverMessages.js'
 
 const makeNotice = (input) => ({ id: 'ntf_1', ...input, targetRole: input.targetDriverId ? 'driver' : input.targetRole })
 
@@ -49,4 +58,44 @@ test('activeDriverPushDeviceCount counts active driver devices by target', () =>
 
   assert.equal(activeDriverPushDeviceCount(data, { targetMode: 'driver_all' }), 3)
   assert.equal(activeDriverPushDeviceCount(data, { targetMode: 'driver', targetDriverId: 'drv_1' }), 2)
+})
+
+test('driverMessageHistory returns sent staff messages newest first', () => {
+  const data = {
+    notifications: [
+      { id: 'info', type: 'info', at: '2026-05-18T10:00:00.000Z' },
+      { id: 'old', type: 'staff-message', at: '2026-05-18T09:00:00.000Z' },
+      { id: 'new', type: 'staff-message', at: '2026-05-18T11:00:00.000Z' },
+    ],
+  }
+
+  assert.deepEqual(driverMessageHistory(data).map((message) => message.id), ['new', 'old'])
+})
+
+test('driverMessageTargetDeviceCount and read count summarize message history', () => {
+  const data = {
+    pushSubscriptions: [
+      { id: 'a', active: true, role: 'driver', driverId: 'drv_1' },
+      { id: 'b', active: false, role: 'driver', driverId: 'drv_1' },
+      { id: 'c', active: true, role: 'driver', driverId: 'drv_2' },
+    ],
+  }
+  const message = { targetDriverId: 'drv_1', readBy: ['driver:drv_1', 'driver:drv_1', 'staff:admin'] }
+
+  assert.equal(driverMessageTargetDeviceCount(data, message), 1)
+  assert.equal(driverMessageReadCount(message), 1)
+})
+
+test('driverMessageDeliveryLabel prefers persisted delivery logs', () => {
+  const message = { id: 'msg_1', targetRole: 'driver_all' }
+  const data = {
+    pushSubscriptions: [{ id: 'a', active: true, role: 'driver', driverId: 'drv_1' }],
+    pushDeliveryLogs: [
+      { id: 'old', notificationId: 'msg_1', recipients: 1, sent: 1, failed: 0, createdAt: '2026-05-18T10:00:00.000Z' },
+      { id: 'new', notificationId: 'msg_1', recipients: 2, sent: 1, failed: 1, createdAt: '2026-05-18T11:00:00.000Z', error: 'gone' },
+    ],
+  }
+
+  assert.equal(latestDriverMessageDeliveryLog(data, message).id, 'new')
+  assert.equal(driverMessageDeliveryLabel(data, message), '1/2 push · 1 chyba')
 })

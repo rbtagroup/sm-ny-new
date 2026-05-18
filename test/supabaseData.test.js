@@ -52,3 +52,37 @@ test('push subscription mapper preserves delivery diagnostics', () => {
   assert.equal(sub.lastError, 'Gone')
   assert.equal(sub.deliveryFailures, 2)
 })
+
+test('push delivery log mapper preserves delivery summary', () => {
+  const { toDb, fromDb } = createSupabaseMappers({ uid: (prefix) => `${prefix}_id`, timePart: () => '' })
+  const row = toDb.pushDeliveryLogs({
+    id: 'log_1',
+    notificationId: 'ntf_1',
+    notificationType: 'staff-message',
+    targetRole: 'driver_all',
+    requestedBy: 'staff_1',
+    recipients: 3,
+    sent: 2,
+    failed: 1,
+    ok: false,
+    error: 'Gone',
+    result: { results: [] },
+    createdAt: '2026-05-18T12:00:00.000Z',
+  })
+
+  assert.deepEqual(fromDb.pushDeliveryLogs(row), {
+    id: 'log_1',
+    notificationId: 'ntf_1',
+    notificationType: 'staff-message',
+    targetDriverId: '',
+    targetRole: 'driver_all',
+    requestedBy: 'staff_1',
+    recipients: 3,
+    sent: 2,
+    failed: 1,
+    ok: false,
+    error: 'Gone',
+    result: { results: [] },
+    createdAt: '2026-05-18T12:00:00.000Z',
+  })
+})

@@ -26,6 +26,7 @@ test('seed creates a complete local demo data shape', () => {
   assert.ok(data.vehicles.length >= 3)
   assert.ok(data.shifts.length >= 4)
   assert.deepEqual(data.notifications, [])
+  assert.deepEqual(data.pushDeliveryLogs, [])
   assert.equal(data.settings.companyName, 'RBSHIFT')
 })
 
@@ -47,6 +48,7 @@ test('writeStore omits push subscription secrets and readStore hydrates defaults
     assert.equal(restored.shifts[0].declineReason, '')
     assert.equal(restored.shifts[0].swapRequestStatus, '')
     assert.deepEqual(restored.pushSubscriptions, [])
+    assert.deepEqual(restored.pushDeliveryLogs, [])
   } finally {
     restore()
   }
