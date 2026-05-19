@@ -127,7 +127,7 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     }
     const notices = [
       makeNotice({ title: 'Kolega přijal výměnu', body: `${currentDriver?.name || 'Kolega'} přijal: ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'swap-accepted', shiftId: shift.id }),
-      makeNotice({ title: 'Kolega přijal tvoji nabídku', body: `${currentDriver?.name || 'Kolega'} chce převzít: ${shiftNoticeBody(shift, helpers)}`, targetDriverId: request.driverId, type: 'swap-accepted', shiftId: shift.id }),
+      makeNotice({ title: 'Kolega přijal tvoji nabídku', body: `${currentDriver?.name || 'Kolega'} chce převzít: ${shiftNoticeBody(shift, helpers)}`, targetDriverId: request.driverId, type: 'swap-accepted', shiftId: shift.id, push: false }),
     ]
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === request.id ? appendSwapHistory({ ...r, status: 'accepted', acceptedByDriverId: currentDriver?.id, acceptedAt: new Date().toISOString() }, `${currentDriver?.name || 'Kolega'} chce směnu převzít.`) : r), shifts: prev.shifts.map((s) => s.id === request.shiftId ? { ...s, swapRequestStatus: 'accepted' } : s) }, notices), `${currentDriver?.name || 'Řidič'} přijal nabídku výměny směny.`)
     closeActionDialog()
@@ -144,7 +144,7 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     const now = new Date().toISOString()
     const reason = 'Odmítnuto řidičem'
     const notices = [
-      makeNotice({ title: 'Kolega odmítl výměnu', body: `${currentDriver?.name || 'Kolega'} odmítl: ${shiftNoticeBody(shift, helpers)}`, targetDriverId: request.driverId, targetRole: 'driver', type: 'swap-rejected', shiftId: shift.id }),
+      makeNotice({ title: 'Kolega odmítl výměnu', body: `${currentDriver?.name || 'Kolega'} odmítl: ${shiftNoticeBody(shift, helpers)}`, targetDriverId: request.driverId, targetRole: 'driver', type: 'swap-rejected', shiftId: shift.id, push: false }),
       makeNotice({ title: 'Nabídka výměny odmítnuta', body: `${currentDriver?.name || 'Řidič'} odmítl nabídku od ${helpers.driverName(request.driverId)} · ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'swap-rejected', shiftId: shift.id }),
     ]
     commit((prev) => addNotificationsToData({
@@ -181,7 +181,7 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     const request = { id: uid('swap'), shiftId: shift.id, driverId: currentDriver.id, reason: 'Zájem o volnou směnu', status: 'pending', targetMode: 'open', targetDriverId: '', acceptedByDriverId: currentDriver.id, acceptedAt: new Date().toISOString(), createdAt: new Date().toISOString(), history: [{ at: new Date().toISOString(), text: `${currentDriver.name} projevil zájem o volnou směnu.` }] }
     const notices = [
       makeNotice({ title: 'Zájem o volnou směnu', body: `${currentDriver.name} se hlásí na: ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'open-shift-interest', shiftId: shift.id }),
-      makeNotice({ title: 'Zájem odeslán', body: `${shiftNoticeBody(shift, helpers)} · čeká na schválení dispečerem`, targetDriverId: currentDriver.id, type: 'open-shift-interest-sent', shiftId: shift.id }),
+      makeNotice({ title: 'Zájem odeslán', body: `${shiftNoticeBody(shift, helpers)} · čeká na schválení dispečerem`, targetDriverId: currentDriver.id, type: 'open-shift-interest-sent', shiftId: shift.id, push: false }),
     ]
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: [request, ...(prev.swapRequests || [])], shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'pending' } : s) }, notices), `${currentDriver.name} projevil zájem o volnou směnu.`)
     closeActionDialog()

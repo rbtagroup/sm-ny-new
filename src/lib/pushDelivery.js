@@ -1,7 +1,7 @@
 import { appFriendlyError } from './errors.js'
 
 export async function sendPushForNotifications(notices, accessToken = '', { env = import.meta.env || {}, fetchImpl = fetch } = {}) {
-  const clean = (Array.isArray(notices) ? notices : [notices]).filter((notice) => notice?.title)
+  const clean = (Array.isArray(notices) ? notices : [notices]).filter((notice) => notice?.title && notice.push !== false && !notice.skipPush)
   if (!clean.length) return { skipped: true, reason: 'no-notifications' }
   if (!(env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY)) return { skipped: true, reason: 'supabase-not-configured' }
   if (!env.VITE_VAPID_PUBLIC_KEY) return { skipped: true, reason: 'missing-vapid-public-key' }

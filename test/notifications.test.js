@@ -22,6 +22,14 @@ test('driver-targeted notices default to driver target role', () => {
   assert.equal(adminNotice.targetRole, 'admin')
 })
 
+test('notices can opt out of push without changing inbox delivery', () => {
+  const notice = makeNotice({ title: 'Self confirmation', targetDriverId: driver.id, push: false, excludePushDriverIds: [driver.id, driver.id] })
+
+  assert.equal(notice.push, false)
+  assert.deepEqual(notice.excludePushDriverIds, [driver.id])
+  assert.equal(isNoticeVisible(notice, driver, true), true)
+})
+
 test('read and deleted state are tracked separately', () => {
   const notice = makeNotice({ title: 'Test', targetDriverId: driver.id })
   const read = markNoticeRead(notice, driver, true)

@@ -46,11 +46,33 @@ test('normalizeNotice locks concrete driver targets to driver role', () => {
   })
 })
 
+test('normalizeNotice preserves push opt-out metadata', () => {
+  assert.deepEqual(normalizeNotice({
+    id: 'n2',
+    title: 'Broadcast',
+    target_role: 'driver_all',
+    push: false,
+    exclude_push_driver_ids: ['drv_1', 'drv_1'],
+  }), {
+    id: 'n2',
+    title: 'Broadcast',
+    body: 'Nové upozornění v aplikaci RBSHIFT.',
+    type: 'info',
+    shiftId: '',
+    targetDriverId: '',
+    targetRole: 'driver_all',
+    push: false,
+    excludePushDriverIds: ['drv_1'],
+  })
+})
+
 test('matchesNotice routes staff and driver notices consistently', () => {
   assert.equal(matchesNotice({ role: 'dispatcher' }, normalizeNotice({ title: 'A', targetRole: 'admin' })), true)
   assert.equal(matchesNotice({ role: 'driver' }, normalizeNotice({ title: 'A', targetRole: 'admin' })), false)
   assert.equal(matchesNotice({ role: 'driver', driver_id: 'drv_1' }, normalizeNotice({ title: 'A', targetDriverId: 'drv_1' })), true)
   assert.equal(matchesNotice({ role: 'driver', driver_id: 'drv_2' }, normalizeNotice({ title: 'A', targetDriverId: 'drv_1' })), false)
+  assert.equal(matchesNotice({ role: 'driver', driver_id: 'drv_1' }, normalizeNotice({ title: 'A', targetRole: 'driver_all', excludePushDriverIds: ['drv_1'] })), false)
+  assert.equal(matchesNotice({ role: 'driver', driver_id: 'drv_2' }, normalizeNotice({ title: 'A', targetRole: 'driver_all', excludePushDriverIds: ['drv_1'] })), true)
 })
 
 test('pushSubscriptionFilterPlan avoids all-subscription scans for scoped targets', () => {

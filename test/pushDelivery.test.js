@@ -22,7 +22,7 @@ test('sendPushForNotifications skips missing prerequisites before calling backen
 })
 
 test('sendPushForNotifications posts clean notifications to backend', async () => {
-  const result = await sendPushForNotifications([{ title: 'Test' }, { body: 'missing title' }], 'token', {
+  const result = await sendPushForNotifications([{ title: 'Test' }, { body: 'missing title' }, { title: 'No push', push: false }], 'token', {
     env: configuredEnv,
     fetchImpl: async (url, options) => {
       assert.equal(url, '/api/send-push')
@@ -38,6 +38,20 @@ test('sendPushForNotifications posts clean notifications to backend', async () =
   })
 
   assert.deepEqual(result, { status: 200, ok: true, sent: 1, failed: 0 })
+})
+
+test('sendPushForNotifications skips notices marked as app-only', async () => {
+  let calls = 0
+  const result = await sendPushForNotifications([{ title: 'Pouze do aplikace', push: false }], 'token', {
+    env: configuredEnv,
+    fetchImpl: async () => {
+      calls += 1
+      throw new Error('should not call fetch')
+    },
+  })
+
+  assert.deepEqual(result, { skipped: true, reason: 'no-notifications' })
+  assert.equal(calls, 0)
 })
 
 test('pushDeliveryWarning keeps user-facing push failure text friendly', () => {

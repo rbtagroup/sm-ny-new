@@ -34,7 +34,8 @@ const readBody = async (req) => {
 
 const normalizeNotice = (n = {}) => {
   const targetDriverId = n.targetDriverId || n.target_driver_id || ''
-  return {
+  const excludedDriverIds = n.excludePushDriverIds || n.exclude_push_driver_ids || n.excludeDriverIds || n.exclude_driver_ids || []
+  const notice = {
     id: n.id || '',
     title: n.title || 'RBSHIFT',
     body: n.body || 'Nové upozornění v aplikaci RBSHIFT.',
@@ -43,11 +44,17 @@ const normalizeNotice = (n = {}) => {
     targetDriverId,
     targetRole: String(targetDriverId ? 'driver' : (n.targetRole || n.target_role || 'admin')).toLowerCase(),
   }
+  if (n.push === false || n.skipPush || n.skip_push) notice.push = false
+  const excluded = [...new Set((Array.isArray(excludedDriverIds) ? excludedDriverIds : [excludedDriverIds]).filter(Boolean).map(String))]
+  if (excluded.length) notice.excludePushDriverIds = excluded
+  return notice
 }
 
 const matchesNotice = (subscription, notice) => {
   const role = String(subscription.role || '').toLowerCase()
-  if (notice.targetDriverId) return subscription.driver_id === notice.targetDriverId
+  const driverId = subscription.driver_id || subscription.driverId || ''
+  if (driverId && (notice.excludePushDriverIds || []).includes(driverId)) return false
+  if (notice.targetDriverId) return driverId === notice.targetDriverId
   if (notice.targetRole === 'all') return true
   if (notice.targetRole === 'driver_all') return role === 'driver'
   if (notice.targetRole === 'admin') return role === 'admin' || role === 'dispatcher'
@@ -336,8 +343,10 @@ export default async function handler(req, res) {
     const statusCode = err?.statusCode === 413 ? 413 : 400
     return json(res, statusCode, { ok: false, error: statusCode === 413 ? 'Request body too large' : 'Invalid JSON body' })
   }
-  const notifications = (Array.isArray(input.notifications) ? input.notifications : [input.notification || input]).map(normalizeNotice).filter((n) => n.title)
-  if (!notifications.length) return json(res, 400, { ok: false, error: 'No notifications supplied' })
+  const normalizedNotifications = (Array.isArray(input.notifications) ? input.notifications : [input.notification || input]).map(normalizeNotice).filter((n) => n.title)
+  if (!normalizedNotifications.length) return json(res, 400, { ok: false, error: 'No notifications supplied' })
+  const notifications = normalizedNotifications.filter((n) => n.push !== false)
+  if (!notifications.length) return json(res, 200, { ok: true, skipped: true, reason: 'no-pushable-notifications', notifications: 0, sent: 0, failed: 0, deliveries: [] })
   if (notifications.length > PUSH_MAX_NOTIFICATIONS_PER_REQUEST) return json(res, 413, { ok: false, error: `Too many notifications supplied. Limit is ${PUSH_MAX_NOTIFICATIONS_PER_REQUEST}.` })
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })

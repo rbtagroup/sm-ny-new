@@ -1,15 +1,21 @@
-export const createNoticeFactory = (uid) => ({ title, body = '', targetDriverId = '', targetRole = 'admin', type = 'info', shiftId = '' }) => ({
-  id: uid('ntf'),
-  at: new Date().toISOString(),
-  title,
-  body,
-  targetDriverId,
-  targetRole: targetDriverId ? 'driver' : targetRole,
-  type,
-  shiftId,
-  readBy: [],
-  deletedBy: [],
-})
+export const createNoticeFactory = (uid) => ({ title, body = '', targetDriverId = '', targetRole = 'admin', type = 'info', shiftId = '', push = true, skipPush = false, excludePushDriverIds = [] }) => {
+  const notice = {
+    id: uid('ntf'),
+    at: new Date().toISOString(),
+    title,
+    body,
+    targetDriverId,
+    targetRole: targetDriverId ? 'driver' : targetRole,
+    type,
+    shiftId,
+    readBy: [],
+    deletedBy: [],
+  }
+  if (push === false || skipPush) notice.push = false
+  const excluded = [...new Set((excludePushDriverIds || []).filter(Boolean))]
+  if (excluded.length) notice.excludePushDriverIds = excluded
+  return notice
+}
 
 export function addNotificationsToData(data, notices) {
   const clean = (Array.isArray(notices) ? notices : [notices]).filter(Boolean)
