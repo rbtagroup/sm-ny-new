@@ -2,7 +2,8 @@ import './main.css'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
-import { Bell, Clock, House, Settings as SettingsIcon, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
+import { DriverAppShell, StaffAppShell, UpdateReadyToast } from './AppShell.jsx'
 import { AuthGate, MissingProfile } from './AuthViews.jsx'
 import { Availability } from './AvailabilityView.jsx'
 import { Drivers } from './DriversView.jsx'
@@ -48,7 +49,6 @@ import {
   shiftNeedsSettlementAction,
   validateSettlementInputs,
 } from './lib/settlements.js'
-import { appFriendlyError } from './lib/errors.js'
 import {
   repeatMap,
   settlementStatusMap,
@@ -67,13 +67,10 @@ import {
   activeSwapForShift,
   calendarDriverLabel,
   calendarShiftLineClass,
-  driverInitials,
   money,
   shiftNoticeBody,
   shiftTypeName,
   sortByDateTime,
-  staffDisplayName,
-  staffInitials,
   statusCounts,
   time,
   todayRangeTitle,
@@ -373,34 +370,20 @@ function App({ session = null, profile = null, signOut = null }) {
   const { unread: unreadNotifications } = notificationInboxState(data, { currentDriver, isDriver, profile })
   const unreadForCurrent = unreadNotifications.length
   const canOpenSettings = role === 'admin'
-  const nav = isDriver
-    ? [['driver', 'Domů', House], ['availability', 'Dostupnost', Clock], ['notifications', 'Notifikace', Bell], ['driverSettings', 'Nastavení', SettingsIcon]]
-    : dispatcherNavItems
   const sidebarSections = [
     ['DISPEČINK', dispatcherNavItems],
     ...(role === 'admin' ? [['ADMIN', adminNavItems]] : [])
   ]
   const updateToast = updateWorker && <UpdateReadyToast applying={updateApplying} onRefresh={applyPwaUpdate} onDismiss={dismissPwaUpdate} />
 
-  if (isDriver) return <div className="driver-shell-v2">
-    <header className="driver-topbar-v2">
-      <div className="driver-topbar-brand">{(currentDriver?.avatarUrl || currentDriver?.avatar_url) ? <img className="driver-avatar-img" src={currentDriver.avatarUrl || currentDriver.avatar_url} alt={currentDriver?.name || 'Řidič'} /> : <div className="logo compact-logo">{driverInitials(currentDriver?.name || 'Řidič')}</div>}<div><strong>{currentDriver?.name || 'Řidič'}</strong><small>Řidič</small></div></div>
-      <span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online ●' : 'Demo'}</span>
-    </header>
-    <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>
+  if (isDriver) return <DriverAppShell currentDriver={currentDriver} onlineMode={onlineMode} page={page} unreadCount={unreadForCurrent} onPageChange={setPage} updateToast={updateToast}>
       {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} syncState={syncState} ui={driverHomeUi} services={driverHomeServices} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} ui={availabilityUi} />}
       {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} session={session} onlineMode={onlineMode} signOut={signOut} syncState={syncState} version={VERSION} ui={driverSettingsUi} notificationUi={notificationUi} notificationServices={notificationServices} />}
-    </main>
-    <nav className="driver-bottom-nav" aria-label="Řidičská navigace">
-      {nav.map(([key, label, Icon]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span className="driver-nav-icon"><Icon size={24} strokeWidth={2} />{key === 'notifications' && unreadForCurrent > 0 && <em>{unreadForCurrent}</em>}</span><b>{label}</b></button>)}
-    </nav>
-    {updateToast}
-  </div>
+  </DriverAppShell>
 
-  return <div className="app app-with-topbar">
-    <AppTopBar
+  return <StaffAppShell
       title={pageTitleMap[page] || 'Plán směn'}
       companyName={data.settings?.companyName || 'RB TAXI'}
       unreadCount={unreadForCurrent}
@@ -411,21 +394,12 @@ function App({ session = null, profile = null, signOut = null }) {
       canOpenSettings={canOpenSettings}
       signOut={signOut}
       setPage={setPage}
-    />
-    <aside className="sidebar">
-      <nav className="sidebar-nav" aria-label="Hlavní navigace">
-        {sidebarSections.map(([sectionTitle, items]) => <div className="nav-section" key={sectionTitle}>
-          <div className="nav-section-title">{sectionTitle}</div>
-          <div className="nav">{items.map(([key, label]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}>{label}</button>)}</div>
-        </div>)}
-      </nav>
-      <div className="sidebar-footer" aria-label="Stav úložiště">
-        <div className="sync-line"><span className={onlineMode ? 'status-dot good' : 'status-dot warn'}></span><span>{onlineMode ? 'Supabase online' : 'Demo / localStorage'}</span></div>
-        {onlineMode ? <small>{syncState?.saving ? 'Sync: ukládám…' : syncState?.lastSyncAt ? `Sync ${new Date(syncState.lastSyncAt).toLocaleTimeString('cs-CZ')}` : 'Sync aktivní'}</small> : <small>Lokální demo režim</small>}
-        {syncState?.error && <small className="danger-mini-text">{appFriendlyError(syncState.error)}</small>}
-      </div>
-    </aside>
-    <main className="main">
+      activePage={page}
+      sidebarSections={sidebarSections}
+      onlineMode={onlineMode}
+      syncState={syncState}
+      updateToast={updateToast}
+    >
       {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} />}
       {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} />}
       {page === 'settlements' && <Settlements data={data} helpers={helpers} commit={commit} />}
@@ -438,74 +412,7 @@ function App({ session = null, profile = null, signOut = null }) {
       {page === 'shiftTemplates' && <ShiftTemplates data={data} commit={commit} ui={shiftTemplatesUi} />}
       {page === 'history' && <History data={data} ui={historyUi} services={historyServices} />}
       {page === 'settings' && <SettingsView data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} version={VERSION} ui={settingsUi} />}
-    </main>
-    {updateToast}
-  </div>
-}
-
-function UpdateReadyToast({ applying, onRefresh, onDismiss }) {
-  return <div className="update-toast" role="status" aria-live="polite">
-    <div className="update-toast-copy">
-      <b>Je dostupná nová verze</b>
-      <span>Obnovit aplikaci a načíst poslední změny.</span>
-    </div>
-    <div className="update-toast-actions">
-      <button className="primary" onClick={onRefresh} disabled={applying}>{applying ? 'Obnovuji…' : 'Obnovit'}</button>
-      <button className="ghost" onClick={onDismiss} disabled={applying}>Později</button>
-    </div>
-  </div>
-}
-
-function AppTopBar({ title, companyName, unreadCount, notifications, profile, currentDriver, role, canOpenSettings, signOut, setPage }) {
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const displayName = staffDisplayName(profile, currentDriver, role)
-  const unreadItems = (notifications || []).slice(0, 6)
-  const openNotifications = () => {
-    setNotificationsOpen((value) => !value)
-    setUserMenuOpen(false)
-  }
-  const openUserMenu = () => {
-    setUserMenuOpen((value) => !value)
-    setNotificationsOpen(false)
-  }
-  const goSettings = () => {
-    if (!canOpenSettings) return
-    setPage('settings')
-    setUserMenuOpen(false)
-  }
-  return <header className="app-topbar-shell">
-    <div className="app-topbar-brand">
-      <button className="app-topbar-logo" onClick={() => setPage('planner')} aria-label="Přejít na Plán směn">RB</button>
-      <button className="app-topbar-title" onClick={() => setPage('planner')}>
-        <strong>{companyName}</strong><span>·</span><b>{title}</b>
-      </button>
-    </div>
-    <div className="app-topbar-actions">
-      <div className="topbar-menu-wrap">
-        <button className="topbar-icon-button" aria-label="Notifikace" aria-expanded={notificationsOpen} onClick={openNotifications}><Bell size={20} strokeWidth={2.2} aria-hidden="true" />{unreadCount > 0 && <span>{unreadCount}</span>}</button>
-        {notificationsOpen && <div className="topbar-dropdown notification-dropdown">
-          <b>Nepřečtené notifikace</b>
-          <div className="topbar-dropdown-list">
-            {unreadItems.length ? unreadItems.map((n) => <button key={n.id} onClick={() => { setPage('notifications'); setNotificationsOpen(false) }}>
-              <strong>{n.title}</strong>
-              {n.body && <small>{n.body}</small>}
-            </button>) : <p className="muted">Žádné nepřečtené notifikace.</p>}
-          </div>
-          <button className="ghost topbar-dropdown-action" onClick={() => { setPage('notifications'); setNotificationsOpen(false) }}>Zobrazit vše</button>
-        </div>}
-      </div>
-      <div className="topbar-menu-wrap">
-        <button className="topbar-user-button" aria-expanded={userMenuOpen} onClick={openUserMenu}><span>{staffInitials(profile, currentDriver, role)}</span><b>{displayName}</b><em>▾</em></button>
-        {userMenuOpen && <div className="topbar-dropdown user-dropdown">
-          <button onClick={goSettings} disabled={!canOpenSettings}>Profil</button>
-          <button onClick={goSettings} disabled={!canOpenSettings}>Nastavení</button>
-          <button onClick={() => { setUserMenuOpen(false); signOut?.() }} disabled={!signOut}>Odhlásit</button>
-        </div>}
-      </div>
-      <button className="topbar-icon-button" aria-label="Nastavení" onClick={() => canOpenSettings && setPage('settings')} disabled={!canOpenSettings}><SettingsIcon size={20} strokeWidth={2.2} aria-hidden="true" /></button>
-    </div>
-  </header>
+  </StaffAppShell>
 }
 function PageTitle({ title, subtitle, children }) { return <div className="topbar"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{children && <div className="actions">{children}</div>}</div> }
 function Kpi({ label, value, hint, kind = '' }) { return <div className="card kpi"><div className="label">{label}</div><div className="value">{value}</div>{hint && <div className={`hint ${kind}`}>{hint}</div>}</div> }

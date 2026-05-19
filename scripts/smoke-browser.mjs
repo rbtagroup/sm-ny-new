@@ -7,6 +7,7 @@ const appPort = Number(process.env.SMOKE_APP_PORT || 4175)
 const chromePort = Number(process.env.SMOKE_CHROME_PORT || (9300 + Math.floor(Math.random() * 1000)))
 const appUrl = process.env.SMOKE_URL || `http://127.0.0.1:${appPort}/`
 const requireChrome = process.env.SMOKE_REQUIRE_CHROME === '1'
+const smokeScope = ['full', 'staff', 'driver'].includes(process.env.SMOKE_SCOPE) ? process.env.SMOKE_SCOPE : 'full'
 
 let appProcess = null
 let chromeProcess = null
@@ -218,32 +219,7 @@ function appUrlWithParam(key, value) {
   return url.toString()
 }
 
-async function runBrowserChecks() {
-  const version = await waitForJson(`http://127.0.0.1:${chromePort}/json/version`, 'Chrome debugging endpoint')
-  const browser = new CdpClient(version.webSocketDebuggerUrl)
-  await browser.connect()
-  const consoleProblems = []
-  browser.on('Runtime.exceptionThrown', (params) => {
-    consoleProblems.push(params.exceptionDetails?.text || 'Runtime exception')
-  })
-  browser.on('Log.entryAdded', (params) => {
-    if (params.entry?.level === 'error') consoleProblems.push(params.entry.text)
-  })
-  browser.on('Runtime.consoleAPICalled', (params) => {
-    if (['error', 'assert'].includes(params.type)) {
-      consoleProblems.push(params.args?.map((arg) => arg.value || arg.description).filter(Boolean).join(' ') || params.type)
-    }
-  })
-
-  const target = await browser.send('Target.createTarget', { url: 'about:blank' })
-  const attached = await browser.send('Target.attachToTarget', { targetId: target.targetId, flatten: true })
-  const sessionId = attached.sessionId
-  const page = {
-    send: (method, params = {}) => browser.send(method, params, sessionId),
-  }
-  await page.send('Page.enable')
-  await page.send('Runtime.enable')
-  await page.send('Log.enable')
+async function runStaffChecks(page) {
   await page.send('Page.navigate', { url: appUrl })
   await waitForEval(page, 'document.readyState === "complete" || document.readyState === "interactive"', 'Page did not load')
   await waitForEval(page, 'document.body && document.body.innerText.includes("Plán směn")', 'Planner screen did not render')
@@ -284,20 +260,64 @@ async function runBrowserChecks() {
 
   await clickByText(page, '.sidebar-nav button', 'Notifikace')
   await waitForEval(page, 'document.body.innerText.includes("Centrum upozornění") || document.body.innerText.includes("Zatím žádné notifikace")', 'Mobile staff notifications did not open')
+  await assertEval(page, 'document.querySelector(".notifications-card") && document.querySelector(".staff-message-composer")', 'Staff notification workspace did not render')
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile notifications should not overflow horizontally')
+}
 
+async function runDriverChecks(page) {
+  await page.send('Emulation.setDeviceMetricsOverride', {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3,
+    mobile: true,
+  })
   await page.send('Page.navigate', { url: appUrlWithParam('demoRole', 'driver') })
   await waitForEval(page, 'document.body && document.querySelector(".driver-bottom-nav")', 'Driver mobile shell did not render')
+  await assertEval(page, 'document.querySelector(".driver-topbar-v2") && document.querySelector(".driver-main-v2")', 'Driver app shell is missing')
   await assertEval(page, 'document.body.innerText.includes("Domů") && document.body.innerText.includes("Dostupnost") && document.body.innerText.includes("Notifikace") && document.body.innerText.includes("Nastavení")', 'Driver bottom navigation labels are missing')
+  await assertEval(page, 'document.body.innerText.includes("Moje další směny") || document.body.innerText.includes("Teď není potřeba žádná akce")', 'Driver home content did not render')
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Driver mobile page should not overflow horizontally')
   await assertEval(page, '!/row-level security|violates row-level security/i.test(document.body.innerText)', 'Driver UI leaked a technical RLS error')
 
   await clickByText(page, '.driver-bottom-nav button', 'Notifikace')
   await waitForEval(page, 'document.body.innerText.includes("Doručené")', 'Driver notifications screen did not open')
+  await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Driver notifications should not overflow horizontally')
   await clickByText(page, '.driver-bottom-nav button', 'Dostupnost')
   await waitForEval(page, 'document.body.innerText.includes("Nová dostupnost")', 'Driver availability screen did not open')
+  await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Driver availability should not overflow horizontally')
   await clickByText(page, '.driver-bottom-nav button', 'Nastavení')
   await waitForEval(page, 'document.body.innerText.includes("Upozornění na směny")', 'Driver settings screen did not open')
+  await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Driver settings should not overflow horizontally')
+}
+
+async function runBrowserChecks() {
+  const version = await waitForJson(`http://127.0.0.1:${chromePort}/json/version`, 'Chrome debugging endpoint')
+  const browser = new CdpClient(version.webSocketDebuggerUrl)
+  await browser.connect()
+  const consoleProblems = []
+  browser.on('Runtime.exceptionThrown', (params) => {
+    consoleProblems.push(params.exceptionDetails?.text || 'Runtime exception')
+  })
+  browser.on('Log.entryAdded', (params) => {
+    if (params.entry?.level === 'error') consoleProblems.push(params.entry.text)
+  })
+  browser.on('Runtime.consoleAPICalled', (params) => {
+    if (['error', 'assert'].includes(params.type)) {
+      consoleProblems.push(params.args?.map((arg) => arg.value || arg.description).filter(Boolean).join(' ') || params.type)
+    }
+  })
+
+  const target = await browser.send('Target.createTarget', { url: 'about:blank' })
+  const attached = await browser.send('Target.attachToTarget', { targetId: target.targetId, flatten: true })
+  const sessionId = attached.sessionId
+  const page = {
+    send: (method, params = {}) => browser.send(method, params, sessionId),
+  }
+  await page.send('Page.enable')
+  await page.send('Runtime.enable')
+  await page.send('Log.enable')
+  if (smokeScope !== 'driver') await runStaffChecks(page)
+  if (smokeScope !== 'staff') await runDriverChecks(page)
 
   browser.close()
   if (consoleProblems.length) {

@@ -14,6 +14,7 @@
     "test": "node --test",
     "lint:hooks": "eslint . --quiet",
     "smoke:browser": "node scripts/smoke-browser.mjs",
+    "smoke:driver": "node scripts/smoke-driver.mjs",
     "verify": "node --test && node ./node_modules/vite/bin/vite.js build && corepack pnpm audit --prod",
     "generate:vapid": "npx web-push generate-vapid-keys"
   },

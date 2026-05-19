@@ -856,3 +856,85 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   color:#ffd7d7;
 }
 .row-actions button.icon-only svg,.detail-delete-button svg{pointer-events:none}
+
+/* v5.5.10 staff mobile notification polish */
+@media (max-width:760px){
+  .app-with-topbar .notifications-card{
+    padding:12px;
+    border-radius:14px;
+    background:rgba(12,23,38,.72);
+    box-shadow:none;
+  }
+  .app-with-topbar .notifications-card>.section-title{
+    display:grid;
+    gap:8px;
+    align-items:start;
+  }
+  .app-with-topbar .notifications-card>.section-title .pill{
+    justify-self:start;
+  }
+  .app-with-topbar .notification-groups{
+    gap:14px;
+  }
+  .app-with-topbar .notification-group{
+    gap:7px;
+  }
+  .app-with-topbar .notification-group-title{
+    padding-left:2px;
+    letter-spacing:.06em;
+  }
+  .app-with-topbar .staff-notification-row{
+    padding:11px;
+    border-radius:12px;
+    border-color:rgba(255,255,255,.10);
+    background:rgba(255,255,255,.032);
+    box-shadow:none;
+  }
+  .app-with-topbar .staff-notification-row.notification-unread{
+    border-color:rgba(245,199,106,.24);
+    border-left:3px solid rgba(245,199,106,.65);
+    background:rgba(245,199,106,.075);
+  }
+  .app-with-topbar .staff-notification-row.notification-read{
+    opacity:.68;
+    background:rgba(255,255,255,.025);
+  }
+  .app-with-topbar .staff-notification-row p{
+    color:#cdd9ea;
+    font-size:13px;
+    line-height:1.38;
+  }
+  .app-with-topbar .staff-notification-row .driver-notification-row-head{
+    align-items:flex-start;
+  }
+  .app-with-topbar .staff-notification-row .driver-notification-copy small{
+    font-size:11px;
+    line-height:1.32;
+  }
+  .app-with-topbar .staff-notification-row .driver-notification-titleline b{
+    font-size:14px;
+  }
+  .app-with-topbar .staff-notification-row .driver-notification-icon-button{
+    width:34px;
+    height:34px;
+    border-radius:10px;
+  }
+  .app-with-topbar .notification-toolbar-button{
+    min-height:40px;
+    padding:9px 10px;
+    border-radius:12px;
+  }
+  .app-with-topbar .staff-message-composer,
+  .app-with-topbar .staff-message-history{
+    margin-bottom:12px;
+  }
+  .app-with-topbar .staff-message-history-list{
+    max-height:none;
+    overflow:visible;
+  }
+}
+@media (max-width:560px){
+  .app-with-topbar .notification-toolbar-button{
+    width:100%;
+  }
+}
