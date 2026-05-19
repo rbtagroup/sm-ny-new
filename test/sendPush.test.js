@@ -6,6 +6,8 @@ import {
   matchesNotice,
   normalizeNotice,
   pushDeliveryLogRows,
+  pushDeliveryRateLimitChecks,
+  pushRequestRateLimitChecks,
   pushSubscriptionFilterPlan,
   rateLimitKeyForProfile,
   recordPushDeliveryLogs,
@@ -155,6 +157,38 @@ test('push rate limiter falls back locally if durable RPC is unavailable', async
 
   assert.equal((await checkPushRateLimit(supabase, key, 2, 3, 60_000)).ok, true)
   assert.equal((await checkPushRateLimit(supabase, key, 2, 3, 60_000)).ok, false)
+})
+
+test('request rate limit checks include global and caller buckets', () => {
+  assert.deepEqual(pushRequestRateLimitChecks({
+    callerProfile: { id: 'user_1', role: 'admin' },
+    bearerToken: 'token',
+    notificationCount: 3,
+  }).map(({ scope, key, weight, maxCount }) => ({ scope, key, weight, maxCount })), [
+    { scope: 'global-request', key: 'push:request:global', weight: 3, maxCount: 300 },
+    { scope: 'caller-request', key: 'push:request:admin:user_1', weight: 3, maxCount: 30 },
+  ])
+})
+
+test('internal request rate limit checks do not bypass global durable buckets', () => {
+  assert.deepEqual(pushRequestRateLimitChecks({
+    internalAuthorized: true,
+    notificationCount: 2,
+  }).map(({ scope, key, weight, maxCount }) => ({ scope, key, weight, maxCount })), [
+    { scope: 'global-request', key: 'push:request:global', weight: 2, maxCount: 300 },
+    { scope: 'internal-request', key: 'push:request:internal', weight: 2, maxCount: 120 },
+  ])
+})
+
+test('delivery rate limit checks weight by recipients', () => {
+  assert.deepEqual(pushDeliveryRateLimitChecks({
+    callerProfile: { id: 'user_2', role: 'dispatcher' },
+    bearerToken: 'token',
+    recipientCount: 12,
+  }).map(({ scope, key, weight, maxCount }) => ({ scope, key, weight, maxCount })), [
+    { scope: 'global-delivery', key: 'push:delivery:global', weight: 12, maxCount: 5000 },
+    { scope: 'caller-delivery', key: 'push:delivery:dispatcher:user_2', weight: 12, maxCount: 1000 },
+  ])
 })
 
 test('pushDeliveryLogRows aggregates per-notification delivery results', () => {

@@ -34,9 +34,17 @@ VAPID_PRIVATE_KEY=PRIVATE_KEY
 VAPID_SUBJECT=mailto:prace@rbgroup.cz
 SUPABASE_URL=https://tvuj-projekt.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=service-role-key-ze-Supabase
+PUSH_RATE_LIMIT_PER_WINDOW=30
+PUSH_DELIVERY_RATE_LIMIT_PER_WINDOW=1000
+PUSH_GLOBAL_REQUEST_RATE_LIMIT_PER_WINDOW=300
+PUSH_GLOBAL_DELIVERY_RATE_LIMIT_PER_WINDOW=5000
+PUSH_INTERNAL_REQUEST_RATE_LIMIT_PER_WINDOW=120
+PUSH_INTERNAL_DELIVERY_RATE_LIMIT_PER_WINDOW=5000
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` nedávej do proměnné začínající `VITE_`.
+
+Rate limit hodnoty jsou za jedno okno. Výchozí okno je 60 sekund a dá se změnit přes `PUSH_RATE_LIMIT_WINDOW_MS`.
 
 ## 3) Udělej Redeploy
 
@@ -63,6 +71,18 @@ Patch obsahuje i pravidla pro bezpečnější notifikace, audit, výměny směn 
 3. Klikni **Povolit notifikace na tomto zařízení**.
 4. Klikni **Server push test**.
 5. Pak zkus vytvořit novou směnu pro řidiče.
+
+## 6) Produkční test cílení pushů
+
+Proveď test na dvou různých řidičských účtech se zapnutými push notifikacemi:
+
+1. Staff pošle zprávu všem řidičům: push má přijít oběma řidičům.
+2. Staff pošle zprávu jednomu řidiči: push má přijít jen vybranému řidiči.
+3. Řidič nabídne směnu konkrétnímu kolegovi: push má přijít kolegovi, ne řidiči, který směnu nabízí.
+4. Řidič nabídne směnu všem: push mají dostat ostatní aktivní řidiči, ne autor nabídky.
+5. Kolega nabídku odmítne nebo přijme: autorovi se aktualizuje upozornění v aplikaci, ale neposílá se mu zbytečný self-push.
+
+V historii zpráv u staff zpráv kontroluj stav doručení. Stav `0 zařízení` znamená, že cílový řidič nemá aktivní subscription na daném telefonu.
 
 ## iPhone
 

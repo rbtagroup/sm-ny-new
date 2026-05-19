@@ -99,6 +99,10 @@ const PUSH_CONCURRENCY = Number(process.env.PUSH_DELIVERY_CONCURRENCY || 8)
 const PUSH_RATE_LIMIT_WINDOW_MS = Number(process.env.PUSH_RATE_LIMIT_WINDOW_MS || 60_000)
 const PUSH_REQUEST_RATE_LIMIT_MAX = Number(process.env.PUSH_RATE_LIMIT_PER_WINDOW || process.env.PUSH_RATE_LIMIT_PER_MINUTE || 30)
 const PUSH_DELIVERY_RATE_LIMIT_MAX = Number(process.env.PUSH_DELIVERY_RATE_LIMIT_PER_WINDOW || process.env.PUSH_RECIPIENT_RATE_LIMIT_PER_WINDOW || 1000)
+const PUSH_GLOBAL_REQUEST_RATE_LIMIT_MAX = Number(process.env.PUSH_GLOBAL_RATE_LIMIT_PER_WINDOW || process.env.PUSH_GLOBAL_REQUEST_RATE_LIMIT_PER_WINDOW || 300)
+const PUSH_GLOBAL_DELIVERY_RATE_LIMIT_MAX = Number(process.env.PUSH_GLOBAL_DELIVERY_RATE_LIMIT_PER_WINDOW || 5000)
+const PUSH_INTERNAL_REQUEST_RATE_LIMIT_MAX = Number(process.env.PUSH_INTERNAL_RATE_LIMIT_PER_WINDOW || process.env.PUSH_INTERNAL_REQUEST_RATE_LIMIT_PER_WINDOW || 120)
+const PUSH_INTERNAL_DELIVERY_RATE_LIMIT_MAX = Number(process.env.PUSH_INTERNAL_DELIVERY_RATE_LIMIT_PER_WINDOW || 5000)
 const PUSH_MAX_NOTIFICATIONS_PER_REQUEST = Number(process.env.PUSH_MAX_NOTIFICATIONS_PER_REQUEST || 20)
 const PUSH_MAX_RECIPIENTS_PER_NOTICE = Number(process.env.PUSH_MAX_RECIPIENTS_PER_NOTICE || 500)
 const pushRateBuckets = (globalThis.__RBSHIFT_PUSH_RATE_BUCKETS__ ||= new Map())
@@ -170,6 +174,64 @@ const checkPushRateLimit = async (supabase, key, weight = 1, maxCount = PUSH_REQ
     console.warn('[send-push] durable rate limit unavailable, using in-memory fallback:', err?.message || err)
     return checkRateLimit(key, weight, maxCount, windowMs)
   }
+}
+
+const pushRateLimitCheck = (scope, key, weight, maxCount, error) => ({
+  scope,
+  key,
+  weight: Math.max(1, Number(weight) || 1),
+  maxCount,
+  windowMs: PUSH_RATE_LIMIT_WINDOW_MS,
+  error,
+})
+
+const activeRateLimitChecks = (checks = []) => checks.filter((check) => Number(check.maxCount) > 0 && Number(check.weight) > 0)
+
+const pushRequestRateLimitChecks = ({ internalAuthorized = false, callerProfile = null, bearerToken = '', notificationCount = 1 } = {}) => {
+  const weight = Math.max(1, Number(notificationCount) || 1)
+  const checks = [
+    pushRateLimitCheck('global-request', 'push:request:global', weight, PUSH_GLOBAL_REQUEST_RATE_LIMIT_MAX, 'Push global request rate limit exceeded'),
+  ]
+  if (internalAuthorized) {
+    checks.push(pushRateLimitCheck('internal-request', 'push:request:internal', weight, PUSH_INTERNAL_REQUEST_RATE_LIMIT_MAX, 'Push internal request rate limit exceeded'))
+  } else {
+    checks.push(pushRateLimitCheck(
+      'caller-request',
+      rateLimitKeyForProfile('request', callerProfile, bearerToken.slice(0, 16)),
+      weight,
+      PUSH_REQUEST_RATE_LIMIT_MAX,
+      'Push request rate limit exceeded',
+    ))
+  }
+  return activeRateLimitChecks(checks)
+}
+
+const pushDeliveryRateLimitChecks = ({ internalAuthorized = false, callerProfile = null, bearerToken = '', recipientCount = 0 } = {}) => {
+  const weight = Number(recipientCount) || 0
+  if (weight < 1) return []
+  const checks = [
+    pushRateLimitCheck('global-delivery', 'push:delivery:global', weight, PUSH_GLOBAL_DELIVERY_RATE_LIMIT_MAX, 'Push global delivery rate limit exceeded'),
+  ]
+  if (internalAuthorized) {
+    checks.push(pushRateLimitCheck('internal-delivery', 'push:delivery:internal', weight, PUSH_INTERNAL_DELIVERY_RATE_LIMIT_MAX, 'Push internal delivery rate limit exceeded'))
+  } else {
+    checks.push(pushRateLimitCheck(
+      'caller-delivery',
+      rateLimitKeyForProfile('delivery', callerProfile, bearerToken.slice(0, 16)),
+      weight,
+      PUSH_DELIVERY_RATE_LIMIT_MAX,
+      'Push delivery rate limit exceeded',
+    ))
+  }
+  return activeRateLimitChecks(checks)
+}
+
+const enforcePushRateLimits = async (supabase, checks = []) => {
+  for (const check of checks) {
+    const rate = await checkPushRateLimit(supabase, check.key, check.weight, check.maxCount, check.windowMs)
+    if (!rate.ok) return { ...check, ...rate }
+  }
+  return null
 }
 
 const pushSubscriptionFilterPlan = (notice) => {
@@ -320,6 +382,8 @@ export {
   matchesNotice,
   normalizeNotice,
   pushDeliveryLogRows,
+  pushDeliveryRateLimitChecks,
+  pushRequestRateLimitChecks,
   pushSubscriptionFilterPlan,
   rateLimitKeyForProfile,
   recordPushDeliveryLogs,
@@ -362,17 +426,15 @@ export default async function handler(req, res) {
     if (!callerProfile) return json(res, 401, { ok: false, error: 'Authentication required' })
   }
 
-  if (!internalAuthorized) {
-    const rate = await checkPushRateLimit(
-      supabase,
-      rateLimitKeyForProfile('request', callerProfile, bearerToken.slice(0, 16)),
-      notifications.length,
-      PUSH_REQUEST_RATE_LIMIT_MAX,
-    )
-    if (!rate.ok) {
-      res.setHeader('Retry-After', String(rate.retryAfter))
-      return json(res, 429, { ok: false, error: 'Push request rate limit exceeded', retryAfter: rate.retryAfter })
-    }
+  const requestRateLimit = await enforcePushRateLimits(supabase, pushRequestRateLimitChecks({
+    internalAuthorized,
+    callerProfile,
+    bearerToken,
+    notificationCount: notifications.length,
+  }))
+  if (requestRateLimit) {
+    res.setHeader('Retry-After', String(requestRateLimit.retryAfter))
+    return json(res, 429, { ok: false, error: requestRateLimit.error, retryAfter: requestRateLimit.retryAfter, scope: requestRateLimit.scope })
   }
 
   try {
@@ -411,17 +473,15 @@ export default async function handler(req, res) {
     })
   }
 
-  if (!internalAuthorized && totalRecipients > 0) {
-    const deliveryRate = await checkPushRateLimit(
-      supabase,
-      rateLimitKeyForProfile('delivery', callerProfile, bearerToken.slice(0, 16)),
-      totalRecipients,
-      PUSH_DELIVERY_RATE_LIMIT_MAX,
-    )
-    if (!deliveryRate.ok) {
-      res.setHeader('Retry-After', String(deliveryRate.retryAfter))
-      return json(res, 429, { ok: false, error: 'Push delivery rate limit exceeded', retryAfter: deliveryRate.retryAfter, recipients: totalRecipients })
-    }
+  const deliveryRateLimit = await enforcePushRateLimits(supabase, pushDeliveryRateLimitChecks({
+    internalAuthorized,
+    callerProfile,
+    bearerToken,
+    recipientCount: totalRecipients,
+  }))
+  if (deliveryRateLimit) {
+    res.setHeader('Retry-After', String(deliveryRateLimit.retryAfter))
+    return json(res, 429, { ok: false, error: deliveryRateLimit.error, retryAfter: deliveryRateLimit.retryAfter, recipients: totalRecipients, scope: deliveryRateLimit.scope })
   }
 
   const results = []
