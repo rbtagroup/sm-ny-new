@@ -26,7 +26,8 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     const errors = []
     const tableResults = await Promise.all(ONLINE_TABLES.map(async (key) => {
       const tn = tableName(key)
-      let q = supabase.from(tn).select('*').order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
+      let q = supabase.from(tn).select('*')
+      if (key !== 'pushDeliveryLogs') q = q.order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
       if (key === 'notifications') {
         const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
         q = q.gte('created_at', cutoff)
@@ -281,47 +282,49 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     }, [online, session?.user?.id])
 
     const commit = (updater, text, options = {}) => {
+      let syncPayload = null
       setData((prev) => {
         const rawNext = typeof updater === 'function' ? updater(prev) : updater
         const audit = text ? [{ id: uid('log'), at: new Date().toISOString(), text, actorId: session?.user?.id || null }, ...(rawNext.audit || [])].slice(0, 250) : rawNext.audit
         const next = { ...rawNext, audit }
         writeStore(next)
-        if (online) {
-          pendingSyncs.current += 1
-          setSyncState((s) => ({ ...s, saving: true, error: '' }))
-          const pushNotices = addedRows(prev.notifications, next.notifications)
-          syncChangedRows(prev, next, profile)
-            .then(async () => {
-              const freshToken = pushNotices.length ? (await supabase.auth.getSession()).data.session?.access_token || '' : ''
-              const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, freshToken) : null
-              if (pushResult) options.onPushResult?.(pushResult)
-              const warning = pushDeliveryWarning(pushResult)
-              pendingSyncs.current -= 1
-              if (pendingSyncs.current === 0) {
-                setSyncState({
-                  loading: false,
-                  saving: false,
-                  error: warning ? `Uloženo, ale push notifikace se nepodařilo doručit: ${warning}` : '',
-                  lastSyncAt: new Date().toISOString(),
-                })
-              }
-              options.onSuccess?.()
-            })
-            .catch((err) => {
-              pendingSyncs.current -= 1
-              const shouldRollback = options.rollbackOnError !== false
-              if (shouldRollback) {
-                writeStore(prev)
-                setData(prev)
-              } else {
-                writeStore(next)
-              }
-              setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)) }))
-              options.onError?.(err)
-            })
-        }
+        if (online) syncPayload = { prev, next }
         return next
       })
+      if (!online || !syncPayload) return
+      const { prev, next } = syncPayload
+      pendingSyncs.current += 1
+      setSyncState((s) => ({ ...s, saving: true, error: '' }))
+      const pushNotices = addedRows(prev.notifications, next.notifications)
+      syncChangedRows(prev, next, profile)
+        .then(async () => {
+          const freshToken = pushNotices.length ? (await supabase.auth.getSession()).data.session?.access_token || '' : ''
+          const pushResult = pushNotices.length ? await sendPushForNotifications(pushNotices, freshToken) : null
+          if (pushResult) options.onPushResult?.(pushResult)
+          const warning = pushDeliveryWarning(pushResult)
+          pendingSyncs.current -= 1
+          if (pendingSyncs.current === 0) {
+            setSyncState({
+              loading: false,
+              saving: false,
+              error: warning ? `Uloženo, ale push notifikace se nepodařilo doručit: ${warning}` : '',
+              lastSyncAt: new Date().toISOString(),
+            })
+          }
+          options.onSuccess?.()
+        })
+        .catch((err) => {
+          pendingSyncs.current -= 1
+          const shouldRollback = options.rollbackOnError !== false
+          if (shouldRollback) {
+            writeStore(prev)
+            setData(prev)
+          } else {
+            writeStore(next)
+          }
+          setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)) }))
+          options.onError?.(err)
+        })
     }
 
     return [data, commit, syncState, reloadOnline]
