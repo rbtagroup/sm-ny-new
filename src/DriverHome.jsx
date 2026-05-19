@@ -1,21 +1,23 @@
 import { useRef, useState } from 'react'
+import {
+  DriverAwaitingSection,
+  DriverIncomingSwapsSection,
+  DriverOpenShiftsSection,
+  DriverQuickStrip,
+  DriverShiftList,
+  DriverSwapModal,
+} from './DriverHomeSections.jsx'
 import { DriverActionModal, DriverTwoWeekCalendar, ShiftMobileCard } from './DriverWidgets.jsx'
-import { addDays, formatDate, intervalForShift, localStamp, todayISO } from './lib/dateTime.js'
+import { localStamp } from './lib/dateTime.js'
 import { statusMap } from './lib/appConfig.js'
+import { selectDriverHomeState } from './lib/driverHome.js'
 import { appFriendlyError } from './lib/errors.js'
 import { addNotificationsToData } from './lib/notifications.js'
 import { notificationInboxState } from './lib/notificationInbox.js'
-import {
-  canOpenSettlement,
-  settlementForShift,
-  settlementIsClosed,
-  shiftIsInStartWindow,
-  shiftNeedsSettlementAction,
-} from './lib/settlements.js'
-import { shiftNoticeBody, sortByDateTime } from './lib/display.js'
+import { shiftNoticeBody } from './lib/display.js'
 
 export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui, services }) {
-  const { Field, Modal, SettlementFormModal } = ui
+  const { SettlementFormModal } = ui
   const { uid, makeNotice, adminNotice, appendSwapHistory } = services
   const [expandedShiftId, setExpandedShiftId] = useState('')
   const [settlementShiftId, setSettlementShiftId] = useState('')
@@ -23,39 +25,24 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
   const [actionDialog, setActionDialog] = useState(null)
   const [driverToast, setDriverToast] = useState('')
   const driverToastTimer = useRef(null)
-  const hiddenDriverStatuses = new Set(['cancelled', 'declined', 'rejected'])
-  const settlementActionCutoff = new Date(`${addDays(todayISO(), -1)}T00:00:00`).getTime()
   const showDriverToast = (message) => {
     setDriverToast(message)
     window.clearTimeout(driverToastTimer.current)
     driverToastTimer.current = window.setTimeout(() => setDriverToast(''), 2600)
   }
-  const nowTs = Date.now()
-  const driverShiftIsDashboardVisible = (shift) => {
-    if (shift.driverId !== currentDriver?.id || hiddenDriverStatuses.has(shift.status)) return false
-    const settlement = settlementForShift(data, shift.id)
-    if (canOpenSettlement(shift) && settlementIsClosed(settlement)) return false
-    const [, endAt] = intervalForShift(shift)
-    if (shiftNeedsSettlementAction(shift, settlement)) {
-      const actualEndAt = shift.actualEndAt ? new Date(shift.actualEndAt).getTime() : 0
-      return Math.max(endAt, actualEndAt) >= settlementActionCutoff
-    }
-    return shift.date >= todayISO() || endAt >= nowTs
-  }
-  const shifts = sortByDateTime(data.shifts.filter(driverShiftIsDashboardVisible)).slice(0, 30)
-  const openShifts = sortByDateTime((data.shifts || []).filter((s) => s.status === 'open' && !s.driverId && s.date >= todayISO())).slice(0, 30)
-  const myOpenInterests = (data.swapRequests || []).filter((r) => r.targetMode === 'open' && r.driverId === currentDriver?.id && ['pending','accepted'].includes(r.status))
   const { visible: visibleNotices, unread: unreadNotices } = notificationInboxState(data, { currentDriver, isDriver: true })
-  const swapShift = swapDraft ? data.shifts.find((s) => s.id === swapDraft.shiftId) : null
-  const swapColleagues = (data.drivers || []).filter((d) => d.active !== false && d.id !== currentDriver?.id)
-  const actionRequest = actionDialog?.requestId ? (data.swapRequests || []).find((r) => r.id === actionDialog.requestId) : null
-  const actionShift = actionDialog?.shiftId ? data.shifts.find((s) => s.id === actionDialog.shiftId) : (actionRequest ? data.shifts.find((s) => s.id === actionRequest.shiftId) : null)
-  const awaiting = shifts.filter((s) => s.status === 'assigned' || s.status === 'draft' || s.status === 'pending')
-  const running = shifts.find((s) => (s.actualStartAt && !s.actualEndAt) || s.status === 'in_progress')
-  const settlementActionShift = shifts.find((s) => shiftNeedsSettlementAction(s, settlementForShift(data, s.id)))
-  const todayAwaiting = awaiting.find((s) => s.date === todayISO())
-  const startWindowShift = shifts.find((s) => shiftIsInStartWindow(s, nowTs))
-  const focus = running || settlementActionShift || todayAwaiting || startWindowShift
+  const {
+    actionRequest,
+    actionShift,
+    awaiting,
+    focus,
+    incomingSwaps,
+    myOpenInterests,
+    openShifts,
+    shifts,
+    swapColleagues,
+    swapShift,
+  } = selectDriverHomeState(data, { currentDriver, swapDraft, actionDialog })
   const setStatus = (id, status, reason = '', options = {}) => {
     const shift = data.shifts.find((s) => s.id === id)
     const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')}`, `driver-${status}`, id)] : []
@@ -116,9 +103,6 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     closeActionDialog()
     showDriverToast('Žádost o výměnu zrušena.')
   }
-  const incomingSwaps = (data.swapRequests || []).filter((r) => r.status === 'pending' && r.driverId !== currentDriver?.id && (r.targetMode === 'all' || r.targetDriverId === currentDriver?.id))
-    .map((r) => ({ request: r, shift: data.shifts.find((s) => s.id === r.shiftId) }))
-    .filter((x) => x.shift && x.shift.date >= todayISO())
   const acceptSwap = (request) => {
     const shift = data.shifts.find((s) => s.id === request.shiftId)
     if (!shift) { showDriverToast('Směna už neexistuje.'); return }
@@ -238,36 +222,13 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{appFriendlyError(syncState.error)}</div>}
     {focus && <div className="driver-section-kicker">Aktuální směna</div>}
     {focus ? <ShiftMobileCard s={focus} focusCard {...cardProps} /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
-    {quickChips.length > 0 && <div className="driver-quick-strip" aria-label="Rychlý přehled">{quickChips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}</div>}
-    {awaiting.length > 0 && <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts"><summary><span><b>Čeká na potvrzení ({awaiting.length})</b><small>Směny vyžadující reakci</small></span><span className="pill warn">{awaiting.length}</span></summary><div className="collapse-content"><div className="stack">{awaiting.filter((s) => s.id !== focus?.id).map((s) => <ShiftMobileCard s={s} key={s.id} {...cardProps} />)}{awaiting.filter((s) => s.id !== focus?.id).length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}</div></div></details>}
-    {openShifts.length > 0 && <details id="driver-open-shifts-section" className={`card driver-offers collapse-card driver-open-shifts ${highlightOpenShifts ? 'driver-open-shifts-highlight' : ''}`}><summary><span><b>Zobrazit volné směny ({openShifts.length})</b><small>Nabídky, na které se můžeš přihlásit</small></span><span className="pill warn">{openShifts.length}</span></summary><div className="collapse-content"><div className="stack">{openShifts.map((shift) => { const interested = myOpenInterests.some((r) => r.shiftId === shift.id); return <div className="alert warn" key={shift.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />{helpers.vehicleName(shift.vehicleId)} · {shift.note || 'Volná směna k obsazení'}<br />{shift.instruction && <small>Instrukce: {shift.instruction}</small>}<div className="row-actions" style={{ marginTop: 8 }}>{interested ? <span className="pill good">Zájem odeslán</span> : <button onClick={() => applyForOpenShift(shift)}>Mám zájem</button>}</div></div> })}</div></div></details>}
-    {incomingSwaps.length > 0 && <div id="driver-incoming-swaps-section" className="card driver-offers"><div className="section-title"><h3>Nabídnuté výměny pro mě</h3><span className="pill warn">{incomingSwaps.length}</span></div><div className="stack">{incomingSwaps.map(({ request, shift }) => <div className="alert warn" key={request.id}><b>{formatDate(shift.date)} {shift.start}–{shift.end}</b><br />Nabízí: {helpers.driverName(request.driverId)} · {helpers.vehicleName(shift.vehicleId)}<br /><small>{request.reason || 'Bez zprávy'}</small><div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => acceptSwap(request)}>Chci převzít směnu</button>{request.targetMode === 'driver' && request.targetDriverId === currentDriver?.id && <button className="danger" onClick={() => declineSwap(request)}>Odmítnout</button>}</div></div>)}</div></div>}
-    <div className="section-title driver-list-title"><h3>Moje další směny</h3><span className="pill">{otherShifts.length}</span></div>
-    <div className="driver-card-list">{otherShifts.map((s) => <ShiftMobileCard s={s} key={s.id} {...cardProps} />)}{!otherShifts.length && <div className="empty">Nemáš další plánované směny.</div>}</div>
+    <DriverQuickStrip chips={quickChips} />
+    <DriverAwaitingSection awaiting={awaiting} focusId={focus?.id} cardProps={cardProps} />
+    <DriverOpenShiftsSection openShifts={openShifts} myOpenInterests={myOpenInterests} helpers={helpers} highlighted={highlightOpenShifts} onApplyForOpenShift={applyForOpenShift} />
+    <DriverIncomingSwapsSection incomingSwaps={incomingSwaps} helpers={helpers} currentDriverId={currentDriver?.id} onAcceptSwap={acceptSwap} onDeclineSwap={declineSwap} />
+    <DriverShiftList shifts={otherShifts} cardProps={cardProps} />
     <DriverTwoWeekCalendar shifts={shifts} openShifts={openShifts} helpers={helpers} />
-    {swapDraft && swapShift && <Modal title="Výměna směny" onClose={closeSwapModal} className="driver-swap-modal" backdropClassName="driver-swap-modal-backdrop">
-      <form className="stack driver-swap-form" onSubmit={submitSwap}>
-        <div className="driver-swap-summary">
-          <span>{formatDate(swapShift.date)}</span>
-          <b>{swapShift.start}–{swapShift.end}</b>
-          <small>{helpers.vehicleName(swapShift.vehicleId)}</small>
-        </div>
-        <Field label="Komu nabídnout">
-          <select value={swapDraft.targetDriverId} onChange={(event) => setSwapDraft({ ...swapDraft, targetDriverId: event.target.value })}>
-            <option value="">Všem kolegům</option>
-            {swapColleagues.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Důvod / poznámka">
-          <textarea value={swapDraft.reason} onChange={(event) => setSwapDraft({ ...swapDraft, reason: event.target.value })} placeholder="Např. potřebuji volno nebo nabízím výměnu směny." />
-        </Field>
-        {!swapColleagues.length && <div className="alert warn">Výměna se odešle jen dispečinku, protože není aktivní kolega.</div>}
-        <div className="row-actions driver-swap-actions">
-          <button className="primary" type="submit">Odeslat výměnu</button>
-          <button className="ghost" type="button" onClick={closeSwapModal}>Zrušit</button>
-        </div>
-      </form>
-    </Modal>}
+    <DriverSwapModal swapDraft={swapDraft} swapShift={swapShift} swapColleagues={swapColleagues} helpers={helpers} ui={ui} onClose={closeSwapModal} onChange={setSwapDraft} onSubmit={submitSwap} />
     <DriverActionModal
       dialog={actionDialog}
       shift={actionShift}
