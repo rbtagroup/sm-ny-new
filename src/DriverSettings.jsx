@@ -1,4 +1,4 @@
-import { PushSetupCard } from './NotificationsView.jsx'
+import { PushSetupCard } from './PushSetupCard.jsx'
 import { appFriendlyError } from './lib/errors.js'
 
 export function DriverSettings({

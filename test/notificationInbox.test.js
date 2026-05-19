@@ -1,8 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  groupStaffNotificationsByCategory,
   markInboxNotificationsDeleted,
   markInboxNotificationsRead,
+  notificationCategoryLabel,
   notificationInboxState,
   notificationTargetLabel,
   restoreInboxNotifications,
@@ -75,4 +77,21 @@ test('notificationTargetLabel keeps staff and driver target labels consistent', 
   assert.equal(notificationTargetLabel({ targetRole: 'driver_all' }), 'Všichni řidiči')
   assert.equal(notificationTargetLabel({ targetRole: 'dispatcher' }), 'Dispečink')
   assert.equal(notificationTargetLabel({ targetRole: 'unknown' }), 'unknown')
+})
+
+test('staff notification center groups notifications by operational category', () => {
+  const items = [
+    { id: 'sys', type: 'push-test', at: '2026-05-18T12:00:00.000Z' },
+    { id: 'shift', type: 'new-shift', at: '2026-05-18T11:00:00.000Z' },
+    { id: 'swap', type: 'swap-offer', at: '2026-05-18T10:00:00.000Z' },
+    { id: 'ops', type: 'info', at: '2026-05-18T09:00:00.000Z' },
+  ]
+
+  assert.equal(notificationCategoryLabel(items[0]), 'Systém')
+  assert.deepEqual(groupStaffNotificationsByCategory(items).map(([label, rows]) => [label, rows.map((row) => row.id)]), [
+    ['Výměny', ['swap']],
+    ['Směny', ['shift']],
+    ['Provozní', ['ops']],
+    ['Systém', ['sys']],
+  ])
 })

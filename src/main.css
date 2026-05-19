@@ -710,6 +710,10 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
 .staff-message-history{
   margin-bottom:16px;
 }
+.staff-message-filters{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  margin-bottom:12px;
+}
 .staff-message-history-list{
   display:grid;
   gap:10px;
@@ -827,6 +831,7 @@ html,body,#root{width:100%;max-width:100%;overflow-x:hidden}.main,.card,.drawer-
   .settlement-list-row{grid-template-columns:1fr}
   .settlement-list-meta{justify-items:start}
   .settlement-list-amount{width:100%;min-width:0}
+  .staff-message-filters{grid-template-columns:1fr}
   .staff-message-history-head{display:grid}
   .staff-message-history-badges{justify-content:flex-start}
   .staff-notification-row .driver-notification-row-head{gap:8px}

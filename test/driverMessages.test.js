@@ -4,10 +4,12 @@ import {
   activeDriverPushDeviceCount,
   createDriverMessageNotice,
   driverMessageDeliveryLabel,
+  driverMessageDeliveryState,
   driverMessageHistory,
   driverMessageLimits,
   driverMessageReadCount,
   driverMessageTargetDeviceCount,
+  filterDriverMessageHistory,
   latestDriverMessageDeliveryLog,
 } from '../src/lib/driverMessages.js'
 
@@ -98,4 +100,26 @@ test('driverMessageDeliveryLabel prefers persisted delivery logs', () => {
 
   assert.equal(latestDriverMessageDeliveryLog(data, message).id, 'new')
   assert.equal(driverMessageDeliveryLabel(data, message), '1/2 push · 1 chyba')
+  assert.equal(driverMessageDeliveryState(data, message), 'error')
+})
+
+test('filterDriverMessageHistory filters by target, delivery state, and range', () => {
+  const data = {
+    notifications: [
+      { id: 'broadcast', type: 'staff-message', targetRole: 'driver_all', at: '2026-05-18T11:00:00.000Z' },
+      { id: 'direct-old', type: 'staff-message', targetDriverId: 'drv_1', targetRole: 'driver', at: '2026-04-01T11:00:00.000Z' },
+      { id: 'direct-new', type: 'staff-message', targetDriverId: 'drv_1', targetRole: 'driver', at: '2026-05-18T12:00:00.000Z' },
+      { id: 'other', type: 'staff-message', targetDriverId: 'drv_2', targetRole: 'driver', at: '2026-05-18T13:00:00.000Z' },
+    ],
+    pushDeliveryLogs: [
+      { id: 'ok', notificationId: 'direct-new', recipients: 1, sent: 1, failed: 0, createdAt: '2026-05-18T12:01:00.000Z' },
+      { id: 'fail', notificationId: 'other', recipients: 1, sent: 0, failed: 1, createdAt: '2026-05-18T13:01:00.000Z' },
+    ],
+  }
+  const now = new Date('2026-05-19T00:00:00.000Z')
+
+  assert.deepEqual(filterDriverMessageHistory(data, { target: 'driver_all', range: 'all' }, now).map((item) => item.id), ['broadcast'])
+  assert.deepEqual(filterDriverMessageHistory(data, { target: 'drv_1', range: 'all' }, now).map((item) => item.id), ['direct-new', 'direct-old'])
+  assert.deepEqual(filterDriverMessageHistory(data, { status: 'delivered', range: 'all' }, now).map((item) => item.id), ['direct-new'])
+  assert.deepEqual(filterDriverMessageHistory(data, { target: 'drv_1', range: '30' }, now).map((item) => item.id), ['direct-new'])
 })

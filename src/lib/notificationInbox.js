@@ -46,6 +46,26 @@ export function groupInboxNotifications(items = [], now = new Date()) {
   return groups.filter(([, groupItems]) => groupItems.length)
 }
 
+const notificationCategoryOrder = ['Výměny', 'Směny', 'Provozní', 'Systém']
+
+export function notificationCategoryLabel(notice = {}) {
+  const type = String(notice.type || '').toLowerCase()
+  if (type.includes('swap')) return 'Výměny'
+  if (type.includes('shift') || type.includes('coverage') || type.includes('reminder')) return 'Směny'
+  if (type.includes('push') || type.includes('system') || type.includes('error')) return 'Systém'
+  return 'Provozní'
+}
+
+export function groupStaffNotificationsByCategory(items = []) {
+  const grouped = new Map(notificationCategoryOrder.map((label) => [label, []]))
+  for (const notice of sortNotificationsNewestFirst(items)) {
+    const label = notificationCategoryLabel(notice)
+    if (!grouped.has(label)) grouped.set(label, [])
+    grouped.get(label).push(notice)
+  }
+  return [...grouped.entries()].filter(([, groupItems]) => groupItems.length)
+}
+
 export function notificationInboxState(data = {}, contextInput = {}, now = new Date()) {
   const context = notificationContext({ ...contextInput, swapRequests: contextInput.swapRequests || data.swapRequests || [] })
   const visible = visibleInboxNotifications(data, context)
