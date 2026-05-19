@@ -10,6 +10,7 @@ import {
   weekdayCronMap,
 } from './lib/driverReminderSchedule.js'
 import { deviceLabelFromUserAgent } from './lib/display.js'
+import { appFriendlyError } from './lib/errors.js'
 import { configuredShiftTimes } from './lib/shiftTemplates.js'
 
 export function SettingsView({ title = 'Nastavení', data, commit, supabase, onlineMode, reloadOnline, profile, version, ui }) {
@@ -86,7 +87,7 @@ export function SettingsView({ title = 'Nastavení', data, commit, supabase, onl
     if (onlineMode && supabase?.rpc) {
       const { error } = await supabase.rpc('refresh_driver_reminder_cron')
       if (error) {
-        setDriverReminderStatus(`Uloženo, ale cron se nepodařilo obnovit automaticky: ${error.message}`)
+        setDriverReminderStatus(`Uloženo, ale cron se nepodařilo obnovit automaticky: ${appFriendlyError(error.message)}`)
         return
       }
       setDriverReminderStatus('Uloženo a cron job byl obnoven.')
@@ -101,7 +102,7 @@ export function SettingsView({ title = 'Nastavení', data, commit, supabase, onl
     if (onlineMode && supabase?.rpc) {
       const { data: result, error } = await supabase.rpc('rb_cleanup_invalid_push_subscriptions', { p_min_failures: 1 })
       if (error) {
-        setPushCleanupStatus(`Nepodařilo se odpojit chybová zařízení: ${error.message}`)
+        setPushCleanupStatus(`Nepodařilo se odpojit chybová zařízení: ${appFriendlyError(error.message)}`)
         return
       }
       await reloadOnline?.(true)

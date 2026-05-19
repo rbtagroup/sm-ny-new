@@ -48,7 +48,7 @@ export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, 
       await showBrowserNotification('RBSHIFT notifikace aktivní', 'Test notifikace proběhl v pořádku.')
     } catch (err) {
       setPermission('Notification' in window ? Notification.permission : 'unsupported')
-      setStatus(err?.message || 'Notifikace se nepodařilo povolit.')
+      setStatus(appFriendlyError(err?.message || 'Notifikace se nepodařilo povolit.'))
     }
   }
 
@@ -57,7 +57,7 @@ export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, 
       const ok = await showBrowserNotification('RBSHIFT test', 'Takhle bude vypadat upozornění na směnu nebo změnu.')
       setPermission('Notification' in window ? Notification.permission : 'unsupported')
       setStatus(ok ? 'Testovací lokální notifikace odeslána.' : 'Notifikace nejsou povolené.')
-    } catch (err) { setStatus(err?.message || 'Test notifikace selhal.') }
+    } catch (err) { setStatus(appFriendlyError(err?.message || 'Test notifikace selhal.')) }
   }
 
   const serverTest = async () => {

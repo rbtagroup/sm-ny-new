@@ -325,11 +325,17 @@ async function runBrowserChecks() {
   }
 }
 
+async function stopChild(child) {
+  if (!child || child.killed) return
+  const exited = new Promise((resolve) => child.once('exit', resolve))
+  child.kill()
+  await Promise.race([exited, delay(1000)])
+}
+
 async function cleanup() {
   stopping = true
-  if (chromeProcess && !chromeProcess.killed) chromeProcess.kill()
-  if (appProcess && !appProcess.killed) appProcess.kill()
-  if (chromeProfile) rmSync(chromeProfile, { recursive: true, force: true })
+  await Promise.all([stopChild(chromeProcess), stopChild(appProcess)])
+  if (chromeProfile) rmSync(chromeProfile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 }
 
 try {

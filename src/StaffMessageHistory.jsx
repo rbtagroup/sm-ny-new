@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatDateTime } from './lib/dateTime.js'
+import { appFriendlyError } from './lib/errors.js'
 import {
   driverMessageDeliveryLabel,
   driverMessageDeliveryState,
@@ -82,7 +83,7 @@ export function StaffMessageHistory({ data, helpers, ui }) {
             </div>
           </div>
           <p>{message.body || 'Bez textu'}</p>
-          {deliveryLog?.error && <small className="staff-message-delivery-error">Push chyba: {deliveryLog.error}</small>}
+          {deliveryLog?.error && <small className="staff-message-delivery-error">Push chyba: {appFriendlyError(deliveryLog.error)}</small>}
         </div>
       })}
     </div> : <div className="empty">Pro vybrané filtry tu nejsou žádné zprávy.</div>}
