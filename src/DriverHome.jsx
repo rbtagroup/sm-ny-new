@@ -243,6 +243,6 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
       onConfirmOpenShift={confirmOpenShift}
       ui={ui}
     />
-    {settlementShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={settlementShift} currentDriver={currentDriver} isDriver onClose={() => setSettlementShiftId('')} />}
+    {settlementShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={settlementShift} currentDriver={currentDriver} isDriver onClose={() => setSettlementShiftId('')} ui={ui} services={services} />}
   </div>
 }
