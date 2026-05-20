@@ -8,6 +8,7 @@ do $$
 declare
   driver_profile_id uuid;
   driver_row_id text;
+  other_driver_profile_id uuid;
   other_driver_row_id text;
   staff_profile_id uuid;
   affected int;
@@ -19,11 +20,13 @@ begin
   where trim(lower(p.role)) = 'driver'
   limit 1;
 
-  select d.id
-    into other_driver_row_id
-  from public.drivers d
+  select p.id, d.id
+    into other_driver_profile_id, other_driver_row_id
+  from public.profiles p
+  join public.drivers d on d.profile_id = p.id
   where d.id <> driver_row_id
     and d.active is distinct from false
+    and trim(lower(p.role)) = 'driver'
   limit 1;
 
   select p.id
@@ -72,7 +75,10 @@ begin
   insert into public.shifts (id, shift_date, start_time, end_time, driver_id, vehicle_id, type, status, note)
   values
     ('rls_probe_driver_confirm', current_date, '02:00', '03:00', driver_row_id, null, 'day', 'assigned', 'rollback probe'),
+    ('rls_probe_driver_decline', current_date, '03:00', '04:00', driver_row_id, null, 'day', 'assigned', 'rollback probe'),
     ('rls_probe_driver_rewrite', current_date, '04:00', '05:00', driver_row_id, null, 'day', 'confirmed', 'rollback probe'),
+    ('rls_probe_swap_targeted_shift', current_date, '05:00', '06:00', driver_row_id, null, 'day', 'confirmed', 'rollback probe'),
+    ('rls_probe_swap_all_shift', current_date, '05:30', '06:30', driver_row_id, null, 'day', 'confirmed', 'rollback probe'),
     ('rls_probe_open_claim', current_date, '06:00', '07:00', null, null, 'day', 'open', 'rollback probe');
 
   insert into public.notifications (id, target_driver_id, target_role, type, title, body, read_by, deleted_by)
@@ -87,6 +93,15 @@ begin
   get diagnostics affected = row_count;
   if affected <> 1 then
     raise exception 'EXPECTED_ALLOWED_FAILED: driver confirm own shift';
+  end if;
+
+  update public.shifts
+  set status = 'declined',
+      decline_reason = 'RLS probe decline'
+  where id = 'rls_probe_driver_decline';
+  get diagnostics affected = row_count;
+  if affected <> 1 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: driver decline own shift';
   end if;
 
   begin
@@ -156,6 +171,76 @@ begin
   end if;
 
   if other_driver_row_id is not null then
+    perform public.rb_request_swap_with_notifications(
+      'rls_probe_swap_targeted',
+      'rls_probe_swap_targeted_shift',
+      'driver',
+      other_driver_row_id,
+      'RLS probe targeted swap',
+      jsonb_build_array(jsonb_build_object('at', now(), 'text', 'RLS probe targeted swap created')),
+      now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_targeted_notice',
+        'targetDriverId', other_driver_row_id,
+        'targetRole', 'driver',
+        'type', 'swap-offer',
+        'shiftId', 'rls_probe_swap_targeted_shift',
+        'title', 'RLS probe targeted swap notice',
+        'body', 'rollback probe'
+      )),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_targeted_audit',
+        'text', 'RLS probe targeted swap audit',
+        'payload', jsonb_build_object('shiftId', 'rls_probe_swap_targeted_shift')
+      ))
+    );
+
+    select count(*)::int
+      into affected
+    from public.swap_requests
+    where id = 'rls_probe_swap_targeted'
+      and driver_id = driver_row_id
+      and target_driver_id = other_driver_row_id
+      and status = 'pending';
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: driver targeted swap request with side effects';
+    end if;
+
+    perform public.rb_request_swap_with_notifications(
+      'rls_probe_swap_all',
+      'rls_probe_swap_all_shift',
+      'all',
+      null,
+      'RLS probe all-driver swap',
+      jsonb_build_array(jsonb_build_object('at', now(), 'text', 'RLS probe all-driver swap created')),
+      now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_all_notice',
+        'targetDriverId', other_driver_row_id,
+        'targetRole', 'driver',
+        'type', 'swap-offer',
+        'shiftId', 'rls_probe_swap_all_shift',
+        'title', 'RLS probe all-driver swap notice',
+        'body', 'rollback probe'
+      )),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_all_audit',
+        'text', 'RLS probe all-driver swap audit',
+        'payload', jsonb_build_object('shiftId', 'rls_probe_swap_all_shift')
+      ))
+    );
+
+    select count(*)::int
+      into affected
+    from public.swap_requests
+    where id = 'rls_probe_swap_all'
+      and driver_id = driver_row_id
+      and target_mode = 'all'
+      and status = 'pending';
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: driver all-driver swap request with side effects';
+    end if;
+
     begin
       insert into public.notifications (id, target_driver_id, target_role, type, title, body)
       values ('rls_probe_driver_notice_foreign', other_driver_row_id, 'driver', 'info', 'RLS probe foreign', 'rollback probe');
@@ -165,13 +250,124 @@ begin
         raise;
       end if;
     end;
+
+    reset role;
+    perform set_config('request.jwt.claim.sub', other_driver_profile_id::text, true);
+    set local role authenticated;
+
+    perform public.rb_decline_swap_request_with_notifications(
+      'rls_probe_swap_targeted',
+      jsonb_build_array(jsonb_build_object('at', now(), 'text', 'RLS probe targeted swap declined')),
+      'RLS probe targeted decline',
+      now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_rejected_notice',
+        'targetDriverId', driver_row_id,
+        'targetRole', 'driver',
+        'type', 'swap-rejected',
+        'shiftId', 'rls_probe_swap_targeted_shift',
+        'title', 'RLS probe swap rejected notice',
+        'body', 'rollback probe'
+      )),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_rejected_audit',
+        'text', 'RLS probe targeted swap rejected audit',
+        'payload', jsonb_build_object('shiftId', 'rls_probe_swap_targeted_shift')
+      ))
+    );
+
+    select count(*)::int
+      into affected
+    from public.swap_requests
+    where id = 'rls_probe_swap_targeted'
+      and target_driver_id = other_driver_row_id
+      and status = 'rejected';
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: target driver decline targeted swap with side effects';
+    end if;
+
+    perform public.rb_accept_swap_request_with_notifications(
+      'rls_probe_swap_all',
+      jsonb_build_array(jsonb_build_object('at', now(), 'text', 'RLS probe all-driver swap accepted')),
+      now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_accepted_notice',
+        'targetDriverId', driver_row_id,
+        'targetRole', 'driver',
+        'type', 'swap-accepted',
+        'shiftId', 'rls_probe_swap_all_shift',
+        'title', 'RLS probe swap accepted notice',
+        'body', 'rollback probe'
+      )),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_accepted_audit',
+        'text', 'RLS probe all-driver swap accepted audit',
+        'payload', jsonb_build_object('shiftId', 'rls_probe_swap_all_shift')
+      ))
+    );
+
+    select count(*)::int
+      into affected
+    from public.swap_requests
+    where id = 'rls_probe_swap_all'
+      and accepted_by_driver_id = other_driver_row_id
+      and status = 'accepted';
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: target driver accept all-driver swap with side effects';
+    end if;
   else
-    raise notice 'Skipping foreign driver notification probe: only one driver row found.';
+    raise notice 'Skipping cross-driver swap and foreign notification probes: only one driver row found.';
   end if;
 
   reset role;
   perform set_config('request.jwt.claim.sub', staff_profile_id::text, true);
   set local role authenticated;
+
+  if other_driver_row_id is not null then
+    perform public.rb_resolve_swap_request_with_notifications(
+      'rls_probe_swap_all',
+      'approved',
+      other_driver_row_id,
+      null,
+      jsonb_build_array(jsonb_build_object('at', now(), 'text', 'RLS probe all-driver swap approved')),
+      now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_approved_notice',
+        'targetDriverId', driver_row_id,
+        'targetRole', 'driver',
+        'type', 'swap-approved',
+        'shiftId', 'rls_probe_swap_all_shift',
+        'title', 'RLS probe swap approved notice',
+        'body', 'rollback probe'
+      )),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'rls_probe_swap_approved_audit',
+        'text', 'RLS probe all-driver swap approved audit',
+        'payload', jsonb_build_object('shiftId', 'rls_probe_swap_all_shift')
+      ))
+    );
+
+    select count(*)::int
+      into affected
+    from public.swap_requests
+    where id = 'rls_probe_swap_all'
+      and approved_driver_id = other_driver_row_id
+      and status = 'approved';
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: staff approve accepted swap with side effects';
+    end if;
+
+    select count(*)::int
+      into affected
+    from public.shifts
+    where id = 'rls_probe_swap_all_shift'
+      and driver_id = other_driver_row_id
+      and status = 'confirmed'
+      and swap_request_status = 'approved';
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: staff swap approval assigns shift to approved driver';
+    end if;
+  end if;
 
   insert into public.shifts (id, shift_date, start_time, end_time, driver_id, vehicle_id, type, status, note)
   values ('rls_probe_staff_insert', current_date, '08:00', '09:00', driver_row_id, null, 'day', 'assigned', 'rollback probe');

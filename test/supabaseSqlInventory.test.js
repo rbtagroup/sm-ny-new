@@ -56,10 +56,17 @@ test('RLS regression probes cover driver notification and audit RPC flows', () =
 
   assert.match(sql, /rb_insert_notifications/, 'driver notification RPC should be covered')
   assert.match(sql, /rb_insert_audit_log/, 'driver audit RPC should be covered')
+  assert.match(sql, /driver confirm own shift/, 'driver shift confirmation should be covered')
+  assert.match(sql, /driver decline own shift/, 'driver shift decline should be covered')
   assert.match(sql, /driver notification read state update/, 'driver notification state update should be covered')
   assert.match(sql, /driver notification title rewrite/, 'driver notification rewrite denial should be covered')
   assert.match(sql, /driver audit log select/, 'driver audit visibility denial should be covered')
   assert.match(sql, /staff audit log select/, 'staff audit visibility allow path should be covered')
+  assert.match(sql, /rb_request_swap_with_notifications/, 'driver swap request with side effects should be covered')
+  assert.match(sql, /target driver decline targeted swap with side effects/, 'targeted swap decline should be covered')
+  assert.match(sql, /target driver accept all-driver swap with side effects/, 'all-driver swap accept should be covered')
+  assert.match(sql, /staff approve accepted swap with side effects/, 'staff swap approval should be covered')
+  assert.match(sql, /staff swap approval assigns shift to approved driver/, 'staff approval shift assignment should be covered')
 })
 
 test('push rate-limit migrations avoid ambiguous bucket_key conflict target', () => {
