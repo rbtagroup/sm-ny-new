@@ -1,7 +1,9 @@
 -- ============================================================
 -- RBSHIFT – REALTIME LIVE SYNC FIX
--- Spusť v Supabase SQL Editoru, pokud se změny směn zobrazují
--- ostatním uživatelům až po ručním refresh aplikace.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
+-- Historická poznámka: vzniklo pro live-sync zpoždění do ručního refresh.
 -- ============================================================
 
 alter table public.drivers replica identity full;

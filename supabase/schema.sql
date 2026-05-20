@@ -1,5 +1,7 @@
 -- RBSHIFT v5 online schema
--- Spustit v Supabase SQL editoru. Tabulky aplikace používají textové ID, aby šla převést lokální data z demo verze bez migrací UUID.
+-- REFERENCE SNAPSHOT ONLY - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. For a new project, apply migrations
+-- instead of this snapshot. Text IDs were used to migrate local demo data.
 
 create extension if not exists pgcrypto;
 

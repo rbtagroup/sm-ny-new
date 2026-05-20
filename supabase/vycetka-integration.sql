@@ -1,6 +1,9 @@
 -- ============================================================
 -- RBSHIFT + Výčetka produkční integrace
--- Spouštět až po základním schema.sql + rls-final-fix.sql.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
+-- Historická poznámka: původně se pouštělo až po schema.sql + rls-final-fix.sql.
 -- ============================================================
 
 create table if not exists public.shift_settlements (

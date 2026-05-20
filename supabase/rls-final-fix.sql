@@ -1,8 +1,9 @@
 -- ============================================================
 -- RBSHIFT – FINAL RLS PATCH
--- Použití:
--- 1) Nejdřív spusť základní schema: supabase/schema.sql
--- 2) Potom spusť tento patch v Supabase SQL Editoru.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
+-- Historický postup byl: schema.sql a potom tento patch v SQL Editoru.
 --
 -- Řeší:
 -- - profiles infinite recursion
@@ -849,7 +850,7 @@ order by tablename, policyname;
 -- ============================================================
 -- RBSHIFT v5.4.5 – UX CLEANUP / AVAILABILITY DATE PATCH
 -- Přidává možnost dostupnosti na konkrétní datum.
--- Spusť v Supabase SQL Editoru po nasazení v5.4.5.
+-- Historical embedded legacy section; do not run directly.
 -- ============================================================
 
 alter table public.availability
@@ -877,7 +878,7 @@ end $$;
 -- ============================================================
 -- RBSHIFT v5.4.7 – SENIOR REFACTOR PATCH
 -- Přidává DateTime Range dostupnost řidičů.
--- Spusť po nasazení v5.4.7.
+-- Historical embedded legacy section; do not run directly.
 -- ============================================================
 
 alter table public.availability

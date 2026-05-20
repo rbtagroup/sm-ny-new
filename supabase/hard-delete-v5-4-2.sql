@@ -1,6 +1,9 @@
 -- ============================================================
 -- RBSHIFT v5.4.2 – hard delete směn
--- Spusť pouze pokud Supabase při trvalém smazání hlásí RLS chybu.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
+-- Historická poznámka: vzniklo pro RLS chybu při trvalém smazání směny.
 -- Umožní adminovi/dispečerovi mazat směny, související výměny a notifikace.
 -- ============================================================
 

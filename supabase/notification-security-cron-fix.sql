@@ -1,5 +1,8 @@
 -- RBSHIFT notification security + Prague-local cron fix
--- Spustit v Supabase SQL editoru po nasazení nové verze:
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
+-- Historická poznámka: vzniklo po nasazení:
 -- - api/send-push.js na Vercel
 -- - Edge Functions scheduler a driver-reminder
 --

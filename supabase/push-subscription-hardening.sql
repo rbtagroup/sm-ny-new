@@ -1,5 +1,7 @@
 -- RBSHIFT push subscription hardening
--- Spustit v Supabase SQL editoru.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
 --
 -- Řeší P0:
 -- - uživatel nemůže uložit push zařízení s cizím driver_id

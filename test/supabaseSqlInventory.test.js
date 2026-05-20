@@ -41,6 +41,17 @@ test('legacy top-level SQL patches are blocked from direct production execution'
   }
 })
 
+test('non-executable top-level SQL files show source-of-truth guard comments', () => {
+  for (const file of inventory.files.filter((entry) => !entry.manualExecutionAllowed)) {
+    const sql = readFileSync(join(supabaseDir, file.path), 'utf8')
+    const head = sql.slice(0, 900)
+
+    assert.match(head, /DO NOT RUN DIRECTLY/, `${file.path} must warn against direct execution`)
+    assert.match(head, /Source of truth: supabase\/migrations\//, `${file.path} must point to migrations`)
+    assert.doesNotMatch(sql, /Spusť|Spustit/i, `${file.path} must not contain an unconditional SQL editor run instruction`)
+  }
+})
+
 test('migration filenames are timestamped and unique', () => {
   const files = migrationFiles()
   assert.ok(files.length > 0, 'expected at least one migration')

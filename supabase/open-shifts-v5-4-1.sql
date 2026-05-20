@@ -1,6 +1,8 @@
 -- ============================================================
 -- RBSHIFT v5.4.1 – VOLNÉ SMĚNY / OPEN SHIFTS PATCH
--- Spusť v Supabase SQL Editoru po nasazení v5.4.1.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
 --
 -- Přidává:
 -- - status 'open' pro volné směny bez řidiče

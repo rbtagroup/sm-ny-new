@@ -8,6 +8,14 @@ Top-level `.sql` soubory v této složce jsou historické nebo ruční pomocné 
 
 Inventář volných SQL souborů je v `supabase/sql-inventory.json`. Testovací sada hlídá, že každý nový top-level `.sql` soubor musí být v inventáři zařazený.
 
+Krátké rozhodovací pravidlo:
+
+- Chci změnit schema/RLS/RPC/grants v produkci: vytvořit novou migraci v `supabase/migrations/`.
+- Chci zapnout cron/Vault/pg_net provozní integraci: použít jen soubor označený jako `manual-ops` a nejdřív zkontrolovat placeholdery.
+- Chci ověřit chování databáze: použít `manual-test` nebo `regression-probe`.
+- Chci znovu použít starý patch: nepouštět ho přímo; vyzvednout konkrétní část do nové migrace.
+- Chci nový projekt z nuly: aplikovat migrace, ne `schema.sql`.
+
 Kategorie inventáře:
 
 - `schema-snapshot` - referenční snapshot, ne deploy zdroj.

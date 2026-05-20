@@ -1,5 +1,7 @@
 -- RBSHIFT notification hardening
--- Spustit v Supabase SQL editoru po nasazení nové verze funkcí.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
 -- Řeší:
 -- - payload sloupec pro systémové notifikace
 -- - idempotenci daily-coverage a driver-reminder notifikací

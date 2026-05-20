@@ -1,7 +1,9 @@
 -- ============================================================
 -- RBSHIFT v5.4.7 – SENIOR REFACTOR PATCH
 -- Přidává DateTime Range dostupnost řidičů.
--- Spusť po nasazení v5.4.7.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
 -- ============================================================
 
 alter table public.availability

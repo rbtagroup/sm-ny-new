@@ -1,5 +1,7 @@
 -- RBSHIFT notification review fixes
--- Spustit v Supabase SQL editoru po nasazení nové verze aplikace a Edge Function driver-reminder.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
 --
 -- Řeší:
 -- 1) globální notifikace all/driver_all lze řidičem označit jako přečtené/smazané

@@ -1,7 +1,9 @@
 -- ============================================================
 -- RBSHIFT v5.4.5 – UX CLEANUP / AVAILABILITY DATE PATCH
 -- Přidává možnost dostupnosti na konkrétní datum.
--- Spusť v Supabase SQL Editoru po nasazení v5.4.5.
+-- LEGACY PATCH - DO NOT RUN DIRECTLY on a migration-managed DB.
+-- Source of truth: supabase/migrations/. If this behavior is needed again,
+-- copy the specific change into a new timestamped migration and verify it.
 -- ============================================================
 
 alter table public.availability
