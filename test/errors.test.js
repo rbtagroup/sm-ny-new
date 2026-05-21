@@ -33,3 +33,10 @@ test('appFriendlyError translates expired push subscriptions', () => {
     'Push povolení na zařízení už není platné. Odpoj zařízení a nech řidiče znovu povolit notifikace.',
   )
 })
+
+test('appFriendlyError treats duplicate key conflicts as stale state, not permissions', () => {
+  const message = appFriendlyError('duplicate key value violates unique constraint "shift_settlements_shift_id_key"')
+
+  assert.equal(message, 'Tahle akce už je uložená. Obnov aplikaci pro aktuální stav.')
+  assert.doesNotMatch(message, /oprávnění|violates|constraint/i)
+})

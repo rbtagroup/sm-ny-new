@@ -19,6 +19,9 @@ export function appFriendlyError(message = '') {
   if (/authentication required|missing-auth-token|401|unauthorized/i.test(text)) {
     return 'Přihlášení vypršelo. Obnov aplikaci a přihlas se znovu.'
   }
+  if (/duplicate key|unique constraint|23505/i.test(text)) {
+    return 'Tahle akce už je uložená. Obnov aplikaci pro aktuální stav.'
+  }
   if (/row-level security|violates|permission denied|not authorized|42501|audit_logs|notifications|shifts|profiles|drivers|settlements|swap_requests/i.test(text)) {
     return 'Akci se nepodařilo uložit kvůli oprávnění. Obnov aplikaci a zkus to znovu, případně kontaktuj dispečink.'
   }
@@ -36,9 +39,6 @@ export function appFriendlyError(message = '') {
   }
   if (/jwt|token|auth|session|not logged/i.test(text)) {
     return 'Přihlášení vypršelo. Odhlas se a přihlas znovu.'
-  }
-  if (/duplicate key|unique constraint/i.test(text)) {
-    return 'Tahle akce už je uložená. Obnov aplikaci pro aktuální stav.'
   }
   return text
 }

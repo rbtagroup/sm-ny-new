@@ -101,3 +101,14 @@ test('push delivery log migration keeps delivery data staff-only and API-readabl
   assert.match(sql, /grant select on table public\.push_delivery_logs to authenticated/, 'authenticated Data API select must be explicit')
   assert.match(sql, /grant all on table public\.push_delivery_logs to service_role/, 'service role API must be able to write delivery logs')
 })
+
+test('settlement assignment migrations keep reassigned open settlements editable', () => {
+  const syncSql = readFileSync(join(migrationsDir, '20260521103742_fix_settlement_driver_assignment.sql'), 'utf8')
+  const reopenSql = readFileSync(join(migrationsDir, '20260521104317_reopen_reassigned_settlements.sql'), 'utf8')
+
+  assert.match(syncSql, /status <> 'approved'/, 'approved settlements should stay frozen')
+  assert.match(syncSql, /shifts_sync_open_settlement_assignment/, 'shift assignment trigger should exist')
+  assert.match(reopenSql, /status = case when settlement\.status = 'submitted' then 'returned'/, 'submitted drift should reopen for driver review')
+  assert.match(reopenSql, /submitted_at = case when settlement\.status = 'submitted' then null/, 'reopened settlement should no longer look submitted')
+  assert.match(reopenSql, /jsonb_set\(/, 'driver-facing form identity fields should be realigned')
+})
