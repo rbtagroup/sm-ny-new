@@ -11,7 +11,7 @@ import {
   swapRequestRpcCallsWithSideEffects,
 } from './sensitiveSync.js'
 import { createSupabaseMappers, ONLINE_TABLES, tableName } from './supabaseData.js'
-import { readStore, seed, writeStore } from './appStore.js'
+import { readStore, seed, STORAGE_KEY, writeStore } from './appStore.js'
 import { appFriendlyError } from './errors.js'
 import { pushDeliveryWarning } from './pushDelivery.js'
 import { uid } from './ids.js'
@@ -102,7 +102,15 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
         changed = changed.filter((row) => !staffSwapResolution.handledShiftIds.has(row.id))
       }
       // Řidič nesmí přepisovat cizí směny. Převzetí výměny/volné směny se ukládá přes swap_requests.
-      if (!isStaff && key === 'shifts') changed = changed.filter((row) => row.driverId === currentDriverId && !driverSwapShiftIds.has(row.id))
+      if (!isStaff && key === 'shifts') {
+        const driverShiftChanges = changed.filter((row) => !driverSwapShiftIds.has(row.id))
+        const blocked = driverShiftChanges.filter((row) => row.driverId !== currentDriverId)
+        if (blocked.length) {
+          errors.push(`shifts: směnu ${blocked.map((row) => row.id).join(', ')} nelze uložit pro aktuálního řidiče`)
+          if (critical.has(key)) throw new Error(errors.join('\n'))
+        }
+        changed = driverShiftChanges.filter((row) => row.driverId === currentDriverId)
+      }
       if (!isStaff && key === 'settlements') changed = driverSettlementRowsForSync(changed, currentDriverId)
       if (!isStaff && key === 'pushSubscriptions') changed = driverPushSubscriptionRowsForSync(changed, { profileId: profile.id, currentDriverId })
       if (!isStaff && key === 'notifications') {
@@ -236,10 +244,14 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     const [data, setData] = useState(readStore)
     const [syncState, setSyncState] = useState({ loading: online, saving: false, error: '', lastSyncAt: '' })
     const pendingSyncs = useRef(0)
+    const deferredReload = useRef(false)
 
     const reloadOnline = async (silent = false) => {
       if (!online) return
-      if (silent && pendingSyncs.current > 0) return
+      if (silent && pendingSyncs.current > 0) {
+        deferredReload.current = true
+        return
+      }
       if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '' }))
       try {
         const loaded = await loadDataFromSupabase()
@@ -251,8 +263,22 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       }
     }
 
+    const flushDeferredReload = () => {
+      if (pendingSyncs.current > 0 || !deferredReload.current) return
+      deferredReload.current = false
+      reloadOnline(true)
+    }
+
     useEffect(() => { if (!online) writeStore(data) }, [data, online])
     useEffect(() => { reloadOnline() }, [online, session?.user?.id])
+    useEffect(() => {
+      if (online) return undefined
+      const handleStorage = (event) => {
+        if (event.key === STORAGE_KEY && event.newValue) setData(readStore())
+      }
+      window.addEventListener('storage', handleStorage)
+      return () => window.removeEventListener('storage', handleStorage)
+    }, [online])
     useEffect(() => {
       if (!online || !supabase) return
       let timer = null
@@ -275,10 +301,20 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
         rtConnected = status === 'SUBSCRIBED'
         if (status === 'SUBSCRIBED') reloadSoon()
       })
-      const poll = setInterval(() => { if (!rtConnected) reloadOnline(true) }, 30000)
+      const poll = setInterval(() => { reloadOnline(true) }, 30000)
       const handleOnline = () => reloadOnline(true)
+      const handleVisible = () => { if (document.visibilityState !== 'hidden') reloadOnline(true) }
       window.addEventListener('online', handleOnline)
-      return () => { clearTimeout(timer); clearInterval(poll); window.removeEventListener('online', handleOnline); supabase.removeChannel(ch) }
+      window.addEventListener('focus', handleOnline)
+      document.addEventListener('visibilitychange', handleVisible)
+      return () => {
+        clearTimeout(timer)
+        clearInterval(poll)
+        window.removeEventListener('online', handleOnline)
+        window.removeEventListener('focus', handleOnline)
+        document.removeEventListener('visibilitychange', handleVisible)
+        supabase.removeChannel(ch)
+      }
     }, [online, session?.user?.id])
 
     const commit = (updater, text, options = {}) => {
@@ -312,6 +348,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
             })
           }
           options.onSuccess?.()
+          flushDeferredReload()
         })
         .catch((err) => {
           pendingSyncs.current -= 1
@@ -324,6 +361,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
           }
           setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)) }))
           options.onError?.(err)
+          flushDeferredReload()
         })
     }
 

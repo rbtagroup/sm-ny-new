@@ -29,6 +29,40 @@ function fakeSupabase(rowsByTable = {}, settingsPayload = {}) {
   }
 }
 
+function fakeSyncSupabase(updatedRows = [{ id: 'sh_1' }]) {
+  const updates = []
+  return {
+    updates,
+    from(table) {
+      return {
+        update(patch) {
+          const call = { table, patch, filters: [] }
+          updates.push(call)
+          return {
+            eq(column, value) {
+              call.filters.push({ column, value })
+              return {
+                select() {
+                  return Promise.resolve({ data: updatedRows, error: null })
+                },
+              }
+            },
+          }
+        },
+        upsert() {
+          return Promise.resolve({ error: null })
+        },
+        delete() {
+          return { in: () => Promise.resolve({ error: null }) }
+        },
+      }
+    },
+    rpc() {
+      return Promise.resolve({ error: null })
+    },
+  }
+}
+
 test('loadDataFromSupabase maps rows and clears stale shift swap status', async () => {
   const supabase = fakeSupabase({
     drivers: [{ id: 'drv_1', profile_id: 'profile_1', name: 'Roman', active: true }],
@@ -76,4 +110,53 @@ test('loadDataFromSupabase maps rows and clears stale shift swap status', async 
   assert.equal(data.drivers[0].name, 'Roman')
   assert.equal(data.shifts.find((shift) => shift.id === 'sh_1').swapRequestStatus, '')
   assert.equal(data.shifts.find((shift) => shift.id === 'sh_2').swapRequestStatus, 'accepted')
+})
+
+test('syncChangedRows persists an own driver shift confirmation', async () => {
+  const supabase = fakeSyncSupabase()
+  const { syncChangedRows } = createAppDataSync({
+    supabase,
+    isConfiguredSupabase: true,
+    timePart: () => '',
+    sendPushForNotifications: async () => ({ skipped: true }),
+  })
+  const prev = {
+    drivers: [{ id: 'drv_1', profileId: 'profile_1', email: 'driver@example.test' }],
+    shifts: [{ id: 'sh_1', date: '2026-05-22', start: '19:00', end: '07:00', driverId: 'drv_1', status: 'assigned' }],
+  }
+  const next = {
+    ...prev,
+    shifts: [{ ...prev.shifts[0], status: 'confirmed' }],
+  }
+
+  await syncChangedRows(prev, next, { id: 'profile_1', email: 'driver@example.test', role: 'driver' })
+
+  assert.equal(supabase.updates.length, 1)
+  assert.equal(supabase.updates[0].table, 'shifts')
+  assert.equal(supabase.updates[0].filters[0].value, 'sh_1')
+  assert.equal(supabase.updates[0].patch.status, 'confirmed')
+})
+
+test('syncChangedRows rejects driver shift changes when the profile is not linked to that shift', async () => {
+  const supabase = fakeSyncSupabase()
+  const { syncChangedRows } = createAppDataSync({
+    supabase,
+    isConfiguredSupabase: true,
+    timePart: () => '',
+    sendPushForNotifications: async () => ({ skipped: true }),
+  })
+  const prev = {
+    drivers: [{ id: 'drv_1', profileId: 'profile_1', email: 'driver@example.test' }],
+    shifts: [{ id: 'sh_1', date: '2026-05-22', start: '19:00', end: '07:00', driverId: 'drv_1', status: 'assigned' }],
+  }
+  const next = {
+    ...prev,
+    shifts: [{ ...prev.shifts[0], status: 'confirmed' }],
+  }
+
+  await assert.rejects(
+    syncChangedRows(prev, next, { id: 'profile_2', email: 'other@example.test', role: 'driver' }),
+    /nelze uložit pro aktuálního řidiče/,
+  )
+  assert.equal(supabase.updates.length, 0)
 })
