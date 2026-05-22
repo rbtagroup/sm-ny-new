@@ -242,6 +242,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
   function useAppData(session, profile) {
     const online = Boolean(isConfiguredSupabase && session?.user && profile)
     const [data, setData] = useState(readStore)
+    const dataRef = useRef(data)
     const [syncState, setSyncState] = useState({ loading: online, saving: false, error: '', lastSyncAt: '' })
     const pendingSyncs = useRef(0)
     const deferredReload = useRef(false)
@@ -255,6 +256,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '' }))
       try {
         const loaded = await loadDataFromSupabase()
+        dataRef.current = loaded
         setData(loaded)
         writeStore(loaded)
         setSyncState((s) => ({ ...s, loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() }))
@@ -269,12 +271,16 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       reloadOnline(true)
     }
 
+    useEffect(() => { dataRef.current = data }, [data])
     useEffect(() => { if (!online) writeStore(data) }, [data, online])
     useEffect(() => { reloadOnline() }, [online, session?.user?.id])
     useEffect(() => {
       if (online) return undefined
       const handleStorage = (event) => {
-        if (event.key === STORAGE_KEY && event.newValue) setData(readStore())
+        if (event.key !== STORAGE_KEY || !event.newValue) return
+        const stored = readStore()
+        dataRef.current = stored
+        setData(stored)
       }
       window.addEventListener('storage', handleStorage)
       return () => window.removeEventListener('storage', handleStorage)
@@ -318,17 +324,14 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     }, [online, session?.user?.id])
 
     const commit = (updater, text, options = {}) => {
-      let syncPayload = null
-      setData((prev) => {
-        const rawNext = typeof updater === 'function' ? updater(prev) : updater
-        const audit = text ? [{ id: uid('log'), at: new Date().toISOString(), text, actorId: session?.user?.id || null }, ...(rawNext.audit || [])].slice(0, 250) : rawNext.audit
-        const next = { ...rawNext, audit }
-        writeStore(next)
-        if (online) syncPayload = { prev, next }
-        return next
-      })
-      if (!online || !syncPayload) return
-      const { prev, next } = syncPayload
+      const prev = dataRef.current
+      const rawNext = typeof updater === 'function' ? updater(prev) : updater
+      const audit = text ? [{ id: uid('log'), at: new Date().toISOString(), text, actorId: session?.user?.id || null }, ...(rawNext.audit || [])].slice(0, 250) : rawNext.audit
+      const next = { ...rawNext, audit }
+      dataRef.current = next
+      writeStore(next)
+      setData(next)
+      if (!online) return
       pendingSyncs.current += 1
       setSyncState((s) => ({ ...s, saving: true, error: '' }))
       const pushNotices = addedRows(prev.notifications, next.notifications)
@@ -354,9 +357,11 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
           pendingSyncs.current -= 1
           const shouldRollback = options.rollbackOnError !== false
           if (shouldRollback) {
+            dataRef.current = prev
             writeStore(prev)
             setData(prev)
           } else {
+            dataRef.current = next
             writeStore(next)
           }
           setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)) }))
