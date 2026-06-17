@@ -1,4 +1,9 @@
-export const todayISO = () => new Date().toISOString().slice(0, 10)
+export function localDateISO(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+export const todayISO = (date = new Date()) => localDateISO(date)
 
 export function minutes(value) {
   const [h, m] = String(value || '00:00').split(':').map(Number)
@@ -8,14 +13,14 @@ export function minutes(value) {
 export function addDays(date, days) {
   const d = new Date(`${date}T12:00:00`)
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return localDateISO(d)
 }
 
 export function startOfWeek(date) {
   const d = new Date(`${date}T12:00:00`)
   const day = d.getDay() || 7
   d.setDate(d.getDate() - day + 1)
-  return d.toISOString().slice(0, 10)
+  return localDateISO(d)
 }
 
 export function formatDate(date, weekday = true) {
