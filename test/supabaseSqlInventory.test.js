@@ -73,6 +73,7 @@ test('RLS regression probes cover driver notification and audit RPC flows', () =
   assert.match(sql, /driver notification title rewrite/, 'driver notification rewrite denial should be covered')
   assert.match(sql, /driver audit log select/, 'driver audit visibility denial should be covered')
   assert.match(sql, /staff audit log select/, 'staff audit visibility allow path should be covered')
+  assert.match(sql, /staff notification RPC/, 'staff message notification RPC should be covered')
   assert.match(sql, /rb_request_swap_with_notifications/, 'driver swap request with side effects should be covered')
   assert.match(sql, /target driver decline targeted swap with side effects/, 'targeted swap decline should be covered')
   assert.match(sql, /target driver accept all-driver swap with side effects/, 'all-driver swap accept should be covered')

@@ -1,30 +1,25 @@
-import { addDays, formatDate, startOfWeek, todayISO } from './lib/dateTime.js'
+import { addDays, formatDate, todayISO } from './lib/dateTime.js'
 import { sortByDateTime, todayRangeTitle } from './lib/display.js'
-import { coverageGaps } from './lib/opsMetrics.js'
+import { dashboardOperationalIssues } from './lib/dashboard.js'
 import { backup, dayText, exportCSV } from './lib/shiftExports.js'
 import { ShiftTable } from './StaffShiftTable.jsx'
 
-export function Dashboard({ data, helpers, commit, ui, services }) {
+export function Dashboard({ data, helpers, commit, today = todayISO(), ui, services }) {
   const { PageTitle, Kpi, StatusPill } = ui
   const { copyText, shiftTableUi, shiftTableServices } = services
-  const today = todayISO()
   const tomorrow = addDays(today, 1)
   const todayShifts = sortByDateTime(data.shifts.filter((shift) => shift.date === today))
   const tomorrowShifts = sortByDateTime(data.shifts.filter((shift) => shift.date === tomorrow))
-  const activeShifts = data.shifts.filter((shift) => !['cancelled', 'declined'].includes(shift.status))
-  const conflicts = activeShifts.flatMap((shift) => helpers.conflictMessages(shift).map((message) => ({ shift, message })))
   const waiting = sortByDateTime(data.shifts.filter((shift) => ['assigned', 'draft', 'open'].includes(shift.status) && shift.date >= today))
-  const declined = sortByDateTime(data.shifts.filter((shift) => shift.status === 'declined' && shift.date >= today))
   const carsToday = new Set(todayShifts.filter((shift) => !['cancelled', 'declined'].includes(shift.status)).map((shift) => shift.vehicleId))
   const driversToday = new Set(todayShifts.filter((shift) => !['cancelled', 'declined'].includes(shift.status)).map((shift) => shift.driverId))
   const freeCars = data.vehicles.filter((vehicle) => vehicle.active && !carsToday.has(vehicle.id))
   const freeDrivers = data.drivers.filter((driver) => driver.active && !driversToday.has(driver.id))
-  const gaps = coverageGaps(data, startOfWeek(today))
-  const pendingSwaps = (data.swapRequests || []).filter((request) => ['pending','accepted'].includes(request.status))
+  const { conflicts, declined, pendingSwaps, gaps, count: priorityCount } = dashboardOperationalIssues(data, helpers, today)
   const running = todayShifts.filter((shift) => shift.actualStartAt && !shift.actualEndAt)
 
   return <>
-    <PageTitle title="Provozní dashboard" subtitle={`Dnes je ${todayRangeTitle()}.`}>
+    <PageTitle title="Provozní dashboard" subtitle={`Dnes je ${todayRangeTitle(today)}`}>
       <button className="ghost" onClick={() => copyText(dayText(data, helpers, today))}>WhatsApp dnes</button>
       <button className="ghost" onClick={() => exportCSV(data, helpers)}>Export CSV</button>
       <button className="primary" onClick={() => backup(data)}>Záloha JSON</button>
@@ -38,7 +33,7 @@ export function Dashboard({ data, helpers, commit, ui, services }) {
     </div>
     <div className="grid two" style={{ marginTop: 16 }}>
       <div className="card"><div className="section-title"><h3>Dnešní provoz</h3><span className="pill">{formatDate(today)}</span></div><ShiftTable shifts={todayShifts} data={data} helpers={helpers} commit={commit} compact ui={shiftTableUi} services={shiftTableServices} /></div>
-      <div className="card"><div className="section-title"><h3>Priorita k řešení</h3><span className={conflicts.length || declined.length ? 'pill bad' : 'pill good'}>{conflicts.length + declined.length}</span></div><div className="stack">
+      <div className="card"><div className="section-title"><h3>Priorita k řešení</h3><span className={priorityCount ? 'pill bad' : 'pill good'}>{priorityCount}</span></div><div className="stack">
         {conflicts.slice(0, 8).map((item, index) => <div className="alert bad" key={`c-${index}`}><b>{item.shift.date} {item.shift.start}–{item.shift.end}</b><br />{item.message}</div>)}
         {declined.slice(0, 5).map((shift) => <div className="alert bad" key={shift.id}><b>Odmítnuto: {formatDate(shift.date)} {shift.start}–{shift.end}</b><br />{helpers.driverName(shift.driverId)} · {shift.declineReason || 'bez důvodu'}</div>)}
         {pendingSwaps.slice(0, 5).map((request) => {

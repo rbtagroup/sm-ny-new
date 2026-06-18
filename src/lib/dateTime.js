@@ -5,6 +5,12 @@ export function localDateISO(date = new Date()) {
 
 export const todayISO = (date = new Date()) => localDateISO(date)
 
+export function millisecondsUntilNextLocalDay(date = new Date()) {
+  const nextDay = new Date(date)
+  nextDay.setHours(24, 0, 0, 50)
+  return Math.max(250, nextDay.getTime() - date.getTime())
+}
+
 export function minutes(value) {
   const [h, m] = String(value || '00:00').split(':').map(Number)
   return (h || 0) * 60 + (m || 0)

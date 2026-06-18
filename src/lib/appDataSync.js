@@ -113,13 +113,10 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       }
       if (!isStaff && key === 'settlements') changed = driverSettlementRowsForSync(changed, currentDriverId)
       if (!isStaff && key === 'pushSubscriptions') changed = driverPushSubscriptionRowsForSync(changed, { profileId: profile.id, currentDriverId })
-      if (!isStaff && key === 'notifications') {
+      if (key === 'notifications') {
         const previousIds = new Set((prev.notifications || []).map((n) => n.id))
         const nextIds = new Set((next.notifications || []).map((n) => n.id))
         const insertedRows = changed.filter((row) => row.id && !previousIds.has(row.id)).map(toDb.notifications)
-        const removedPersonalIds = (prev.notifications || [])
-          .filter((n) => n.id && !nextIds.has(n.id))
-          .map((n) => n.id)
         if (insertedRows.length) {
           const { error } = await supabase.rpc('rb_insert_notifications', { p_notifications: insertedRows })
           if (error) {
@@ -127,23 +124,30 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
             if (critical.has(key)) throw new Error(errors.join('\n'))
           }
         }
-        const stateCalls = notificationStateRpcCalls(prev.notifications, changed.filter((row) => row.id && previousIds.has(row.id)), currentDriverId)
-        if (stateCalls.length) {
-          try { await runRpcCalls(stateCalls) }
-          catch (error) {
-            errors.push(error.message)
-            if (critical.has(key)) throw new Error(errors.join('\n'))
+        if (isStaff) {
+          changed = changed.filter((row) => row.id && previousIds.has(row.id))
+        } else {
+          const removedPersonalIds = (prev.notifications || [])
+            .filter((n) => n.id && !nextIds.has(n.id))
+            .map((n) => n.id)
+          const stateCalls = notificationStateRpcCalls(prev.notifications, changed.filter((row) => row.id && previousIds.has(row.id)), currentDriverId)
+          if (stateCalls.length) {
+            try { await runRpcCalls(stateCalls) }
+            catch (error) {
+              errors.push(error.message)
+              if (critical.has(key)) throw new Error(errors.join('\n'))
+            }
           }
-        }
-        const removalStateCalls = removedNotificationStateRpcCalls(prev.notifications, removedPersonalIds, currentDriverId)
-        if (removalStateCalls.length) {
-          try { await runRpcCalls(removalStateCalls) }
-          catch (error) {
-            errors.push(error.message)
-            if (critical.has(key)) throw new Error(errors.join('\n'))
+          const removalStateCalls = removedNotificationStateRpcCalls(prev.notifications, removedPersonalIds, currentDriverId)
+          if (removalStateCalls.length) {
+            try { await runRpcCalls(removalStateCalls) }
+            catch (error) {
+              errors.push(error.message)
+              if (critical.has(key)) throw new Error(errors.join('\n'))
+            }
           }
+          continue
         }
-        continue
       }
       if (!isStaff && key === 'swapRequests') {
         const { calls, denied, handledNotificationIds: swapNotificationIds, handledAuditIds: swapAuditIds } = swapRequestRpcCallsWithSideEffects(prev.swapRequests, changed, currentDriverId, { includeSideEffects: true, notifications: insertedNotifications, auditRows: insertedAuditRows })

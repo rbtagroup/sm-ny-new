@@ -22,7 +22,7 @@ export function appFriendlyError(message = '') {
   if (/duplicate key|unique constraint|23505/i.test(text)) {
     return 'Tahle akce už je uložená. Obnov aplikaci pro aktuální stav.'
   }
-  if (/row-level security|violates|permission denied|not authorized|42501|audit_logs|notifications|shifts|profiles|drivers|settlements|swap_requests/i.test(text)) {
+  if (/row-level security|permission denied|not authorized|42501|insufficient privilege|driver is not allowed|only staff can/i.test(text)) {
     return 'Akci se nepodařilo uložit kvůli oprávnění. Obnov aplikaci a zkus to znovu, případně kontaktuj dispečink.'
   }
   if (/invalid login credentials|email not confirmed|invalid credentials/i.test(text)) {

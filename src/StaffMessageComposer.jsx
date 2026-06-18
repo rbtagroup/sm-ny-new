@@ -26,6 +26,7 @@ export function StaffMessageComposer({ data, commit, session, ui, services }) {
   }, [firstActiveDriverId, form.targetDriverId, form.targetMode])
 
   const update = (patch) => setForm((current) => ({ ...current, ...patch }))
+  const clearMessage = () => setForm((current) => ({ ...current, title: '', body: '' }))
   const submit = (event) => {
     event.preventDefault()
     const { notice, error } = createDriverMessageNotice(makeNotice, form)
@@ -41,6 +42,7 @@ export function StaffMessageComposer({ data, commit, session, ui, services }) {
       },
       onSuccess: () => {
         if (!receivedPushResult) setStatus('Zpráva uložena.')
+        clearMessage()
         setSending(false)
       },
       onError: (err) => {
@@ -48,8 +50,10 @@ export function StaffMessageComposer({ data, commit, session, ui, services }) {
         setSending(false)
       },
     })
-    setForm((current) => ({ ...current, title: '', body: '' }))
-    if (!session?.access_token) setSending(false)
+    if (!session?.access_token) {
+      clearMessage()
+      setSending(false)
+    }
   }
 
   return <div className="card staff-message-composer">

@@ -170,10 +170,10 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
   </div>
 }
 
-export function Planner({ data, helpers, commit, ui, services }) {
+export function Planner({ data, helpers, commit, today = todayISO(), ui, services }) {
   const { PageTitle, SideDrawer, ConfirmActionModal } = ui
   const { uid, copyText, weekText, shiftTableUi, shiftTableServices } = services
-  const [weekStart, setWeekStart] = useState(startOfWeek(todayISO()))
+  const [weekStart, setWeekStart] = useState(startOfWeek(today))
   const [editing, setEditing] = useState(null)
   const [selected, setSelected] = useState(null)
   const [driverFilter, setDriverFilter] = useState('all')
@@ -190,7 +190,7 @@ export function Planner({ data, helpers, commit, ui, services }) {
   const [closeDirtyDialogOpen, setCloseDirtyDialogOpen] = useState(false)
   const [plannerToast, setPlannerToast] = useState('')
   const rangeEnd = addDays(weekStart, 13)
-  const initialShiftDate = todayISO() >= weekStart && todayISO() <= rangeEnd ? todayISO() : weekStart
+  const initialShiftDate = today >= weekStart && today <= rangeEnd ? today : weekStart
   const rangeAll = sortByDateTime(data.shifts.filter((shift) => shift.date >= weekStart && shift.date <= rangeEnd))
   const rangeShifts = rangeAll.filter((shift) => {
     const byDriver = driverFilter === 'all' || shift.driverId === driverFilter
@@ -206,6 +206,9 @@ export function Planner({ data, helpers, commit, ui, services }) {
     try { localStorage.setItem('rbshift-planner-gaps-open', String(gapsOpen)) }
     catch { }
   }, [gapsOpen])
+  useEffect(() => {
+    setWeekStart((current) => today < current || today > addDays(current, 13) ? startOfWeek(today) : current)
+  }, [today])
   useEffect(() => {
     if (!plannerToast) return undefined
     const timer = setTimeout(() => setPlannerToast(''), 2800)
@@ -253,7 +256,7 @@ export function Planner({ data, helpers, commit, ui, services }) {
   return <>
     <PageTitle title="Plán směn">
       <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, -14))}>← Předchozí</button>
-      <button className="ghost" onClick={() => setWeekStart(startOfWeek(todayISO()))}>Dnes</button>
+      <button className="ghost" onClick={() => setWeekStart(startOfWeek(today))}>Dnes</button>
       <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
       <button className="primary" onClick={openNewShiftDrawer}>+ Nová směna</button>
       <button className="primary" onClick={copyWeek}>Kopírovat 2 týdny</button>
@@ -308,7 +311,7 @@ export function Planner({ data, helpers, commit, ui, services }) {
               return <div className="week-block" key={weekStartDate}>
                 <div className="week-block-title"><b>{index + 1}. týden</b><span>{formatDate(weekStartDate)}–{formatDate(addDays(weekStartDate, 6))}</span></div>
                 <div className="week-grid">
-                  {weekDays.map((day) => <DayColumn key={day} day={day} shifts={visibleShifts} data={data} helpers={helpers} setSelected={setSelected} copyDay={copyToday} />)}
+                  {weekDays.map((day) => <DayColumn key={day} day={day} today={today} shifts={visibleShifts} data={data} helpers={helpers} setSelected={setSelected} copyDay={copyToday} />)}
                 </div>
               </div>
             })}
@@ -347,7 +350,7 @@ export function Planner({ data, helpers, commit, ui, services }) {
   </>
 }
 
-function DayColumn({ day, shifts, data, helpers, setSelected, copyDay }) {
+function DayColumn({ day, today, shifts, data, helpers, setSelected, copyDay }) {
   const items = sortByDateTime(shifts.filter((shift) => shift.date === day))
   const copyThisDay = () => copyDay(day)
   const handleDayContextMenu = (event) => {
@@ -355,7 +358,7 @@ function DayColumn({ day, shifts, data, helpers, setSelected, copyDay }) {
     event.preventDefault()
     copyThisDay()
   }
-  return <div className={`day ${day === todayISO() ? 'today' : ''}`} onContextMenu={handleDayContextMenu}>
+  return <div className={`day ${day === today ? 'today' : ''}`} onContextMenu={handleDayContextMenu}>
     <h4>
       <span>{formatDate(day)}</span>
       <details className="day-menu" onClick={(event) => event.stopPropagation()}>

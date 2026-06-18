@@ -31,8 +31,12 @@ function fakeSupabase(rowsByTable = {}, settingsPayload = {}) {
 
 function fakeSyncSupabase(updatedRows = [{ id: 'sh_1' }]) {
   const updates = []
+  const upserts = []
+  const rpcs = []
   return {
     updates,
+    upserts,
+    rpcs,
     from(table) {
       return {
         update(patch) {
@@ -49,7 +53,8 @@ function fakeSyncSupabase(updatedRows = [{ id: 'sh_1' }]) {
             },
           }
         },
-        upsert() {
+        upsert(rows) {
+          upserts.push({ table, rows })
           return Promise.resolve({ error: null })
         },
         delete() {
@@ -57,7 +62,8 @@ function fakeSyncSupabase(updatedRows = [{ id: 'sh_1' }]) {
         },
       }
     },
-    rpc() {
+    rpc(fn, args) {
+      rpcs.push({ fn, args })
       return Promise.resolve({ error: null })
     },
   }
@@ -159,4 +165,37 @@ test('syncChangedRows rejects driver shift changes when the profile is not linke
     /nelze uložit pro aktuálního řidiče/,
   )
   assert.equal(supabase.updates.length, 0)
+})
+
+test('syncChangedRows sends new staff messages through the notification RPC', async () => {
+  const supabase = fakeSyncSupabase()
+  const { syncChangedRows } = createAppDataSync({
+    supabase,
+    isConfiguredSupabase: true,
+    timePart: () => '',
+    sendPushForNotifications: async () => ({ skipped: true }),
+  })
+  const notice = {
+    id: 'ntf_staff_message',
+    at: '2026-06-18T08:00:00.000Z',
+    title: 'Provozní zpráva',
+    body: 'Přijeďte o deset minut dřív.',
+    targetDriverId: '',
+    targetRole: 'driver_all',
+    type: 'staff-message',
+    readBy: [],
+    deletedBy: [],
+  }
+
+  await syncChangedRows(
+    { notifications: [] },
+    { notifications: [notice] },
+    { id: 'profile_dispatcher', role: 'dispatcher' },
+  )
+
+  assert.equal(supabase.rpcs.length, 1)
+  assert.equal(supabase.rpcs[0].fn, 'rb_insert_notifications')
+  assert.equal(supabase.rpcs[0].args.p_notifications[0].id, notice.id)
+  assert.equal(supabase.rpcs[0].args.p_notifications[0].target_role, 'driver_all')
+  assert.equal(supabase.upserts.some((call) => call.table === 'notifications'), false)
 })

@@ -35,6 +35,7 @@ import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
 import { ShiftTemplates } from './ShiftTemplatesView.jsx'
 import { Vehicles } from './VehiclesView.jsx'
+import { useCurrentDate } from './useCurrentDate.js'
 import { createAppDataSync } from './lib/appDataSync.js'
 import {
   addDays,
@@ -277,6 +278,7 @@ function resolveDemoDriverId(value = '', drivers = []) {
 function App({ session = null, profile = null, signOut = null }) {
   const onlineMode = Boolean(isConfiguredSupabase && session?.user && profile)
   const [data, commit, syncState, reloadOnline] = useAppData(session, profile)
+  const currentDate = useCurrentDate()
   const helpers = useMemo(() => buildHelpers(data), [data])
   const demoParams = getLocalDemoParams(onlineMode)
   const demoRole = ['admin', 'dispatcher', 'driver'].includes(demoParams.role) ? demoParams.role : ''
@@ -382,8 +384,8 @@ function App({ session = null, profile = null, signOut = null }) {
       syncState={syncState}
       updateToast={updateToast}
     >
-      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} ui={plannerUi} services={plannerServices} />}
-      {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} ui={dashboardUi} services={dashboardServices} />}
+      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} />}
+      {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} today={currentDate} ui={dashboardUi} services={dashboardServices} />}
       {page === 'settlements' && <Settlements data={data} helpers={helpers} commit={commit} />}
       {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}

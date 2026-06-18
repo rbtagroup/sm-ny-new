@@ -40,3 +40,10 @@ test('appFriendlyError treats duplicate key conflicts as stale state, not permis
   assert.equal(message, 'Tahle akce už je uložená. Obnov aplikaci pro aktuální stav.')
   assert.doesNotMatch(message, /oprávnění|violates|constraint/i)
 })
+
+test('appFriendlyError does not mislabel every notification failure as permissions', () => {
+  const message = appFriendlyError('notifications: connection reset while saving')
+
+  assert.equal(message, 'notifications: connection reset while saving')
+  assert.doesNotMatch(message, /oprávnění/i)
+})

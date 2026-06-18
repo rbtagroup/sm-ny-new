@@ -323,6 +323,24 @@ begin
   perform set_config('request.jwt.claim.sub', staff_profile_id::text, true);
   set local role authenticated;
 
+  perform public.rb_insert_notifications(jsonb_build_array(jsonb_build_object(
+    'id', 'rls_probe_staff_message_rpc',
+    'targetRole', 'driver_all',
+    'type', 'staff-message',
+    'title', 'RLS probe staff message RPC',
+    'body', 'rollback probe'
+  )));
+
+  select count(*)::int
+    into affected
+  from public.notifications
+  where id = 'rls_probe_staff_message_rpc'
+    and target_role = 'driver_all'
+    and type = 'staff-message';
+  if affected <> 1 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: staff notification RPC';
+  end if;
+
   if other_driver_row_id is not null then
     perform public.rb_resolve_swap_request_with_notifications(
       'rls_probe_swap_all',

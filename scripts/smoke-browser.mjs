@@ -204,13 +204,32 @@ async function clickByText(page, selector, text) {
   const clicked = await evaluate(page, `
     (() => {
       const target = [...document.querySelectorAll(${JSON.stringify(selector)})]
-        .find((el) => el.innerText.trim() === ${JSON.stringify(text)});
+        .find((el) => {
+          const rendered = el.innerText.trim();
+          return rendered === ${JSON.stringify(text)} || rendered.split(/\\n+/).some((line) => line.trim() === ${JSON.stringify(text)});
+        });
       if (!target) return false;
       target.click();
       return true;
     })()
   `)
   if (!clicked) throw new Error(`Could not click ${selector} with text "${text}"`)
+}
+
+async function fillByPlaceholder(page, placeholder, value) {
+  const filled = await evaluate(page, `
+    (() => {
+      const target = document.querySelector(${JSON.stringify(`[placeholder="${placeholder}"]`)});
+      if (!target) return false;
+      const prototype = target instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+      setter?.call(target, ${JSON.stringify(value)});
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()
+  `)
+  if (!filled) throw new Error(`Could not fill field with placeholder "${placeholder}"`)
 }
 
 function appUrlWithParam(key, value) {
@@ -262,6 +281,24 @@ async function runStaffChecks(page) {
   await waitForEval(page, 'document.body.innerText.includes("Centrum upozornění") || document.body.innerText.includes("Zatím žádné notifikace")', 'Mobile staff notifications did not open')
   await assertEval(page, 'document.querySelector(".notifications-card") && document.querySelector(".staff-message-composer")', 'Staff notification workspace did not render')
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile notifications should not overflow horizontally')
+
+  await fillByPlaceholder(page, 'Např. Provozní zpráva', 'Smoke zpráva dispečera')
+  await fillByPlaceholder(page, 'Text, který přijde řidiči do aplikace a jako push notifikace.', 'Ověření komunikace dispečer–řidič.')
+  await clickByText(page, '.staff-message-composer button', 'Odeslat zprávu')
+  await waitForEval(page, 'document.body.innerText.includes("Smoke zpráva dispečera")', 'Sent staff message did not appear in history')
+
+  await clickByText(page, '.sidebar-nav button', 'Dashboard')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Provozní dashboard")', 'Dashboard did not open')
+  await assertEval(page, '!document.querySelector(".topbar p")?.innerText.endsWith("..")', 'Dashboard date subtitle contains duplicate punctuation')
+  await assertEval(page, `
+    (() => {
+      const title = [...document.querySelectorAll(".section-title h3")].find((item) => item.innerText.trim() === "Priorita k řešení");
+      const card = title?.closest(".card");
+      const badge = Number(card?.querySelector(".section-title .pill")?.innerText || 0);
+      const visibleIssues = card?.querySelectorAll(".alert").length || 0;
+      return visibleIssues === 0 || badge > 0;
+    })()
+  `, 'Dashboard priority badge is zero while issues are visible')
 }
 
 async function runDriverChecks(page) {

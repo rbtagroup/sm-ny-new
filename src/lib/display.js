@@ -46,8 +46,8 @@ export function staffInitials(profile, currentDriver, role) {
   return driverInitials(staffDisplayName(profile, currentDriver, role))
 }
 
-export function todayRangeTitle() {
-  return new Intl.DateTimeFormat('cs-CZ', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(new Date(`${todayISO()}T12:00:00`))
+export function todayRangeTitle(date = todayISO()) {
+  return new Intl.DateTimeFormat('cs-CZ', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(new Date(`${date}T12:00:00`))
 }
 
 export function statusCounts(shifts) {
