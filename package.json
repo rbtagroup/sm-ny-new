@@ -19,7 +19,7 @@
     "generate:vapid": "npx web-push generate-vapid-keys"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.104.0",
+    "@supabase/supabase-js": "^2.108.2",
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
