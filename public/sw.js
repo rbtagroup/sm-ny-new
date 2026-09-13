@@ -19,7 +19,7 @@ const CORE_ASSETS = [
 const isNavigationRequest = (req) =>
   req.mode === 'navigate' || (req.method === 'GET' && req.headers.get('accept')?.includes('text/html'));
  
-const isHashedAsset = (url) => /\/assets\/.+\.[a-f0-9]{8,}\.(js|css|woff2?|png|jpg|svg)$/i.test(url.pathname);
+const isHashedAsset = (url) => /\/assets\/[^/]+-[\w-]{8,}\.(?:js|css|woff2?|png|jpe?g|svg|webp)$/i.test(url.pathname);
  
 const isSameOrigin = (url) => url.origin === self.location.origin;
  
