@@ -283,11 +283,16 @@ async function runStaffChecks(page) {
   await waitForEval(page, '!document.querySelector(".action-modal") && document.body.innerText.includes("Naplánováno:")', 'Week plan did not create shifts')
 
   await clickByText(page, '.sidebar-nav button', 'Notifikace')
-  await waitForEval(page, 'document.body.innerText.includes("Centrum upozornění")', 'Staff notifications did not open after creating a shift')
+  await waitForEval(page, 'document.querySelector(".notifications-card h3")?.textContent.includes("K vyřízení")', 'Staff notifications did not open after creating a shift')
+  await assertEval(page, `
+    ![...document.querySelectorAll(".notifications-card .staff-notification-row")]
+      .some((row) => !row.closest(".notification-archive") && row.textContent.includes("Nová směna"))
+  `, 'A notice sent to a driver should not wait for dispatch')
+  await evaluate(page, 'document.querySelector(".notification-archive[data-section=\\"sent\\"] summary")?.click()')
   await waitForEval(page, `
-    [...document.querySelectorAll(".staff-notification-row")]
+    [...document.querySelectorAll(".notification-archive[data-section=\\"sent\\"] .staff-notification-row")]
       .some((row) => row.innerText.includes("Nová směna"))
-  `, 'New shift notification did not appear')
+  `, 'New shift notification did not appear among notices sent to drivers')
   await evaluate(page, `
     (() => {
       const row = [...document.querySelectorAll(".staff-notification-row")]
@@ -297,7 +302,7 @@ async function runStaffChecks(page) {
   `)
   await waitForEval(page, `
     ![...document.querySelectorAll(".staff-notification-row")]
-      .some((row) => row.innerText.includes("Nová směna"))
+      .some((row) => row.textContent.includes("Nová směna"))
   `, 'Hidden notification remained visible')
   await assertEval(page, 'document.querySelector(".toast-undo")?.innerText.includes("Notifikace skryta.")', 'Notification hide undo toast did not appear')
 
@@ -364,7 +369,7 @@ async function runStaffChecks(page) {
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile settlements should not overflow horizontally')
 
   await clickByText(page, '.sidebar-nav button', 'Notifikace')
-  await waitForEval(page, 'document.body.innerText.includes("Centrum upozornění") || document.body.innerText.includes("Zatím žádné notifikace")', 'Mobile staff notifications did not open')
+  await waitForEval(page, 'document.querySelector(".notifications-card h3")?.textContent.includes("K vyřízení")', 'Mobile staff notifications did not open')
   await assertEval(page, 'document.querySelector(".notifications-card") && document.querySelector(".staff-message-composer")', 'Staff notification workspace did not render')
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile notifications should not overflow horizontally')
 

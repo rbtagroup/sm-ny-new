@@ -45,16 +45,16 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
   } = selectDriverHomeState(data, { currentDriver, swapDraft, actionDialog })
   const setStatus = (id, status, reason = '', options = {}) => {
     const shift = data.shifts.find((s) => s.id === id)
-    const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')}`, `driver-${status}`, id)] : []
+    const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')}`, `driver-${status}`, id, { push: status === 'declined' })] : []
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, status, declineReason: reason } : s) }, notices), `${currentDriver?.name || 'Řidič'} změnil stav směny na ${statusMap[status]}.`, options)
   }
   const checkIn = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
-    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, shift ? adminNotice('Řidič nastoupil na směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-start', id) : null), `${currentDriver?.name || 'Řidič'} nastoupil na směnu.`)
+    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, shift ? adminNotice('Řidič nastoupil na směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-start', id, { push: false }) : null), `${currentDriver?.name || 'Řidič'} nastoupil na směnu.`)
   }
   const checkOut = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
-    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, shift ? adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-end', id) : null), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
+    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, shift ? adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-end', id, { push: false }) : null), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
     if (shift) setSettlementShiftId(id)
   }
   const requestSwap = (shift) => {
@@ -98,7 +98,7 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
       showDriverToast('Žádost o výměnu už není aktivní.')
       return
     }
-    const notices = [adminNotice('Řidič zrušil žádost o výměnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'swap-cancelled', shift.id)]
+    const notices = [adminNotice('Řidič zrušil žádost o výměnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'swap-cancelled', shift.id, { push: false })]
     commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((r) => r.id === activeReq.id ? appendSwapHistory({ ...r, status: 'cancelled', cancelledAt: new Date().toISOString() }, 'Řidič žádost zrušil.') : r), shifts: prev.shifts.map((s) => s.id === shift.id ? { ...s, swapRequestStatus: 'cancelled' } : s) }, notices), `${currentDriver?.name || 'Řidič'} zrušil žádost o výměnu.`)
     closeActionDialog()
     showDriverToast('Žádost o výměnu zrušena.')
@@ -145,7 +145,7 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     const reason = 'Odmítnuto řidičem'
     const notices = [
       makeNotice({ title: 'Kolega odmítl výměnu', body: `${currentDriver?.name || 'Kolega'} odmítl: ${shiftNoticeBody(shift, helpers)}`, targetDriverId: request.driverId, targetRole: 'driver', type: 'swap-rejected', shiftId: shift.id, push: false }),
-      makeNotice({ title: 'Nabídka výměny odmítnuta', body: `${currentDriver?.name || 'Řidič'} odmítl nabídku od ${helpers.driverName(request.driverId)} · ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'swap-rejected', shiftId: shift.id }),
+      makeNotice({ title: 'Nabídka výměny odmítnuta', body: `${currentDriver?.name || 'Řidič'} odmítl nabídku od ${helpers.driverName(request.driverId)} · ${shiftNoticeBody(shift, helpers)}`, targetRole: 'admin', type: 'swap-rejected', shiftId: shift.id, push: false }),
     ]
     commit((prev) => addNotificationsToData({
       ...prev,

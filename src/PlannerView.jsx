@@ -449,7 +449,6 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
     ConfirmActionModal,
   } = ui
   const {
-    adminNotice,
     makeNotice,
     appendSwapHistory,
     statusNoticeForShift,
@@ -498,8 +497,9 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
     closeActionDialog()
     setEditing(fresh)
   }
-  const checkIn = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualStartAt: item.actualStartAt || localStamp(), status: item.status === 'assigned' ? 'confirmed' : item.status } : item) }, adminNotice('Řidič nastoupil na směnu', `${helpers.driverName(fresh.driverId)} · ${shiftNoticeBody(fresh, helpers)}`, 'attendance-start', fresh.id)), 'V detailu směny zaznamenán nástup.')
-  const checkOut = () => commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualEndAt: item.actualEndAt || localStamp(), status: 'completed' } : item) }, adminNotice('Řidič ukončil směnu', `${helpers.driverName(fresh.driverId)} · ${shiftNoticeBody(fresh, helpers)}`, 'attendance-end', fresh.id)), 'V detailu směny zaznamenáno ukončení.')
+  // Dispatch records attendance itself here, so there is nobody to notify.
+  const checkIn = () => commit((prev) => ({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualStartAt: item.actualStartAt || localStamp(), status: item.status === 'assigned' ? 'confirmed' : item.status } : item) }), 'V detailu směny zaznamenán nástup.')
+  const checkOut = () => commit((prev) => ({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualEndAt: item.actualEndAt || localStamp(), status: 'completed' } : item) }), 'V detailu směny zaznamenáno ukončení.')
   const requestHardDelete = () => setActionDialog({ type: 'hardDelete' })
   const confirmHardDelete = () => {
     commit((prev) => hardDeleteShiftData(prev, fresh), '')

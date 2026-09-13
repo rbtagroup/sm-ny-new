@@ -53,6 +53,7 @@ import {
   createNoticeFactory,
 } from './lib/notifications.js'
 import { notificationInboxState } from './lib/notificationInbox.js'
+import { staffNoticeState } from './lib/staffNotifications.js'
 import { uid } from './lib/ids.js'
 import { sendPushForNotifications } from './lib/pushDelivery.js'
 import {
@@ -151,8 +152,8 @@ function cancelShiftData(data, shift, helpers, reason = 'Zrušeno dispečerem') 
     swapRequests: (data.swapRequests || []).map((r) => r.shiftId === shift.id && ['pending','accepted'].includes(r.status) ? appendSwapHistory({ ...r, status: 'cancelled', cancelledAt: now, resolvedAt: now }, 'Směna byla zrušena dispečerem.') : r),
   }, notices)
 }
-function adminNotice(title, body, type = 'info', shiftId = '') {
-  return makeNotice({ title, body, targetRole: 'admin', type, shiftId })
+function adminNotice(title, body, type = 'info', shiftId = '', options = {}) {
+  return makeNotice({ title, body, targetRole: 'admin', type, shiftId, ...options })
 }
 
 function isAuditRelatedToShift(row, shift) {
@@ -309,7 +310,9 @@ function App({ session = null, profile = null, signOut = null }) {
     if (!isDriver && role !== 'admin' && adminPageKeys.has(page)) setPage('planner')
   }, [isDriver, page, role])
 
-  const { unread: unreadNotifications } = notificationInboxState(data, { currentDriver, isDriver, profile })
+  const { unread: unreadInbox } = notificationInboxState(data, { currentDriver, isDriver, profile })
+  // Dispatch only counts notices that still wait for it; driver notices and handled items stay out of the badge.
+  const unreadNotifications = isDriver ? unreadInbox : unreadInbox.filter((notice) => staffNoticeState(notice, data, { today: currentDate }) === 'open')
   const unreadForCurrent = unreadNotifications.length
   const canOpenSettings = role === 'admin'
   const sidebarSections = [

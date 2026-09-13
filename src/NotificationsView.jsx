@@ -3,6 +3,8 @@ import { Check, Trash2 } from 'lucide-react'
 import { PushSetupCard } from './PushSetupCard.jsx'
 import { StaffMessageComposer } from './StaffMessageComposer.jsx'
 import { StaffMessageHistory } from './StaffMessageHistory.jsx'
+import { todayISO } from './lib/dateTime.js'
+import { splitStaffInbox } from './lib/staffNotifications.js'
 import {
   groupStaffNotificationsByCategory,
   isInboxNoticeRead,
@@ -18,7 +20,10 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
   const { PageTitle } = ui
   const inboxContext = { currentDriver, isDriver, profile, swapRequests: data.swapRequests }
   const { visible, unread, visibleIds, groups, hasRead } = notificationInboxState(data, inboxContext)
-  const notificationGroups = isDriver ? groups : groupStaffNotificationsByCategory(visible)
+  // Dispatch sees what waits for it first; handled items and notices sent to drivers stay folded below.
+  const staffInbox = isDriver ? null : splitStaffInbox(visible, data, { today: todayISO(), isRead: (notice) => isInboxNoticeRead(notice, inboxContext) })
+  const notificationGroups = isDriver ? groups : groupStaffNotificationsByCategory(staffInbox.open)
+  const unreadCount = isDriver ? unread.length : staffInbox.openUnread.length
   const [undoDeleteIds, setUndoDeleteIds] = useState([])
   const markOne = (id) => commit((prev) => ({ ...prev, notifications: markInboxNotificationsRead(prev.notifications || [], [id], inboxContext) }), 'Notifikace označena jako přečtená.')
   const queueUndo = (ids) => {
@@ -42,19 +47,21 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
     setUndoDeleteIds([])
   }
   const markAll = () => commit((prev) => ({ ...prev, notifications: markInboxNotificationsRead(prev.notifications || [], visibleIds, inboxContext) }), 'Notifikace označeny jako přečtené.')
-  const clearRead = () => {
-    const toDelete = visible.filter((n) => isInboxNoticeRead(n, inboxContext))
-    if (!toDelete.length) return
-    const allToDeleteIds = new Set(toDelete.map((n) => n.id))
-    commit((prev) => ({ ...prev, notifications: markInboxNotificationsDeleted(prev.notifications || [], allToDeleteIds, inboxContext) }), 'Přečtené notifikace skryty.')
-    queueUndo(toDelete.map((n) => n.id))
+  const hideNotices = (items, message) => {
+    const ids = new Set(items.map((n) => n.id))
+    if (!ids.size) return
+    commit((prev) => ({ ...prev, notifications: markInboxNotificationsDeleted(prev.notifications || [], ids, inboxContext) }), message)
+    queueUndo([...ids])
   }
+  // Read items that still wait for dispatch stay listed until they are handled.
+  const clearRead = () => hideNotices(visible.filter((n) => isInboxNoticeRead(n, inboxContext) && !staffInbox?.open.includes(n)), 'Přečtené notifikace skryty.')
   const staffNotificationActions = !isDriver ? <>
     <button className="ghost notification-toolbar-button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>
     <button className="danger notification-toolbar-button" onClick={clearRead}><Trash2 size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>
   </> : null
-  const renderNotice = (n) => {
-    const read = isInboxNoticeRead(n, inboxContext)
+  // Folded staff sections need no read state: nothing there waits for dispatch.
+  const renderNotice = (n, options = {}) => {
+    const read = options.archived === true || isInboxNoticeRead(n, inboxContext)
     const noticeAt = n.at || n.createdAt || new Date().toISOString()
 
     if (isDriver) {
@@ -90,9 +97,7 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
   return <>
     <PageTitle title="Notifikace">{staffNotificationActions}</PageTitle>
     {undoDeleteIds.length > 0 && <div className="toast-undo"><span>{undoDeleteIds.length === 1 ? 'Notifikace skryta.' : `${undoDeleteIds.length} notifikací skryto.`}</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
-    {!isDriver && <StaffMessageComposer data={data} commit={commit} session={session} ui={ui} services={services} />}
-    {!isDriver && <StaffMessageHistory data={data} helpers={helpers} ui={ui} />}
-    <div className={`card notifications-card ${isDriver ? 'driver-notifications-card' : ''}`.trim()}><div className="section-title"><h3>{isDriver ? 'Doručené' : 'Centrum upozornění'}</h3><span className={unread.length ? 'pill warn' : 'pill good'}>{unread.length} nepřečteno</span></div>
+    <div className={`card notifications-card ${isDriver ? 'driver-notifications-card' : ''}`.trim()}><div className="section-title"><h3>{isDriver ? 'Doručené' : 'K vyřízení'}</h3><span className={unreadCount ? 'pill warn' : 'pill good'}>{isDriver ? `${unreadCount} nepřečteno` : `${staffInbox.open.length} čeká · ${unreadCount} nepřečteno`}</span></div>
       {isDriver && (unread.length > 0 || hasRead) && <div className="driver-notifications-toolbar">
         {unread.length > 0 && <button className="ghost" type="button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>}
         {hasRead && <button className="ghost danger-soft" type="button" onClick={clearRead}><Trash2 size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>}
@@ -102,8 +107,18 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
         <div className="notification-group-title">{label}</div>
         <div className="stack">{items.map(renderNotice)}</div>
       </section>)}
-      {!visible.length && <div className={`empty ${isDriver ? 'driver-empty-inbox' : ''}`.trim()}>{isDriver ? <><b>Žádná upozornění</b><br /><span className="muted">Vše je vyřízené.</span></> : 'Zatím žádné notifikace.'}</div>}
+      {isDriver && !visible.length && <div className="empty driver-empty-inbox"><b>Žádná upozornění</b><br /><span className="muted">Vše je vyřízené.</span></div>}
+      {!isDriver && !staffInbox.open.length && <div className="empty">Nic nečeká na vyřízení.</div>}
+      {!isDriver && [
+        ['done', 'Vyřízené a informace', staffInbox.done, 'Skrýt vyřízené', 'Vyřízené notifikace skryty.'],
+        ['sent', 'Odesláno řidičům', staffInbox.sent, 'Skrýt odeslané', 'Odeslané notifikace skryty.'],
+      ].filter(([, , items]) => items.length).map(([key, label, items, hideLabel, hideMessage]) => <details className="notification-archive" key={key} data-section={key}>
+        <summary><span>{label}</span><span className="pill">{items.length}</span></summary>
+        <div className="stack">{items.map((n) => renderNotice(n, { archived: true }))}</div>
+        <button className="ghost danger-soft notification-archive-clear" type="button" onClick={() => hideNotices(items, hideMessage)}><Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />{hideLabel}</button>
+      </details>)}
     </div></div>
+    {!isDriver && <div className="stack notifications-staff-tools"><StaffMessageComposer data={data} commit={commit} session={session} ui={ui} services={services} /><StaffMessageHistory data={data} helpers={helpers} ui={ui} /></div>}
     {!isDriver && <div className="stack" style={{ marginTop: 16 }}><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={ui} services={services} /></div>}
   </>
 }
