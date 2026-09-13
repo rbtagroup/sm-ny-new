@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.104.0'
+import { coverageNoticeDecision } from './coverageNotice.js'
 
 type CoverageSlot = {
   id?: string
@@ -208,9 +209,25 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
   let pushResult: Record<string, unknown> = { skipped: true, reason: 'no-missing-coverage' }
   let skippedReason = ''
 
-  if (gaps.length) {
-    const title = `Chybí obsazení: ${gaps.length} kontrol`
-    const body = gaps.slice(0, 12).map((gap) => `${formatDate(gap.day)} · ${gap.slotName} ${gap.start}–${gap.end}: chybí ${gap.missing}`).join('\n')
+  const { data: lastNotified, error: lastNotifiedError } = await supabase
+    .from('audit_logs')
+    .select('created_at, payload')
+    .eq('payload->>job', 'daily-coverage')
+    .eq('payload->>notificationCreated', 'true')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (lastNotifiedError) throw lastNotifiedError
+
+  // Upozornění jen na díry v příštích 48 h; beze změny nejvýš jednou za 3 dny.
+  const decision = coverageNoticeDecision({ gaps, today, now: startedAt, lastNotified })
+
+  if (decision.notify) {
+    const upcoming = decision.upcomingGaps
+    const title = `Chybí obsazení v příštích 48 h: ${upcoming.length}`
+    const weekSummary = gaps.length > upcoming.length ? `\nCelý týden: ${gaps.length} chybějících míst.` : ''
+    const body = upcoming.slice(0, 12).map((gap) => `${formatDate(gap.day)} · ${gap.slotName} ${gap.start}–${gap.end}: chybí ${gap.missing}`).join('\n') + weekSummary
     const notice = {
       id: dailyCoverageNoticeId(today),
       target_role: 'admin',
@@ -243,7 +260,8 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
       if (notificationCreated) pushResult = await sendPushForNotifications([notice])
     }
   } else {
-    skippedReason = 'no-missing-coverage'
+    skippedReason = decision.reason
+    pushResult = { skipped: true, reason: decision.reason }
   }
 
   const { error: auditError } = await supabase.from('audit_logs').insert({
@@ -255,6 +273,8 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
       today,
       dateTo,
       gapsCount: gaps.length,
+      upcomingGapsCount: decision.upcomingGaps.length,
+      upcomingSignature: decision.signature,
       notificationCreated,
       skipped: !notificationCreated,
       skippedReason,
