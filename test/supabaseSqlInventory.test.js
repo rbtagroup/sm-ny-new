@@ -93,6 +93,21 @@ test('RLS regression probes cover driver notification and audit RPC flows', () =
   assert.match(sql, /admin login reset keeps shift history/, 'login reset allow path should keep history')
   assert.match(sql, /complete driver deletion removes shifts instead of opening them/, 'complete deletion must not turn shifts into open shifts')
   assert.match(sql, /complete driver deletion removes driver login/, 'complete deletion should remove the driver login')
+  assert.match(sql, /driver reads driver activity/, 'driver activity must stay staff-only')
+  assert.match(sql, /staff reads driver activity/, 'staff driver activity allow path should be covered')
+  assert.match(sql, /shift with implausible date/, 'implausible shift dates should be rejected by the database')
+})
+
+test('plan date and driver activity migration guards dates and exposes no contact data', () => {
+  const file = migrationFiles().find((name) => name.endsWith('_plan_date_check_and_driver_activity.sql'))
+  assert.ok(file, 'plan date and driver activity migration should exist')
+  const sql = readFileSync(join(migrationsDir, file), 'utf8')
+
+  assert.match(sql, /add constraint shifts_shift_date_plausible\s+check \(shift_date between date '2020-01-01' and date '2100-12-31'\) not valid;/, 'new shift dates should be checked without blocking the legacy row')
+  assert.match(sql, /returns table \(driver_id text, has_login boolean, last_active_at timestamptz\)/, 'activity should expose only login state and last activity')
+  assert.doesNotMatch(sql, /\b(email|phone|note|raw_user_meta_data)\b/, 'activity must not expose contacts or notes')
+  assert.match(sql, /where private\.rb_is_staff\(\)/, 'activity should be staff-only')
+  assert.match(sql, /revoke all on function public\.rb_driver_activity\(\) from public, anon, service_role;/, 'anon must not read driver activity')
 })
 
 test('driver removal migration is admin-only and deletes history before the driver row', () => {

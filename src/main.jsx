@@ -41,10 +41,8 @@ import { createAppDataSync } from './lib/appDataSync.js'
 import { clearStore } from './lib/appStore.js'
 import {
   addDays,
-  dateInRange,
   formatDate,
   hoursLabel,
-  overlapsShift,
   overlapsTimeWindow,
   startOfWeek,
   timePart,
@@ -64,17 +62,12 @@ import {
 import {
   shiftTypeMap,
   statusMap,
-  statusToneMap,
 } from './lib/appConfig.js'
 import {
   shiftNoticeBody,
   shiftTypeName,
   sortByDateTime,
 } from './lib/display.js'
-import {
-  availabilityCoversShift,
-  availabilityRelevantToShift,
-} from './lib/availability.js'
 import {
   attendanceRows,
   readinessChecks,
@@ -87,6 +80,8 @@ import {
   weekText,
 } from './lib/shiftExports.js'
 import { showNotice } from './lib/notice.js'
+import { buildHelpers } from './lib/shiftHelpers.js'
+import { isRoutineSchedulerLog } from './lib/auditLog.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const makeNotice = createNoticeFactory(uid)
@@ -213,46 +208,6 @@ async function copyText(text) {
     try { execCopy(); showNotice('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.', { tone: 'good' }) }
     catch { showNotice('Kopírování se nepodařilo. Označ text ručně a zkopíruj ho přes Ctrl/Cmd+C.', { tone: 'bad' }) }
   }
-}
-
-function buildHelpers(data) {
-  const driver = (id) => data.drivers.find((d) => d.id === id)
-  const vehicle = (id) => data.vehicles.find((v) => v.id === id)
-  const driverName = (id) => driver(id)?.name || 'Neobsazeno'
-  const vehicleName = (id) => {
-    const car = vehicle(id)
-    return car ? `${car.name} · ${car.plate}` : 'Bez vozu'
-  }
-  const conflictMessages = (shift) => {
-    if (!shift || ['cancelled', 'declined'].includes(shift.status)) return []
-    const conflicts = []
-    const d = driver(shift.driverId)
-    const v = vehicle(shift.vehicleId)
-    if (!shift.date || !shift.start || !shift.end) conflicts.push('Chybí datum nebo čas směny.')
-    if (!d && shift.status !== 'open') conflicts.push('Není vybraný řidič.')
-    if (!v && shift.status !== 'open') conflicts.push('Není vybrané vozidlo.')
-    if (d && !d.active) conflicts.push(`Řidič ${d.name} je neaktivní.`)
-    if (v && !v.active) conflicts.push(`Vozidlo ${v.name} je neaktivní.`)
-    data.shifts.forEach((other) => {
-      if (other.id === shift.id || ['cancelled', 'declined'].includes(other.status)) return
-      if (!shift.date || !other.date || !shift.start || !shift.end || !other.start || !other.end) return
-      if (shift.driverId && other.driverId === shift.driverId && overlapsShift(shift, other)) conflicts.push(`Řidič ${driverName(shift.driverId)} má ve stejném čase jinou směnu.`)
-      if (shift.vehicleId && other.vehicleId === shift.vehicleId && overlapsShift(shift, other)) conflicts.push(`Vozidlo ${vehicleName(shift.vehicleId)} je ve stejném čase v jiné směně.`)
-    })
-    if (shift.driverId) data.absences.forEach((a) => {
-      if (a.driverId === shift.driverId && dateInRange(shift.date, a.from, a.to)) conflicts.push(`Řidič ${driverName(shift.driverId)} má nepřítomnost: ${a.reason || 'bez důvodu'}.`)
-    })
-    if (shift.vehicleId) data.serviceBlocks.forEach((s) => {
-      if (s.vehicleId === shift.vehicleId && dateInRange(shift.date, s.from, s.to)) conflicts.push(`Vozidlo ${vehicleName(shift.vehicleId)} je blokované: ${s.reason || 'servis'}.`)
-    })
-    const availability = shift.driverId ? (data.availability || []).filter((a) => a.driverId === shift.driverId && availabilityRelevantToShift(a, shift)) : []
-    if (availability.length && !availability.some((a) => availabilityCoversShift(a, shift))) {
-      conflicts.push(`Řidič ${driverName(shift.driverId)} nemá v tomto čase zadanou dostupnost.`)
-    }
-    return [...new Set(conflicts)]
-  }
-  const statusClass = (status) => statusToneMap[status] || 'warn'
-  return { driver, vehicle, driverName, vehicleName, conflictMessages, statusClass }
 }
 
 function getLocalDemoParams(onlineMode) {
@@ -406,13 +361,13 @@ const settlementFormServices = { uid, makeNotice, adminNotice }
 const shiftTableUi = { ConfirmActionModal, DeleteIconButton, ReasonActionModal, ShiftActionSummary, StatusPill }
 const shiftTableServices = { uid, isPastLocked, statusNoticeForShift, cancelShiftData, hardDeleteShiftData }
 const plannerUi = { PageTitle, Kpi, Field, Select, ConflictBox, ConfirmActionModal, DeleteIconButton, ReasonActionModal, ShiftActionSummary, SettlementStatusPill, SettlementSummary, SideDrawer }
-const plannerServices = { uid, makeNotice, adminNotice, appendSwapHistory, isPastLocked, statusNoticeForShift, hardDeleteShiftData, copyText, weekText, driverText, settlementFormUi, settlementFormServices, shiftTableUi, shiftTableServices }
+const plannerServices = { uid, buildHelpers, makeNotice, adminNotice, appendSwapHistory, isPastLocked, statusNoticeForShift, hardDeleteShiftData, copyText, weekText, driverText, settlementFormUi, settlementFormServices, shiftTableUi, shiftTableServices }
 const dashboardUi = { PageTitle, Kpi, StatusPill }
 const dashboardServices = { copyText, shiftTableUi, shiftTableServices }
 const driverHomeUi = { ConflictBox, Field, Kpi, Modal, ReasonActionModal, SettlementFormModal, SettlementStatusPill, SettlementSummary, ShiftActionSummary, StatusPill }
 const availabilityUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle }
 const driversUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
-const driversServices = { uid, supabase }
+const driversServices = { uid, supabase, copyText }
 const notificationUi = { Field, Kpi, Modal, PageTitle }
 const driverSettingsUi = { PageTitle }
 const historyUi = { Field, PageTitle }
@@ -495,7 +450,7 @@ function OperationalAudit({ data, helpers, commit }) {
   const plannedTotal = attendance.reduce((sum, row) => sum + row.plannedMinutes, 0)
   const actualTotal = attendance.reduce((sum, row) => sum + row.actualMinutes, 0)
   const currentMonth = todayISO().slice(0, 7)
-  const monthLogs = (data.audit || []).filter((row) => String(row.at || row.createdAt || '').startsWith(currentMonth))
+  const monthLogs = (data.audit || []).filter((row) => String(row.at || row.createdAt || '').startsWith(currentMonth) && !isRoutineSchedulerLog(row))
   const todayIssues = audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length
   const weekIssues = coverageRows.filter((r) => r.missing).length + attendance.filter((row) => row.open || Math.abs(row.diffMinutes) > 15).length
   const updateMinDrivers = (slotId, value) => {

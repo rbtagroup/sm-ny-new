@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { activatedDriverPatch, czechCount, driverRemovalSummary, driverRemovalSummaryText, driverWithDuplicateEmail, isPendingDriver, withoutDriver } from './lib/drivers.js'
 import { todayISO } from './lib/dateTime.js'
+import { driverAppStatus, driverInviteText, emailInviteUrl, whatsappInviteUrl } from './lib/driverInvite.js'
 import { appFriendlyError } from './lib/errors.js'
 import { showNotice } from './lib/notice.js'
 
@@ -26,7 +27,7 @@ const formFromDriver = (driver = {}) => ({
 
 // TODO: mimo scope - avatar upload a samostatné role řidičů vyžadují Storage/sloupce v Supabase schématu.
 export function Drivers({ data, commit, services, ui, onlineMode = false, reloadOnline, canRemoveDrivers = false }) {
-  const { uid, supabase } = services
+  const { uid, supabase, copyText } = services
   const { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer } = ui
   const [form, setForm] = useState(freshDriverForm)
   const [editing, setEditing] = useState(null)
@@ -35,10 +36,26 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
   const [removal, setRemoval] = useState(null)
   const [removalConfirmation, setRemovalConfirmation] = useState('')
   const [removing, setRemoving] = useState(false)
+  const [activity, setActivity] = useState({})
   const editingDriver = editing ? data.drivers.find((d) => d.id === editing) : null
   const deleteDriver = driverToDelete ? data.drivers.find((d) => d.id === driverToDelete) : null
   const removalDriver = removal ? data.drivers.find((d) => d.id === removal.driverId) : null
   const activeCount = data.drivers.filter((d) => d.active !== false).length
+  const driverCount = data.drivers.length
+  useEffect(() => {
+    if (!onlineMode || !supabase?.rpc) return undefined
+    let cancelled = false
+    // Staff-only overview; if the database does not have it yet the list simply shows no app status.
+    supabase.rpc('rb_driver_activity').then(({ data: rows, error }) => {
+      if (cancelled || error || !Array.isArray(rows)) return
+      setActivity(Object.fromEntries(rows.map((row) => [row.driver_id, row])))
+    })
+    return () => { cancelled = true }
+  }, [onlineMode, supabase, driverCount])
+  const appStatus = (driver) => driverAppStatus({ driver, activity: activity[driver.id], pushSubscriptions: data.pushSubscriptions })
+  const inviteCount = onlineMode ? data.drivers.filter((driver) => driver.active !== false && appStatus(driver).needsInvite).length : 0
+  const editingStatus = editingDriver ? appStatus(editingDriver) : null
+  const inviteText = editingDriver ? driverInviteText({ driver: editingDriver, appUrl: typeof window === 'undefined' ? '' : window.location.origin, hasLogin: editingStatus.known ? editingStatus.hasLogin : Boolean(editingDriver.profileId) }) : ''
   const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(freshDriverForm()) }
   const openCreate = () => { setForm(freshDriverForm()); setEditing(null); setDrawerOpen(true) }
   const openEdit = (driver) => {
@@ -117,10 +134,10 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
   return <>
     <PageTitle title="Řidiči"><button className="primary" onClick={openCreate}>+ Přidat řidiče</button></PageTitle>
     <div className="card">
-      <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem{pendingCount ? ` · ${pendingCount} čeká na schválení` : ''}</span></div>
+      <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem{pendingCount ? ` · ${pendingCount} čeká na schválení` : ''}{inviteCount ? ` · ${inviteCount} k pozvání` : ''}</span></div>
       <div className="stack compact-list">{sortedDrivers.map((driver) => <div className={isPendingDriver(driver) ? 'log list-row pending-driver-row' : 'log list-row'} key={driver.id}>
         <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(driver)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(driver) } }}>
-          <div className="split"><div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}{driver.profileId ? ' · profil: ' + driver.profileId.slice(0, 8) + '…' : ''}</small></div><span className={driver.active ? 'pill good' : isPendingDriver(driver) ? 'pill warn' : 'pill bad'}>{driver.active ? 'Aktivní' : isPendingDriver(driver) ? 'Čeká na schválení' : 'Neaktivní'}</span></div>
+          <div className="split"><div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}{driver.profileId ? ' · profil: ' + driver.profileId.slice(0, 8) + '…' : ''}</small>{onlineMode && appStatus(driver).known && <small className={appStatus(driver).needsInvite && driver.active !== false ? 'driver-app-status warn' : 'driver-app-status'}>{appStatus(driver).label} · {appStatus(driver).pushEnabled ? 'notifikace zapnuté' : 'notifikace vypnuté'}</small>}</div><span className={driver.active ? 'pill good' : isPendingDriver(driver) ? 'pill warn' : 'pill bad'}>{driver.active ? 'Aktivní' : isPendingDriver(driver) ? 'Čeká na schválení' : 'Neaktivní'}</span></div>
           {driver.note && <p className="muted compact-note">{driver.note}</p>}
         </div>
         <div className="row-actions list-row-actions">
@@ -145,8 +162,18 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
         {editing && <div className="field span2">
           <button className="danger" type="button" onClick={() => softDelete()} disabled={editingDriver?.active === false}>Deaktivovat řidiče</button>
         </div>}
+        {editing && editingDriver && <div className="field span2 driver-invite">
+          <span className="drawer-section-title">Aplikace řidiče</span>
+          {onlineMode && editingStatus.known && <small className={editingStatus.needsInvite ? 'driver-app-status warn' : 'driver-app-status'}>{editingStatus.label} · {editingStatus.pushEnabled ? 'notifikace zapnuté' : 'notifikace vypnuté'}</small>}
+          <div className="driver-invite-actions">
+            <a className="ghost" href={whatsappInviteUrl(editingDriver.phone, inviteText)} target="_blank" rel="noopener noreferrer">Pozvat přes WhatsApp</a>
+            {editingDriver.email && <a className="ghost" href={emailInviteUrl(editingDriver.email, inviteText)}>Pozvat e-mailem</a>}
+            <button className="ghost" type="button" onClick={() => copyText(inviteText)}>Kopírovat pozvánku</button>
+          </div>
+          <small className="muted">Odkaz na aplikaci, registraci stejným e-mailem, přidání na plochu a zapnutí notifikací.</small>
+        </div>}
         {editing && canRemoveDrivers && editingDriver && <div className="field span2 driver-removal">
-          <span className="driver-removal-title">Odstranění řidiče</span>
+          <span className="drawer-section-title">Odstranění řidiče</span>
           {onlineMode && editingDriver.profileId && <>
             <button className="ghost danger-soft" type="button" onClick={() => openRemoval('login')}>Zrušit přihlašovací účet</button>
             <small className="muted">Když řidič nemůže obnovit heslo. Směny i výčetky zůstanou a řidič si vytvoří nový účet se stejným e-mailem.</small>

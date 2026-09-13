@@ -268,6 +268,20 @@ async function runStaffChecks(page) {
   await clickByText(page, '.shift-drawer button', 'Uložit')
   await waitForEval(page, 'document.body.innerText.includes("Směna vytvořena.")', 'New shift was not saved')
 
+  await waitForEval(page, '!document.querySelector(".planner-toast")', 'Shift saved toast did not disappear', 6000)
+  await clickByText(page, 'button', 'Naplánovat týden')
+  await waitForEval(page, 'document.querySelector(".action-modal")?.innerText.includes("Zkopírovat předchozí týden")', 'Week plan dialog did not open')
+  await evaluate(page, '[...document.querySelectorAll(".week-plan-weeks button")].at(-1)?.click()')
+  await evaluate(page, `(() => {
+    const option = [...document.querySelectorAll(".week-plan-option")].find((item) => item.innerText.includes("Zkopírovat předchozí týden"))
+    const box = option?.querySelector("input")
+    if (box && !box.checked) box.click()
+  })()`)
+  await waitForEval(page, '/Vytvoří se \\d+ směn/.test(document.querySelector(".week-plan-summary")?.innerText || "")', 'Week plan preview did not list the copied shifts')
+  await assertEval(page, 'document.querySelectorAll(".week-plan-list li").length > 0', 'Week plan preview list is empty')
+  await evaluate(page, '[...document.querySelectorAll(".action-modal button")].find((button) => button.innerText.trim().startsWith("Vytvořit"))?.click()')
+  await waitForEval(page, '!document.querySelector(".action-modal") && document.body.innerText.includes("Naplánováno:")', 'Week plan did not create shifts')
+
   await clickByText(page, '.sidebar-nav button', 'Notifikace')
   await waitForEval(page, 'document.body.innerText.includes("Centrum upozornění")', 'Staff notifications did not open after creating a shift')
   await waitForEval(page, `
@@ -294,6 +308,12 @@ async function runStaffChecks(page) {
 
   await evaluate(page, 'document.querySelector(".list-row-main")?.click()')
   await waitForEval(page, 'document.body.innerText.includes("Detail řidiče")', 'Driver detail drawer did not open')
+  await waitForEval(page, 'document.querySelector(".driver-invite")?.textContent.includes("Aplikace řidiče")', 'Driver detail should offer an app invite')
+  await assertEval(page, `(() => {
+    const link = [...document.querySelectorAll(".driver-invite a")].find((item) => item.innerText.includes("WhatsApp"))
+    return Boolean(link) && link.href.startsWith("https://wa.me/420600000001?text=") && decodeURIComponent(link.href).includes("Vytvořit účet")
+  })()`, 'WhatsApp invite link should carry the driver number and sign-up steps')
+  await assertEval(page, '[...document.querySelectorAll(".driver-invite button")].some((button) => button.innerText.trim() === "Kopírovat pozvánku")', 'Invite copy button is missing')
   await evaluate(page, '[...document.querySelectorAll("button")].find((button) => button.innerText.trim() === "Zrušit")?.click()')
   await waitForEval(page, '!document.body.innerText.includes("Detail řidiče")', 'Driver detail drawer did not close')
 

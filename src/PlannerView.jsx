@@ -3,13 +3,16 @@ import {
   actualDurationMinutes,
   addDays,
   durationLabel,
+  EARLIEST_PLAN_DATE,
   formatDate,
+  isPlausiblePlanDate,
+  LATEST_PLAN_DATE,
   localStamp,
   startOfWeek,
   todayISO,
 } from './lib/dateTime.js'
 import { addNotificationsToData } from './lib/notifications.js'
-import { canonicalDriverId } from './lib/drivers.js'
+import { canonicalDriverId, czechCount } from './lib/drivers.js'
 import { canOpenSettlement, settlementForShift } from './lib/settlements.js'
 import { repeatMap, shiftTypeMap, statusMap } from './lib/appConfig.js'
 import {
@@ -28,6 +31,7 @@ import {
 import { coverageGaps } from './lib/opsMetrics.js'
 import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
+import { WeekPlanDialog } from './WeekPlanDialog.jsx'
 import { showNotice } from './lib/notice.js'
 
 const swapStatusMap = { pending: 'Nabídnuto', accepted: 'Přijato kolegou', approved: 'Schváleno', rejected: 'Zamítnuto', cancelled: 'Zrušeno řidičem' }
@@ -132,6 +136,7 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
   const submit = (event) => {
     event.preventDefault()
     if (!form.date || !form.start || !form.end) return showNotice('Vyplň datum a čas směny.')
+    if (!isPlausiblePlanDate(form.date)) return showNotice('Zkontroluj datum směny, rok musí být mezi 2020 a 2100.')
     if (conflictMessages.length && !override) return showNotice('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
     if (editing && isPastLocked(editing)) {
       setPastSaveDialogOpen(true)
@@ -145,7 +150,7 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     {editing && isPastLocked(editing) && <div className="alert warn" style={{ marginBottom: 12 }}>Minulá směna: úprava bude vyžadovat potvrzení.</div>}
     <form className="form two-col" onSubmit={submit}>
       <Field label="Šablona směny" className="span2"><Select value={template} onChange={applyTemplate} options={shiftTemplateOptions(data.settings)} /></Field>
-      <Field label="Datum"><input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></Field>
+      <Field label="Datum"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></Field>
       <Field label="Typ"><Select value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={shiftTypeMap} /></Field>
       <Field label="Začátek"><input type="time" value={form.start} onChange={(event) => setForm({ ...form, start: event.target.value })} /></Field>
       <Field label="Konec"><input type="time" value={form.end} onChange={(event) => setForm({ ...form, end: event.target.value })} /></Field>
@@ -194,6 +199,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
   const [shiftFormDirty, setShiftFormDirty] = useState(false)
   const [closeDirtyDialogOpen, setCloseDirtyDialogOpen] = useState(false)
   const [plannerToast, setPlannerToast] = useState('')
+  const [weekPlanOpen, setWeekPlanOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(() => {
     try { return !window.matchMedia('(max-width: 760px)').matches }
     catch { return true }
@@ -249,12 +255,6 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     closeShiftDrawer()
     setPlannerToast(wasEditing ? 'Směna upravena.' : 'Směna vytvořena.')
   }
-  const copyWeek = () => {
-    const nextItems = rangeShifts.map((shift) => ({ ...shift, id: uid('sh'), date: addDays(shift.date, 14), status: 'draft', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }))
-    if (!nextItems.length) return showNotice('Ve zobrazeném období nejsou žádné směny ke kopírování.')
-    commit((prev) => ({ ...prev, shifts: [...nextItems, ...prev.shifts] }), `Zkopírováno zobrazené období na další 2 týdny: ${nextItems.length} směn.`)
-    setWeekStart(addDays(weekStart, 14))
-  }
   const copyToday = (date) => {
     const items = data.shifts.filter((shift) => shift.date === date).map((shift) => ({ ...shift, id: uid('sh'), date: addDays(date, 1), status: 'draft', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }))
     if (!items.length) return showNotice('V daném dni nejsou žádné směny.')
@@ -281,12 +281,12 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
         <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
       </div>
       <button className="primary planner-new-inline" onClick={openNewShiftDrawer}>+ Nová směna</button>
-      <button className="ghost planner-secondary-inline" onClick={copyWeek}>Kopírovat 2 týdny</button>
+      <button className="ghost planner-secondary-inline" onClick={() => setWeekPlanOpen(true)}>Naplánovat týden</button>
       <button className="ghost planner-secondary-inline" onClick={shareWeek}>WhatsApp</button>
       <details className="planner-more-actions">
         <summary className="ghost">Další akce</summary>
         <div className="planner-more-panel">
-          <button type="button" className="ghost" onClick={copyWeek}>Kopírovat 2 týdny</button>
+          <button type="button" className="ghost" onClick={() => setWeekPlanOpen(true)}>Naplánovat týden</button>
           <button type="button" className="ghost" onClick={shareWeek}>Zkopírovat text pro WhatsApp</button>
         </div>
       </details>
@@ -364,6 +364,16 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
         services={services}
       />
     </SideDrawer>
+    {weekPlanOpen && <WeekPlanDialog
+      data={data}
+      weeks={weeks}
+      helpers={helpers}
+      commit={commit}
+      services={services}
+      ui={ui}
+      onClose={() => setWeekPlanOpen(false)}
+      onPlanned={(count) => { setWeekPlanOpen(false); setPlannerToast(`Naplánováno: ${czechCount(count, 'směna', 'směny', 'směn')}.`) }}
+    />}
     {closeDirtyDialogOpen && <ConfirmActionModal
       title="Zavřít bez uložení?"
       message="Formulář má neuložené změny. Po zavření se rozepsaná směna zahodí."

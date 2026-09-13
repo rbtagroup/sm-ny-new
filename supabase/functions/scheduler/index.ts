@@ -345,19 +345,8 @@ Deno.serve(async (req) => {
 
     const skipReason = cronWindowSkipReason(body, 7)
     if (skipReason) {
-      const { error: auditError } = await supabase.from('audit_logs').insert({
-        id: uid('log_scheduler'),
-        action: 'Scheduler daily-coverage skipped outside Prague window.',
-        payload: {
-          job: 'daily-coverage',
-          skipped: true,
-          skippedReason: skipReason,
-          source: body?.source || '',
-          localTime: localTimeParts(),
-        },
-        created_at: startedAt,
-      })
-      if (auditError) throw auditError
+      // The cron fires at two UTC hours to follow Prague DST; the skipped call is not worth an audit row every day.
+      console.info('Scheduler daily-coverage skipped', { skipReason, source: body?.source || '', localTime: localTimeParts() })
       return jsonResponse({
         ok: true,
         job: 'daily-coverage',

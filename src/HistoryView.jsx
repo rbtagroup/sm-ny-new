@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isRoutineSchedulerLog } from './lib/auditLog.js'
 import { todayISO } from './lib/dateTime.js'
 
 const pageSize = 50
@@ -36,7 +37,7 @@ export function History({ data, ui, services }) {
   const [userFilter, setUserFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [page, setPage] = useState(1)
-  const logs = [...(data.audit || [])].sort((a, b) => String(b.at || b.createdAt || '').localeCompare(String(a.at || a.createdAt || '')))
+  const logs = (data.audit || []).filter((log) => !isRoutineSchedulerLog(log)).sort((a, b) => String(b.at || b.createdAt || '').localeCompare(String(a.at || a.createdAt || '')))
   const filtered = logs.filter((log) => {
     const d = logDate(log)
     const text = logText(log).toLocaleLowerCase('cs-CZ')

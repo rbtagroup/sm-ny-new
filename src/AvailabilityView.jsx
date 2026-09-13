@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { datetimeLocal, timePart, todayISO } from './lib/dateTime.js'
+import { datetimeLocal, EARLIEST_PLAN_DATE, isPlausiblePlanDate, LATEST_PLAN_DATE, timePart, todayISO } from './lib/dateTime.js'
 import { uid } from './lib/ids.js'
 import {
   availabilityKind,
@@ -53,6 +53,7 @@ export function Availability({ data, commit, currentDriver, ui }) {
   const submitAbsence = (event) => {
     event.preventDefault()
     if (!absence.driverId || !absence.from || !absence.to) return showNotice('Vyplň řidiče a datum.')
+    if (!isPlausiblePlanDate(absence.from) || !isPlausiblePlanDate(absence.to)) return showNotice('Zkontroluj datum, rok musí být mezi 2020 a 2100.')
     if (absence.to < absence.from) return showNotice('Datum Do musí být stejné nebo pozdější než Od.')
     commit((prev) => ({ ...prev, absences: [{ id: uid('abs'), ...absence }, ...prev.absences] }), 'Přidána nepřítomnost řidiče.')
     setAbsence(resetAbsenceDates(absence))
@@ -106,8 +107,8 @@ export function Availability({ data, commit, currentDriver, ui }) {
       </form></div>
       <div className="card"><h3>Nová nepřítomnost</h3><form className="form two-col" onSubmit={submitAbsence}>
         <DriverField Field={Field} currentDriver={currentDriver} driversForSelect={driversForSelect} value={absence.driverId} onChange={(value) => setAbsence({ ...absence, driverId: value })} />
-        <Field label="Od"><input type="date" value={absence.from} onChange={(event) => setAbsence({ ...absence, from: event.target.value })} /></Field>
-        <Field label="Do"><input type="date" value={absence.to} onChange={(event) => setAbsence({ ...absence, to: event.target.value })} /></Field>
+        <Field label="Od"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={absence.from} onChange={(event) => setAbsence({ ...absence, from: event.target.value })} /></Field>
+        <Field label="Do"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={absence.to} onChange={(event) => setAbsence({ ...absence, to: event.target.value })} /></Field>
         <Field label="Důvod" className="span2"><input value={absence.reason} onChange={(event) => setAbsence({ ...absence, reason: event.target.value })} placeholder="Volno, nemoc, dovolená…" /></Field>
         <div className="field span2"><button className="primary" type="submit">Uložit nepřítomnost</button></div>
       </form></div>

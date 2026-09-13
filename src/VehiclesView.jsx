@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { EARLIEST_PLAN_DATE, isPlausiblePlanDate, LATEST_PLAN_DATE } from './lib/dateTime.js'
 import { showNotice } from './lib/notice.js'
 
 const emptyVehicleForm = Object.freeze({ name: '', plate: '', year: '', active: true, note: '' })
@@ -68,6 +69,7 @@ export function Vehicles({ data, commit, services, ui }) {
   const addBlock = (event) => {
     event.preventDefault()
     if (!block.vehicleId) return showNotice('Vyber vozidlo.')
+    if (!isPlausiblePlanDate(block.from) || !isPlausiblePlanDate(block.to)) return showNotice('Zkontroluj datum blokace, rok musí být mezi 2020 a 2100.')
     commit((prev) => ({ ...prev, serviceBlocks: [{ id: uid('srv'), ...block }, ...prev.serviceBlocks] }), 'Přidána servisní blokace vozidla.')
     setBlock(freshServiceBlock(todayISO))
   }
@@ -109,7 +111,7 @@ export function Vehicles({ data, commit, services, ui }) {
           </div>
         })}</div>
       </div>
-      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill warn">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(event) => setBlock({ ...block, vehicleId: event.target.value })}><option value="">Vyber vůz</option>{data.vehicles.filter((vehicle) => vehicle.active !== false).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(event) => setBlock({ ...block, reason: event.target.value })} /></Field><Field label="Od"><input type="date" value={block.from} onChange={(event) => setBlock({ ...block, from: event.target.value })} /></Field><Field label="Do"><input type="date" value={block.to} onChange={(event) => setBlock({ ...block, to: event.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><div className="stack" style={{ marginTop: 12 }}>{data.serviceBlocks.map((item) => <div className="alert warn" key={item.id}>{data.vehicles.find((vehicle) => vehicle.id === item.vehicleId)?.name || 'Vůz'} · {item.from} až {item.to}<br /><small>{item.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit servisní blokaci" onClick={() => removeBlock(item.id)} /></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill warn">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(event) => setBlock({ ...block, vehicleId: event.target.value })}><option value="">Vyber vůz</option>{data.vehicles.filter((vehicle) => vehicle.active !== false).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(event) => setBlock({ ...block, reason: event.target.value })} /></Field><Field label="Od"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={block.from} onChange={(event) => setBlock({ ...block, from: event.target.value })} /></Field><Field label="Do"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={block.to} onChange={(event) => setBlock({ ...block, to: event.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><div className="stack" style={{ marginTop: 12 }}>{data.serviceBlocks.map((item) => <div className="alert warn" key={item.id}>{data.vehicles.find((vehicle) => vehicle.id === item.vehicleId)?.name || 'Vůz'} · {item.from} až {item.to}<br /><small>{item.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit servisní blokaci" onClick={() => removeBlock(item.id)} /></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div>
     </div>
     <SideDrawer title={editing ? 'Detail vozidla' : 'Přidat vozidlo'} open={drawerOpen} onClose={closeDrawer}>
       <form className="form two-col" onSubmit={submit}>

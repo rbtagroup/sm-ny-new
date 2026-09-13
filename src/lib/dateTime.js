@@ -5,6 +5,15 @@ export function localDateISO(date = new Date()) {
 
 export const todayISO = (date = new Date()) => localDateISO(date)
 
+export const EARLIEST_PLAN_DATE = '2020-01-01'
+export const LATEST_PLAN_DATE = '2100-12-31'
+
+// A quickly typed year such as 0005 would otherwise be saved as a real shift or absence.
+export function isPlausiblePlanDate(value = '') {
+  const text = String(value || '')
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) && text >= EARLIEST_PLAN_DATE && text <= LATEST_PLAN_DATE
+}
+
 export function millisecondsUntilNextLocalDay(date = new Date()) {
   const nextDay = new Date(date)
   nextDay.setHours(24, 0, 0, 50)

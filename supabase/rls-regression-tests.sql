@@ -411,6 +411,24 @@ begin
 
   select count(*)::int
     into affected
+  from public.rb_driver_activity()
+  where driver_id = driver_row_id;
+  if affected <> 1 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: staff reads driver activity';
+  end if;
+
+  begin
+    insert into public.shifts (id, shift_date, start_time, end_time, driver_id, vehicle_id, type, status, note)
+    values ('rls_probe_implausible_date', date '0005-05-04', '08:00', '09:00', driver_row_id, null, 'day', 'assigned', 'rollback probe');
+    raise exception 'UNEXPECTED_ALLOWED: shift with implausible date';
+  exception when others then
+    if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+      raise;
+    end if;
+  end;
+
+  select count(*)::int
+    into affected
   from public.audit_logs
   where id = 'rls_probe_driver_audit_rpc';
   if affected <> 1 then
@@ -473,6 +491,13 @@ begin
     if affected <> 1 then
       raise exception 'EXPECTED_ALLOWED_FAILED: driver directory lists colleague names';
     end if;
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.rb_driver_activity();
+  if affected > 0 then
+    raise exception 'UNEXPECTED_ALLOWED: driver reads driver activity';
   end if;
 
   reset role;
