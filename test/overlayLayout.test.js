@@ -49,3 +49,15 @@ test('mobile page card restyle leaves modal cards opaque', () => {
   assert.equal(blocksFor('.app-with-topbar .card').length, 0, 'use .app-with-topbar .card:not(:where(.modal-card)) so modal cards keep their background')
   assert.equal(blocksFor('.app-with-topbar .card:not(:where(.modal-card))').length, 1)
 })
+
+test('staff screens keep clear of the iPhone status bar and home indicator', () => {
+  const strip = blocksFor('body::before')
+  assert.equal(strip.length, 1, 'an opaque strip should sit behind the translucent iOS status bar')
+  assert.match(declaration(strip[0], 'height'), /env\(safe-area-inset-top/)
+  for (const selector of ['.app-topbar-shell', '.app-with-topbar .app-topbar-shell', '.shift-drawer-head', '.modal-backdrop']) {
+    const padded = blocksFor(selector).filter((block) => declaration(block, 'padding'))
+    assert.ok(padded.length, `${selector} should set padding`)
+    for (const block of padded) assert.match(declaration(block, 'padding'), /^calc\(\d+px \+ env\(safe-area-inset-top/, `${selector} padding must include the top safe area`)
+  }
+  assert.ok(blocksFor('.app-with-topbar .main').some((block) => /safe-area-inset-bottom/.test(declaration(block, 'padding') || '')), 'staff content should end above the home indicator')
+})
