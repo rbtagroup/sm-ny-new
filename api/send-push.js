@@ -15,6 +15,31 @@ const pushServerError = (res, err, context = 'push') => {
 }
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 
+const SUPABASE_RETRY_STATUSES = new Set([502, 503, 504])
+const SUPABASE_READ_ATTEMPTS = 2
+const SUPABASE_RETRY_DELAY_MS = 400
+const waitMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Supabase API gateway občas vrátí 504 i na triviální dotaz; čtení je bezpečné zopakovat, zápisy ne.
+const createRetryingFetch = (baseFetch = globalThis.fetch, { attempts = SUPABASE_READ_ATTEMPTS, delayMs = SUPABASE_RETRY_DELAY_MS, wait = waitMs } = {}) =>
+  async (input, init = {}) => {
+    const method = String(init?.method || input?.method || 'GET').toUpperCase()
+    const maxAttempts = method === 'GET' || method === 'HEAD' ? Math.max(1, attempts) : 1
+    for (let attempt = 1; ; attempt += 1) {
+      const lastAttempt = attempt >= maxAttempts
+      try {
+        const response = await baseFetch(input, init)
+        if (lastAttempt || !SUPABASE_RETRY_STATUSES.has(response.status)) return response
+        await response.body?.cancel().catch(() => {})
+        console.warn(`[send-push] Supabase ${method} returned ${response.status}, retrying`)
+      } catch (err) {
+        if (lastAttempt || init?.signal?.aborted) throw err
+        console.warn(`[send-push] Supabase ${method} failed, retrying:`, err?.message || err)
+      }
+      await wait(delayMs * attempt)
+    }
+  }
+
 const readBody = async (req) => {
   if (req.body && typeof req.body === 'object') return req.body
   if (typeof req.body === 'string') {
@@ -379,6 +404,7 @@ export {
   checkDurableRateLimit,
   checkPushRateLimit,
   checkRateLimit,
+  createRetryingFetch,
   matchesNotice,
   normalizeNotice,
   pushDeliveryLogRows,
@@ -413,7 +439,7 @@ export default async function handler(req, res) {
   if (!notifications.length) return json(res, 200, { ok: true, skipped: true, reason: 'no-pushable-notifications', notifications: 0, sent: 0, failed: 0, deliveries: [] })
   if (notifications.length > PUSH_MAX_NOTIFICATIONS_PER_REQUEST) return json(res, 413, { ok: false, error: `Too many notifications supplied. Limit is ${PUSH_MAX_NOTIFICATIONS_PER_REQUEST}.` })
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false }, global: { fetch: createRetryingFetch() } })
   const expectedInternalSecret = process.env.PUSH_DELIVERY_SECRET || process.env.SCHEDULER_SECRET || process.env.DRIVER_REMINDER_SECRET
   const receivedInternalSecret = internalSecretFrom(req)
   const internalAuthorized = Boolean(expectedInternalSecret && receivedInternalSecret && receivedInternalSecret === expectedInternalSecret)

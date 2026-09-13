@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   checkPushRateLimit,
   checkRateLimit,
+  createRetryingFetch,
   matchesNotice,
   normalizeNotice,
   pushDeliveryLogRows,
@@ -229,4 +230,48 @@ test('recordPushDeliveryLogs is tolerant when delivery log table is unavailable'
   assert.deepEqual(calls, [['from', 'push_delivery_logs'], ['insert', 1]])
   assert.equal(result.ok, false)
   assert.match(result.error, /push_delivery_logs/)
+})
+
+function scriptedFetch(outcomes = []) {
+  const calls = []
+  const fetch = async (url, init = {}) => {
+    calls.push([init.method || 'GET', url])
+    const next = outcomes.shift()
+    if (next instanceof Error) throw next
+    return new Response(next.body ?? '', { status: next.status })
+  }
+  return { calls, fetch }
+}
+
+test('createRetryingFetch retries a Supabase gateway timeout on reads', async () => {
+  const { calls, fetch } = scriptedFetch([
+    { status: 504, body: '{"message":"Gateway Timeout"}' },
+    { status: 200, body: '[]' },
+  ])
+  const waits = []
+  const retryingFetch = createRetryingFetch(fetch, { wait: async (ms) => { waits.push(ms) } })
+
+  const response = await retryingFetch('https://example.supabase.co/rest/v1/push_subscriptions', { method: 'GET' })
+
+  assert.equal(response.status, 200)
+  assert.equal(calls.length, 2)
+  assert.deepEqual(waits, [400])
+})
+
+test('createRetryingFetch does not repeat writes after a gateway timeout', async () => {
+  const { calls, fetch } = scriptedFetch([{ status: 504 }, { status: 201 }])
+  const retryingFetch = createRetryingFetch(fetch, { wait: async () => {} })
+
+  const response = await retryingFetch('https://example.supabase.co/rest/v1/push_delivery_logs', { method: 'POST', body: '[]' })
+
+  assert.equal(response.status, 504)
+  assert.deepEqual(calls, [['POST', 'https://example.supabase.co/rest/v1/push_delivery_logs']])
+})
+
+test('createRetryingFetch gives up on reads after the last attempt', async () => {
+  const { calls, fetch } = scriptedFetch([new TypeError('fetch failed'), new TypeError('fetch failed again')])
+  const retryingFetch = createRetryingFetch(fetch, { wait: async () => {} })
+
+  await assert.rejects(retryingFetch('https://example.supabase.co/auth/v1/user'), /fetch failed again/)
+  assert.equal(calls.length, 2)
 })

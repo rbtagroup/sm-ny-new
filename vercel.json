@@ -2,6 +2,7 @@
   "framework": "vite",
   "installCommand": "corepack enable && pnpm install --frozen-lockfile",
   "buildCommand": "corepack enable && pnpm run build",
+  "regions": ["fra1"],
   "rewrites": [
     {
       "source": "/:path((?!api/).*)",

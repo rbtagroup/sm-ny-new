@@ -64,3 +64,4 @@ Ten doplňuje oddělený stav smazaných notifikací (`deleted_by`), zpřísňuj
 - `package-lock.json` v projektu není potřeba; zdrojem pravdy je `pnpm-lock.yaml`.
 - Service worker a `index.html` zůstávají bez cache, hashované assety se cachují dlouhodobě.
 - Serverové push notifikace se odesílají s omezenou paralelností přes `PUSH_DELIVERY_CONCURRENCY` nebo výchozí hodnotu `8`.
+- Serverless funkce běží ve Vercel regionu `fra1` (Frankfurt), co nejblíž Supabase projektu v `eu-central-2`. Z výchozího `iad1` (USA) vracela Supabase API brána na dotazy občas `504 Gateway Timeout`.
