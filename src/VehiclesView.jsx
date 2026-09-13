@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { showNotice } from './lib/notice.js'
 
 const emptyVehicleForm = Object.freeze({ name: '', plate: '', year: '', active: true, note: '' })
 const freshVehicleForm = () => ({ ...emptyVehicleForm })
@@ -56,9 +57,9 @@ export function Vehicles({ data, commit, services, ui }) {
     const name = form.name.trim()
     const plate = normalizePlate(form.plate)
     const year = String(form.year || '').trim()
-    if (!name) return alert('Vyplň model vozidla.')
-    if (!plate || !isValidPlate(plate)) return alert('Vyplň platnou SPZ. Použij 2–16 znaků: písmena, čísla, mezery nebo pomlčky.')
-    if (!isValidVehicleYear(year)) return alert('Rok výroby musí být mezi 1990 a příštím rokem.')
+    if (!name) return showNotice('Vyplň model vozidla.')
+    if (!plate || !isValidPlate(plate)) return showNotice('Vyplň platnou SPZ. Použij 2–16 znaků: písmena, čísla, mezery nebo pomlčky.')
+    if (!isValidVehicleYear(year)) return showNotice('Rok výroby musí být mezi 1990 a příštím rokem.')
     const payload = { name, plate, active: form.active !== false, note: composeVehicleNote(year, form.note) }
     if (editing) commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((vehicle) => vehicle.id === editing ? { ...vehicle, ...payload } : vehicle) }), 'Vozidlo upraveno.')
     else commit((prev) => ({ ...prev, vehicles: [{ id: uid('car'), ...payload }, ...prev.vehicles] }), 'Vozidlo vytvořeno.')
@@ -66,7 +67,7 @@ export function Vehicles({ data, commit, services, ui }) {
   }
   const addBlock = (event) => {
     event.preventDefault()
-    if (!block.vehicleId) return alert('Vyber vozidlo.')
+    if (!block.vehicleId) return showNotice('Vyber vozidlo.')
     commit((prev) => ({ ...prev, serviceBlocks: [{ id: uid('srv'), ...block }, ...prev.serviceBlocks] }), 'Přidána servisní blokace vozidla.')
     setBlock(freshServiceBlock(todayISO))
   }

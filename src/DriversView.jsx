@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { driverWithDuplicateEmail } from './lib/drivers.js'
+import { showNotice } from './lib/notice.js'
 
 const emptyDriverForm = Object.freeze({ name: '', phone: '', email: '', profileId: '', active: true, note: '' })
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -42,10 +43,10 @@ export function Drivers({ data, commit, services, ui }) {
     event.preventDefault()
     const name = form.name.trim()
     const email = form.email.trim().toLowerCase()
-    if (!name) return alert('Vyplň jméno řidiče.')
-    if (!isValidEmail(email)) return alert('Vyplň platný e-mail řidiče, nebo pole nech prázdné.')
+    if (!name) return showNotice('Vyplň jméno řidiče.')
+    if (!isValidEmail(email)) return showNotice('Vyplň platný e-mail řidiče, nebo pole nech prázdné.')
     const duplicateEmailDriver = driverWithDuplicateEmail(data.drivers, email, editing || '')
-    if (duplicateEmailDriver) return alert(`E-mail už používá řidič ${duplicateEmailDriver.name || duplicateEmailDriver.id}. Uprav existující záznam, aby nevznikly dva profily pro stejné přihlášení.`)
+    if (duplicateEmailDriver) return showNotice(`E-mail už používá řidič ${duplicateEmailDriver.name || duplicateEmailDriver.id}. Uprav existující záznam, aby nevznikly dva profily pro stejné přihlášení.`)
     const payload = { name, phone: form.phone.trim(), email, profileId: form.profileId?.trim() || '', active: form.active !== false, note: form.note.trim() }
     if (editing) commit((prev) => ({ ...prev, drivers: prev.drivers.map((driver) => driver.id === editing ? { ...driver, ...payload } : driver) }), 'Řidič upraven.')
     else commit((prev) => ({ ...prev, drivers: [{ id: uid('drv'), ...payload }, ...prev.drivers] }), 'Řidič vytvořen.')

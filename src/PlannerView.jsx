@@ -28,6 +28,7 @@ import {
 import { coverageGaps } from './lib/opsMetrics.js'
 import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
+import { showNotice } from './lib/notice.js'
 
 const swapStatusMap = { pending: 'Nabídnuto', accepted: 'Přijato kolegou', approved: 'Schváleno', rejected: 'Zamítnuto', cancelled: 'Zrušeno řidičem' }
 
@@ -130,8 +131,8 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
   }
   const submit = (event) => {
     event.preventDefault()
-    if (!form.date || !form.start || !form.end) return alert('Vyplň datum a čas směny.')
-    if (conflictMessages.length && !override) return alert('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
+    if (!form.date || !form.start || !form.end) return showNotice('Vyplň datum a čas směny.')
+    if (conflictMessages.length && !override) return showNotice('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
     if (editing && isPastLocked(editing)) {
       setPastSaveDialogOpen(true)
       return
@@ -250,13 +251,13 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
   }
   const copyWeek = () => {
     const nextItems = rangeShifts.map((shift) => ({ ...shift, id: uid('sh'), date: addDays(shift.date, 14), status: 'draft', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }))
-    if (!nextItems.length) return alert('Ve zobrazeném období nejsou žádné směny ke kopírování.')
+    if (!nextItems.length) return showNotice('Ve zobrazeném období nejsou žádné směny ke kopírování.')
     commit((prev) => ({ ...prev, shifts: [...nextItems, ...prev.shifts] }), `Zkopírováno zobrazené období na další 2 týdny: ${nextItems.length} směn.`)
     setWeekStart(addDays(weekStart, 14))
   }
   const copyToday = (date) => {
     const items = data.shifts.filter((shift) => shift.date === date).map((shift) => ({ ...shift, id: uid('sh'), date: addDays(date, 1), status: 'draft', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }))
-    if (!items.length) return alert('V daném dni nejsou žádné směny.')
+    if (!items.length) return showNotice('V daném dni nejsou žádné směny.')
     commit((prev) => ({ ...prev, shifts: [...items, ...prev.shifts] }), `Zkopírován den ${date} na další den.`)
   }
   const shareWeek = () => copyText(weekText({ ...data, shifts: rangeShifts }, helpers, weekStart, 14))
@@ -500,7 +501,7 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
     if (!request) return
     if (status === 'approved') {
       const newDriverId = request.acceptedByDriverId || request.targetDriverId
-      if (!newDriverId) return alert('U nabídky všem musí nejdřív některý kolega kliknout „Chci převzít směnu“.')
+      if (!newDriverId) return showNotice('U nabídky všem musí nejdřív některý kolega kliknout „Chci převzít směnu“.')
       const notices = request.targetMode === 'open'
         ? [makeNotice({ title: 'Volná směna schválena a potvrzena', body: shiftNoticeBody(fresh, helpers, 'směna je rovnou potvrzená'), targetDriverId: newDriverId, type: 'open-shift-approved', shiftId: fresh.id })]
         : [

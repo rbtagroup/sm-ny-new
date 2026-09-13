@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { shiftTypeMap } from './lib/appConfig.js'
 import { uid } from './lib/ids.js'
 import { normalizeShiftTemplates } from './lib/shiftTemplates.js'
+import { showNotice } from './lib/notice.js'
 
 const emptyTemplateForm = Object.freeze({ name: '', start: '07:00', end: '19:00', active: true, type: 'custom' })
 const freshTemplateForm = () => ({ ...emptyTemplateForm })
@@ -26,8 +27,8 @@ export function ShiftTemplates({ data, commit, ui }) {
   const submit = (event) => {
     event.preventDefault()
     const name = form.name.trim()
-    if (!name) return alert('Vyplň název šablony.')
-    if (!form.start || !form.end) return alert('Vyplň začátek a konec šablony.')
+    if (!name) return showNotice('Vyplň název šablony.')
+    if (!form.start || !form.end) return showNotice('Vyplň začátek a konec šablony.')
     const payload = { id: editing || uid('tpl'), name, start: form.start, end: form.end, active: form.active !== false, type: form.type || 'custom' }
     if (editing) saveTemplates((items) => items.map((template) => template.id === editing ? { ...template, ...payload } : template), 'Šablona směny upravena.')
     else saveTemplates((items) => [payload, ...items], 'Šablona směny vytvořena.')

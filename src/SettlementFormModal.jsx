@@ -9,6 +9,7 @@ import {
   validateSettlementInputs,
 } from './lib/settlements.js'
 import { money, shiftNoticeBody, shiftTypeName } from './lib/display.js'
+import { showNotice } from './lib/notice.js'
 
 export function SettlementFormModal({ data, helpers, commit, shift, currentDriver = null, isDriver = false, onClose, ui, services }) {
   const { Field, Modal, ReasonActionModal, SettlementStatusPill, ShiftActionSummary } = ui
@@ -28,7 +29,7 @@ export function SettlementFormModal({ data, helpers, commit, shift, currentDrive
   const setValue = (key, value) => setInputs((prev) => ({ ...prev, [key]: value }))
   const upsertSettlement = (status, returnedReason = '') => {
     if (!shift?.id) return
-    if (['submitted','approved'].includes(status) && errors.length) return alert(errors[0])
+    if (['submitted','approved'].includes(status) && errors.length) return showNotice(errors[0])
     setSaving(true)
     const now = new Date().toISOString()
     const nextSettlement = {

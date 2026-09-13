@@ -302,6 +302,15 @@ async function runStaffChecks(page) {
   await assertEval(page, '!document.querySelector(".action-modal input")', 'Delete confirmation should not ask for typed text')
   await evaluate(page, '[...document.querySelectorAll(".action-modal button")].find((button) => button.innerText.trim() === "Zpět")?.click()')
 
+  await clickByText(page, 'button', '+ Přidat řidiče')
+  await waitForEval(page, 'document.querySelector(".shift-drawer")?.innerText.includes("Vytvořit řidiče")', 'Add driver drawer did not open')
+  await fillByPlaceholder(page, 'Např. Aleš Novák', 'Smoke Řidič')
+  await fillByPlaceholder(page, 'volitelné', 'roman@demo.example')
+  await clickByText(page, '.shift-drawer button', 'Vytvořit řidiče')
+  await waitForEval(page, 'document.querySelector(".app-notice[role=\\"alert\\"]")?.innerText.includes("E-mail už používá řidič")', 'Duplicate e-mail should show an in-app notice instead of a blocking alert')
+  await clickByText(page, '.shift-drawer button', 'Zrušit')
+  await waitForEval(page, '!document.querySelector(".shift-drawer")', 'Add driver drawer did not close')
+
   await page.send('Emulation.setDeviceMetricsOverride', {
     width: 390,
     height: 844,

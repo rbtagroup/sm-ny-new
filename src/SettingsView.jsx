@@ -12,6 +12,7 @@ import {
 import { deviceLabelFromUserAgent } from './lib/display.js'
 import { appFriendlyError } from './lib/errors.js'
 import { configuredShiftTimes } from './lib/shiftTemplates.js'
+import { showNotice } from './lib/notice.js'
 
 export function SettingsView({ title = 'Nastavení', data, commit, supabase, onlineMode, reloadOnline, profile, version, ui }) {
   const { Field, Kpi, PageTitle } = ui
@@ -81,7 +82,7 @@ export function SettingsView({ title = 'Nastavení', data, commit, supabase, onl
   }
   const saveDriverReminderSchedule = async () => {
     const cron = String(driverReminderCron || '').trim()
-    if (!isValidSimpleWeeklyCron(cron)) return alert('Zadej cron ve formátu: minuta hodina * * den_v_týdnu. Například 0 18 * * 3.')
+    if (!isValidSimpleWeeklyCron(cron)) return showNotice('Zadej cron ve formátu: minuta hodina * * den_v_týdnu. Například 0 18 * * 3.')
     setDriverReminderStatus('Ukládám nastavení připomínky…')
     commit((prev) => ({ ...prev, settings: { ...prev.settings, driverReminderSchedule: cron } }), 'Upraven čas připomínky volných směn řidičům.')
     if (onlineMode && supabase?.rpc) {

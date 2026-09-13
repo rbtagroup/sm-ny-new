@@ -11,6 +11,7 @@ import {
   Field,
   Kpi,
   Modal,
+  NoticeToast,
   PageTitle,
   ReasonActionModal,
   Select,
@@ -85,6 +86,7 @@ import {
   exportAttendanceCSV,
   weekText,
 } from './lib/shiftExports.js'
+import { showNotice } from './lib/notice.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const makeNotice = createNoticeFactory(uid)
@@ -206,10 +208,10 @@ async function copyText(text) {
     } else {
       execCopy()
     }
-    alert('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.')
+    showNotice('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.', { tone: 'good' })
   } catch {
-    try { execCopy(); alert('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.') }
-    catch { alert('Kopírování se nepodařilo. Označ text ručně a zkopíruj ho přes Ctrl/Cmd+C.') }
+    try { execCopy(); showNotice('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.', { tone: 'good' }) }
+    catch { showNotice('Kopírování se nepodařilo. Označ text ručně a zkopíruj ho přes Ctrl/Cmd+C.', { tone: 'bad' }) }
   }
 }
 
@@ -359,7 +361,7 @@ function App({ session = null, profile = null, signOut = null }) {
     ['DISPEČINK', dispatcherNavItems],
     ...(role === 'admin' ? [['ADMIN', adminNavItems]] : [])
   ]
-  const updateToast = updateWorker && <UpdateReadyToast applying={updateApplying} onRefresh={applyPwaUpdate} onDismiss={dismissPwaUpdate} />
+  const updateToast = <>{updateWorker && <UpdateReadyToast applying={updateApplying} onRefresh={applyPwaUpdate} onDismiss={dismissPwaUpdate} />}<NoticeToast /></>
 
   if (isDriver) return <DriverAppShell currentDriver={currentDriver} onlineMode={onlineMode} page={page} unreadCount={unreadForCurrent} onPageChange={setPage} updateToast={updateToast}>
       {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} syncState={syncState} ui={driverHomeUi} services={driverHomeServices} />}

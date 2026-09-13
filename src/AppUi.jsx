@@ -1,6 +1,7 @@
-import { Children, cloneElement, isValidElement, useEffect, useId } from 'react'
+import { Children, cloneElement, isValidElement, useEffect, useId, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { formatDate } from './lib/dateTime.js'
+import { NOTICE_EVENT } from './lib/notice.js'
 import { money } from './lib/display.js'
 import { computeSettlementMetrics } from './lib/settlements.js'
 import {
@@ -146,4 +147,23 @@ export function SettlementMobileSummary({ settlement }) {
     <b>{money(metrics.settlement)}</b>
     <em>Hotovost {money(metrics.cashDiff)}</em>
   </span>
+}
+
+export function NoticeToast() {
+  const [notice, setNotice] = useState(null)
+  useEffect(() => {
+    const onNotice = (event) => setNotice(event.detail)
+    window.addEventListener(NOTICE_EVENT, onNotice)
+    return () => window.removeEventListener(NOTICE_EVENT, onNotice)
+  }, [])
+  useEffect(() => {
+    if (!notice) return undefined
+    const timer = setTimeout(() => setNotice(null), notice.tone === 'good' ? 3200 : 6500)
+    return () => clearTimeout(timer)
+  }, [notice])
+  if (!notice) return null
+  return <div className={`app-notice ${notice.tone}`} role={notice.tone === 'good' ? 'status' : 'alert'}>
+    <span>{notice.message}</span>
+    <button type="button" className="app-notice-close" aria-label="Zavřít upozornění" onClick={() => setNotice(null)}>×</button>
+  </div>
 }

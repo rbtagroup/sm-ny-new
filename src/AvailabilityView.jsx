@@ -9,6 +9,7 @@ import {
   availabilityNoteText,
   availabilityRangeOverlaps,
 } from './lib/availability.js'
+import { showNotice } from './lib/notice.js'
 
 const absenceDefaults = (driverId = '') => ({ driverId, from: todayISO(), to: todayISO(), reason: '' })
 const availabilityDefaults = (driverId = '') => ({ driverId, kind: 'available', fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), note: '' })
@@ -51,16 +52,16 @@ export function Availability({ data, commit, currentDriver, ui }) {
 
   const submitAbsence = (event) => {
     event.preventDefault()
-    if (!absence.driverId || !absence.from || !absence.to) return alert('Vyplň řidiče a datum.')
-    if (absence.to < absence.from) return alert('Datum Do musí být stejné nebo pozdější než Od.')
+    if (!absence.driverId || !absence.from || !absence.to) return showNotice('Vyplň řidiče a datum.')
+    if (absence.to < absence.from) return showNotice('Datum Do musí být stejné nebo pozdější než Od.')
     commit((prev) => ({ ...prev, absences: [{ id: uid('abs'), ...absence }, ...prev.absences] }), 'Přidána nepřítomnost řidiče.')
     setAbsence(resetAbsenceDates(absence))
   }
   const submitSlot = (event) => {
     event.preventDefault()
-    if (!slot.driverId) return alert('Vyber řidiče.')
-    if (!slot.fromAt || !slot.toAt) return alert('Vyplň datum a čas od/do.')
-    if (new Date(slot.toAt) <= new Date(slot.fromAt)) return alert('Čas Do musí být později než Od.')
+    if (!slot.driverId) return showNotice('Vyber řidiče.')
+    if (!slot.fromAt || !slot.toAt) return showNotice('Vyplň datum a čas od/do.')
+    if (new Date(slot.toAt) <= new Date(slot.fromAt)) return showNotice('Čas Do musí být později než Od.')
     const payload = {
       id: uid('av'),
       driverId: slot.driverId,
