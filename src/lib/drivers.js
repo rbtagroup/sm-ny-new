@@ -24,3 +24,17 @@ export function canonicalDriverId(drivers = [], driverId = '') {
   )
   return linkedMatches.length === 1 ? linkedMatches[0].id : driverId
 }
+
+// Řidič vidí u kolegů jen jméno a stav; plný záznam (telefon, e-mail, poznámka) má jen svůj vlastní.
+export function mergeDriverDirectory(visibleDrivers = [], directory = []) {
+  if (!Array.isArray(directory) || !directory.length) return visibleDrivers || []
+  const visibleById = new Map((visibleDrivers || []).filter((driver) => driver?.id).map((driver) => [driver.id, driver]))
+  const merged = directory
+    .filter((row) => row?.id)
+    .map((row) => visibleById.get(row.id) || { id: row.id, profileId: '', name: row.name || '', phone: '', email: '', active: row.active !== false, note: '' })
+  const mergedIds = new Set(merged.map((driver) => driver.id))
+  for (const driver of visibleById.values()) {
+    if (!mergedIds.has(driver.id)) merged.push(driver)
+  }
+  return merged
+}

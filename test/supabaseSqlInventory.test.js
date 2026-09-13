@@ -83,6 +83,21 @@ test('RLS regression probes cover driver notification and audit RPC flows', () =
   assert.match(sql, /driver own phone update/, 'driver phone update allow path should be covered')
   assert.match(sql, /inactive driver reads other drivers/, 'inactive driver data isolation should be covered')
   assert.match(sql, /inactive driver notifies dispatch/, 'inactive driver notification denial should be covered')
+  assert.match(sql, /driver reads colleague contacts/, 'colleague contact privacy should be covered')
+  assert.match(sql, /driver directory lists colleague names/, 'driver directory allow path should be covered')
+  assert.match(sql, /inactive driver reads driver directory/, 'inactive driver directory denial should be covered')
+})
+
+test('driver directory migration hides colleague contacts from drivers', () => {
+  const file = migrationFiles().find((name) => name.endsWith('_driver_directory_and_contact_privacy.sql'))
+  assert.ok(file, 'driver directory migration should exist')
+  const sql = readFileSync(join(migrationsDir, file), 'utf8')
+
+  assert.match(sql, /alter policy "drivers_select_signed" on public\.drivers\s+using \(\(select public\.rb_is_staff\(\)\) or profile_id = \(select auth\.uid\(\)\)\)/, 'drivers should see only their own full row')
+  assert.match(sql, /returns table \(id text, name text, active boolean\)/, 'directory should expose only id, name and active')
+  assert.doesNotMatch(sql, /d\.(phone|email|note)/, 'directory must not expose contacts or notes')
+  assert.match(sql, /where private\.rb_has_app_access\(\)/, 'directory should require app access')
+  assert.match(sql, /private\.rb_driver_is_active\(notice_target_driver_id\)/, 'colleague notification check should not need driver row visibility')
 })
 
 test('app access migration gates shared data behind staff or active drivers', () => {

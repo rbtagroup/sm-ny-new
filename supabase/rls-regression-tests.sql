@@ -439,6 +439,24 @@ begin
     raise exception 'EXPECTED_ALLOWED_FAILED: driver own phone update';
   end if;
 
+  select count(*)::int
+    into affected
+  from public.drivers
+  where id <> driver_row_id;
+  if affected > 0 then
+    raise exception 'UNEXPECTED_ALLOWED: driver reads colleague contacts';
+  end if;
+
+  if other_driver_row_id is not null then
+    select count(*)::int
+      into affected
+    from public.rb_driver_directory()
+    where id = other_driver_row_id;
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: driver directory lists colleague names';
+    end if;
+  end if;
+
   reset role;
   update public.drivers
   set active = false
@@ -461,6 +479,13 @@ begin
   where id = driver_row_id;
   if affected <> 1 then
     raise exception 'EXPECTED_ALLOWED_FAILED: inactive driver reads own driver row';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.rb_driver_directory();
+  if affected > 0 then
+    raise exception 'UNEXPECTED_ALLOWED: inactive driver reads driver directory';
   end if;
 
   select count(*)::int

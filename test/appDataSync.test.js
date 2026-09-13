@@ -230,3 +230,47 @@ test('syncChangedRows persists staff notification state through RPC instead of u
   })
   assert.equal(supabase.upserts.some((call) => call.table === 'notifications'), false)
 })
+
+function trackingSupabase(rowsByTable = {}, directory = null) {
+  const supabase = fakeSupabase(rowsByTable)
+  const tables = []
+  const rpcs = []
+  const from = supabase.from
+  return {
+    tables,
+    rpcs,
+    from(table) {
+      tables.push(table)
+      return from(table)
+    },
+    rpc(fn) {
+      rpcs.push(fn)
+      return Promise.resolve(directory ? { data: directory, error: null } : { data: null, error: { message: 'missing function' } })
+    },
+  }
+}
+
+test('loadDataFromSupabase gives drivers only colleague names from the directory', async () => {
+  const supabase = trackingSupabase({
+    drivers: [{ id: 'drv_me', profile_id: 'profile_me', name: 'Já', phone: '+420 1', email: 'me@example.test', active: true }],
+  }, [{ id: 'drv_colleague', name: 'Kolega', active: true }, { id: 'drv_me', name: 'Já', active: true }])
+  const { loadDataFromSupabase } = createAppDataSync({ supabase, isConfiguredSupabase: true, timePart: () => '', sendPushForNotifications: async () => ({}) })
+
+  const driverData = await loadDataFromSupabase({ role: 'driver' })
+  assert.deepEqual(supabase.rpcs, ['rb_driver_directory'])
+  assert.deepEqual(driverData.drivers.map((driver) => [driver.id, driver.phone]), [['drv_colleague', ''], ['drv_me', '+420 1']])
+
+  await loadDataFromSupabase({ role: 'dispatcher' })
+  assert.deepEqual(supabase.rpcs, ['rb_driver_directory'], 'staff read the drivers table directly')
+})
+
+test('loadTablesFromSupabase reads only the requested tables', async () => {
+  const supabase = trackingSupabase({ notifications: [{ id: 'ntf_1', title: 'Nová zpráva', created_at: '2026-09-13T08:00:00.000Z' }] })
+  const { loadTablesFromSupabase } = createAppDataSync({ supabase, isConfiguredSupabase: true, timePart: () => '', sendPushForNotifications: async () => ({}) })
+
+  const loaded = await loadTablesFromSupabase(['notifications'], { role: 'driver' })
+
+  assert.deepEqual(supabase.tables, ['notifications'])
+  assert.deepEqual(Object.keys(loaded), ['notifications'])
+  assert.equal(loaded.notifications[0].title, 'Nová zpráva')
+})

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { canonicalDriverId, driverWithDuplicateEmail, normalizeDriverEmail } from '../src/lib/drivers.js'
+import { canonicalDriverId, driverWithDuplicateEmail, mergeDriverDirectory, normalizeDriverEmail } from '../src/lib/drivers.js'
 
 test('driver email helpers prevent duplicate identities', () => {
   const drivers = [
@@ -23,4 +23,21 @@ test('canonicalDriverId keeps an unlinked driver when no unique linked match exi
 
   assert.equal(canonicalDriverId(drivers, 'legacy'), 'legacy')
   assert.equal(canonicalDriverId(drivers, 'missing'), 'missing')
+})
+
+test('mergeDriverDirectory keeps full own row and only names for colleagues', () => {
+  const own = [{ id: 'drv_me', profileId: 'profile_me', name: 'Já', phone: '+420 1', email: 'me@example.test', active: true, note: 'moje' }]
+  const directory = [
+    { id: 'drv_colleague', name: 'Kolega', active: true },
+    { id: 'drv_me', name: 'Já', active: true },
+    { id: 'drv_former', name: 'Bývalý', active: false },
+  ]
+
+  const merged = mergeDriverDirectory(own, directory)
+
+  assert.deepEqual(merged.map((driver) => driver.id), ['drv_colleague', 'drv_me', 'drv_former'])
+  assert.deepEqual(merged[0], { id: 'drv_colleague', profileId: '', name: 'Kolega', phone: '', email: '', active: true, note: '' })
+  assert.equal(merged[1].phone, '+420 1')
+  assert.equal(merged[2].active, false)
+  assert.deepEqual(mergeDriverDirectory(own, []), own)
 })

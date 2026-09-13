@@ -13,6 +13,8 @@ import {
 } from './sensitiveSync.js'
 import { createSupabaseMappers, ONLINE_TABLES, tableName } from './supabaseData.js'
 import { readStore, seed, STORAGE_KEY, writeStore } from './appStore.js'
+import { mergeDriverDirectory } from './drivers.js'
+import { applySwapRequestStatus, realtimeReloadKeys, shouldRefreshOnline, SYNC_FALLBACK_POLL_MS } from './syncPolicy.js'
 import { appFriendlyError } from './errors.js'
 import { pushDeliveryWarning } from './pushDelivery.js'
 import { uid } from './ids.js'
@@ -20,25 +22,22 @@ import { uid } from './ids.js'
 export function createAppDataSync({ supabase, isConfiguredSupabase = false, timePart, sendPushForNotifications }) {
   const { toDb, fromDb } = createSupabaseMappers({ uid, timePart })
 
-  async function loadDataFromSupabase() {
-    if (!supabase) return readStore()
-    const base = seed()
-    const output = { ...base }
-    const errors = []
-    const tableResults = await Promise.all(ONLINE_TABLES.map(async (key) => {
-      const tn = tableName(key)
-      let q = supabase.from(tn).select('*')
-      if (key !== 'pushDeliveryLogs') q = q.order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
-      if (key === 'notifications') {
-        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-        q = q.gte('created_at', cutoff)
-      } else if (key === 'pushDeliveryLogs') {
-        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-        q = q.gte('created_at', cutoff).order('created_at', { ascending: false })
-      }
-      const { data: rows, error } = await q
-      return { key, tn, rows, error }
-    }))
+  async function loadTable(key) {
+    const tn = tableName(key)
+    let q = supabase.from(tn).select('*')
+    if (key !== 'pushDeliveryLogs') q = q.order(key === 'audit' ? 'created_at' : 'id', { ascending: key !== 'audit' })
+    if (key === 'notifications') {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+      q = q.gte('created_at', cutoff)
+    } else if (key === 'pushDeliveryLogs') {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+      q = q.gte('created_at', cutoff).order('created_at', { ascending: false })
+    }
+    const { data: rows, error } = await q
+    return { key, tn, rows, error }
+  }
+
+  function applyTableResults(output, tableResults, errors) {
     for (const { key, tn, rows, error } of tableResults) {
       if (!error) {
         output[key] = (rows || []).map(fromDb[key])
@@ -49,19 +48,44 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       if (key === 'audit') { output[key] = []; continue }
       errors.push(`${tn}: ${error.message}`)
     }
-    const activeSwapStatusByShift = new Map(
-      (output.swapRequests || [])
-        .filter((request) => ['pending', 'accepted'].includes(request.status))
-        .map((request) => [request.shiftId, request.status]),
-    )
-    output.shifts = (output.shifts || []).map((shift) => ({
-      ...shift,
-      swapRequestStatus: activeSwapStatusByShift.get(shift.id) || (['pending', 'accepted'].includes(shift.swapRequestStatus) ? '' : shift.swapRequestStatus),
-    }))
+  }
+
+  // Řidiči načítají kolegy z adresáře jmen; bez funkce (starší databáze) zůstane obsah tabulky.
+  async function withDriverDirectory(drivers, role) {
+    if (String(role || '').toLowerCase() !== 'driver') return drivers
+    const { data: directory, error } = await supabase.rpc('rb_driver_directory')
+    if (error) return drivers
+    return mergeDriverDirectory(drivers, directory)
+  }
+
+  async function loadSettings(base) {
     const { data: settingsRow } = await supabase.from('app_settings').select('payload').eq('id','default').maybeSingle()
-    output.settings = { ...base.settings, ...(settingsRow?.payload || {}) }
+    return { ...base.settings, ...(settingsRow?.payload || {}) }
+  }
+
+  async function loadDataFromSupabase({ role = '' } = {}) {
+    if (!supabase) return readStore()
+    const base = seed()
+    const output = { ...base }
+    const errors = []
+    applyTableResults(output, await Promise.all(ONLINE_TABLES.map(loadTable)), errors)
+    output.drivers = await withDriverDirectory(output.drivers, role)
+    output.shifts = applySwapRequestStatus(output.shifts, output.swapRequests)
+    output.settings = await loadSettings(base)
     if (errors.length) throw new Error(errors.join('\n'))
     return output
+  }
+
+  // Dočte jen vybrané tabulky; výsledek se sloučí s aktuálním stavem až po dokončení požadavků.
+  async function loadTablesFromSupabase(keys = [], { role = '' } = {}) {
+    const tableKeys = keys.filter((key) => key !== 'settings')
+    const loaded = {}
+    const errors = []
+    applyTableResults(loaded, await Promise.all(tableKeys.map(loadTable)), errors)
+    if (errors.length) throw new Error(errors.join('\n'))
+    if (loaded.drivers) loaded.drivers = await withDriverDirectory(loaded.drivers, role)
+    if (keys.includes('settings')) loaded.settings = await loadSettings(seed())
+    return loaded
   }
 
   async function runRpcCalls(calls = []) {
@@ -274,8 +298,17 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     const deferredReload = useRef(false)
     // Po odhlášení se hook odpojí; opožděné načtení nesmí data znovu zapsat do localStorage.
     const mountedRef = useRef(true)
+    const lastFullSyncAtRef = useRef(0)
+    const role = profile?.role || ''
 
-    const reloadOnline = async (silent = false) => {
+    const applyLoaded = (loaded) => {
+      dataRef.current = loaded
+      setData(loaded)
+      writeStore(loaded)
+      setSyncState((s) => ({ ...s, loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() }))
+    }
+
+    const reloadOnline = async (silent = false, keys = null) => {
       if (!online) return
       if (silent && pendingSyncs.current > 0) {
         deferredReload.current = true
@@ -283,13 +316,27 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       }
       if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '' }))
       try {
-        const loaded = await loadDataFromSupabase()
+        if (keys?.length) {
+          const partial = await loadTablesFromSupabase(keys, { role })
+          if (!mountedRef.current) return
+          if (pendingSyncs.current > 0) {
+            deferredReload.current = true
+            return
+          }
+          const merged = { ...dataRef.current, ...partial }
+          merged.shifts = applySwapRequestStatus(merged.shifts, merged.swapRequests)
+          applyLoaded(merged)
+          return
+        }
+        const loaded = await loadDataFromSupabase({ role })
         if (!mountedRef.current) return
-        dataRef.current = loaded
-        setData(loaded)
-        writeStore(loaded)
-        setSyncState((s) => ({ ...s, loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() }))
+        lastFullSyncAtRef.current = Date.now()
+        applyLoaded(loaded)
       } catch (err) {
+        if (keys?.length) {
+          reloadOnline(true)
+          return
+        }
         setSyncState((s) => ({ ...s, loading: false, error: appFriendlyError(err.message || String(err)) }))
       }
     }
@@ -321,13 +368,17 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     useEffect(() => {
       if (!online || !supabase) return
       let timer = null
+      let fullReloadPending = false
       const pendingTables = new Set()
       const reloadSoon = (payload = {}) => {
         if (payload?.table) pendingTables.add(payload.table)
+        else fullReloadPending = true
         clearTimeout(timer)
         timer = setTimeout(() => {
+          const keys = fullReloadPending ? null : realtimeReloadKeys([...pendingTables])
           pendingTables.clear()
-          reloadOnline(true)
+          fullReloadPending = false
+          reloadOnline(true, keys)
         }, 700)
       }
       const realtimeTables = ['drivers', 'vehicles', 'shifts', 'shift_settlements', 'absences', 'availability', 'service_blocks', 'swap_requests', 'notifications', 'push_subscriptions', 'push_delivery_logs', 'audit_logs', 'app_settings']
@@ -337,21 +388,28 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       })
       let rtConnected = false
       ch.subscribe((status) => {
+        const wasConnected = rtConnected
         rtConnected = status === 'SUBSCRIBED'
-        if (status === 'SUBSCRIBED') reloadSoon()
+        // Po (znovu)připojení mohly události chybět, proto celé načtení.
+        if (rtConnected && !wasConnected) reloadSoon()
       })
-      const poll = setInterval(() => { reloadOnline(true) }, 30000)
-      const handleOnline = () => reloadOnline(true)
-      const handleVisible = () => { if (document.visibilityState !== 'hidden') reloadOnline(true) }
+      const refreshIf = (reason) => {
+        const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+        if (shouldRefreshOnline({ reason, hidden, realtimeConnected: rtConnected, lastFullSyncAt: lastFullSyncAtRef.current })) reloadOnline(true)
+      }
+      // Bez realtime spojení se dotazuje každých 30 s, jinak jen pojistně jednou za 5 minut.
+      const poll = setInterval(() => refreshIf('poll'), SYNC_FALLBACK_POLL_MS)
+      const handleOnline = () => refreshIf('online')
+      const handleFocus = () => refreshIf('focus')
       window.addEventListener('online', handleOnline)
-      window.addEventListener('focus', handleOnline)
-      document.addEventListener('visibilitychange', handleVisible)
+      window.addEventListener('focus', handleFocus)
+      document.addEventListener('visibilitychange', handleFocus)
       return () => {
         clearTimeout(timer)
         clearInterval(poll)
         window.removeEventListener('online', handleOnline)
-        window.removeEventListener('focus', handleOnline)
-        document.removeEventListener('visibilitychange', handleVisible)
+        window.removeEventListener('focus', handleFocus)
+        document.removeEventListener('visibilitychange', handleFocus)
         supabase.removeChannel(ch)
       }
     }, [online, session?.user?.id])
@@ -407,5 +465,5 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     return [data, commit, syncState, reloadOnline]
   }
 
-  return { useAppData, loadDataFromSupabase, syncChangedRows, seedSupabaseFromLocal }
+  return { useAppData, loadDataFromSupabase, loadTablesFromSupabase, syncChangedRows, seedSupabaseFromLocal }
 }
