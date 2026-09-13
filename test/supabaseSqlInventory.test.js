@@ -108,6 +108,10 @@ test('plan date and driver activity migration guards dates and exposes no contac
   assert.doesNotMatch(sql, /\b(email|phone|note|raw_user_meta_data)\b/, 'activity must not expose contacts or notes')
   assert.match(sql, /where private\.rb_is_staff\(\)/, 'activity should be staff-only')
   assert.match(sql, /revoke all on function public\.rb_driver_activity\(\) from public, anon, service_role;/, 'anon must not read driver activity')
+
+  const validation = migrationFiles().find((name) => name.endsWith('_validate_shift_date_check.sql'))
+  assert.ok(validation && validation > file, 'a later migration should validate the shift date check once legacy rows are gone')
+  assert.match(readFileSync(join(migrationsDir, validation), 'utf8'), /alter table public\.shifts validate constraint shifts_shift_date_plausible;/)
 })
 
 test('driver removal migration is admin-only and deletes history before the driver row', () => {
