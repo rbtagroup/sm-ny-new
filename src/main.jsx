@@ -21,7 +21,7 @@ import {
   SideDrawer,
   StatusPill,
 } from './AppUi.jsx'
-import { AuthGate, MissingProfile } from './AuthViews.jsx'
+import { AuthGate, MissingProfile, PasswordRecovery } from './AuthViews.jsx'
 import { Availability } from './AvailabilityView.jsx'
 import { Dashboard } from './DashboardView.jsx'
 import { Drivers } from './DriversView.jsx'
@@ -576,6 +576,7 @@ function Root() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(isConfiguredSupabase)
   const [profileError, setProfileError] = useState('')
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
 
   const loadProfile = async (sess) => {
     if (!supabase || !sess?.user) { setProfile(null); setLoading(false); return }
@@ -592,6 +593,7 @@ function Root() {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); loadProfile(data.session) })
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (event === 'SIGNED_OUT') clearStore()
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       setSession(sess)
       loadProfile(sess)
     })
@@ -605,6 +607,7 @@ function Root() {
 
   if (!isConfiguredSupabase) return <App />
   if (loading) return <div className="auth-shell"><div className="card"><h2>RBSHIFT</h2><p className="muted">Načítám online režim…</p></div></div>
+  if (passwordRecovery && session) return <PasswordRecovery supabase={supabase} onDone={() => setPasswordRecovery(false)} />
   if (!session) return <AuthGate supabase={supabase} />
   if (!profile) return <MissingProfile supabase={supabase} session={session} error={profileError} reload={() => loadProfile(session)} />
   return <App session={session} profile={profile} signOut={signOut} />
