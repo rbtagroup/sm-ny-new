@@ -63,11 +63,15 @@ Ten doplňuje oddělený stav smazaných notifikací (`deleted_by`), zpřísňuj
 
 - Řidič se může zaregistrovat sám. Pokud jeho e-mail dispečink už eviduje v sekci Řidiči, účet se propojí s existujícím záznamem.
 - Registrace s neznámým e-mailem založí neaktivního řidiče s poznámkou „Čeká na schválení dispečinkem.“ a dispečink dostane notifikaci. Dokud ho někdo neaktivuje, vidí jen svůj vlastní záznam.
-- Sdílená data (řidiči, vozidla, volné směny, hromadné zprávy) vidí jen dispečink a aktivní řidiči. Řidič si sám může změnit jen telefon.
+- Sdílená data (vozidla, volné směny, hromadné zprávy) vidí jen dispečink a aktivní řidiči. Řidič si sám může změnit jen telefon.
+- Řidič vidí celý jen svůj záznam; kolegy zná jen podle jména a stavu z `rb_driver_directory()`. Telefony, e-maily a poznámky vidí jen dispečink.
+- Zapomenuté heslo: přihlašovací obrazovka pošle odkaz přes Supabase Auth a po otevření odkazu aplikace nabídne nastavení nového hesla. V Supabase Auth musí být URL aplikace (`https://sm-ny-new.vercel.app`) nastavená jako Site URL nebo povolená redirect URL. Doporučené je zapnout i ochranu proti uniklým heslům.
 
 ## Monitoring
 
 - Když cron nedoručí push notifikace (`pushResult.ok = false` v `audit_logs`), vznikne dispečinku notifikace „Push notifikace se nepodařilo odeslat“.
+- Denní kontrola obsazení (cron v 7:00) upozorní jen na chybějící obsazení dnes a zítra. Když se situace nemění, opakuje upozornění nejvýš jednou za 3 dny.
+- Klienti se při spojeném realtime kanálu nedotazují pravidelně; po změně načtou jen dotčené tabulky a jednou za 5 minut provedou pojistné úplné načtení.
 - Doporučený externí monitoring: pravidelná kontrola `https://sm-ny-new.vercel.app/api/push-health` (očekávaný stav 200).
 - GitHub Actions (`.github/workflows/ci.yml`) na každý push a PR spouští testy, lint, build, smoke test v prohlížeči a audit závislostí.
 
