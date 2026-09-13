@@ -150,7 +150,7 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
       <Field label="Konec"><input type="time" value={form.end} onChange={(event) => setForm({ ...form, end: event.target.value })} /></Field>
       <Field label="Řidič" className="span2"><select value={form.driverId} onChange={(event) => setForm({ ...form, driverId: event.target.value })}><option value="">Volná směna bez řidiče</option>{data.drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}{!driver.active ? ' · neaktivní' : ''}</option>)}</select></Field>
       <Field label="Vozidlo" className="span2"><select value={form.vehicleId} onChange={(event) => setForm({ ...form, vehicleId: event.target.value })}><option value="">Bez vozu / doplnit později</option>{data.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}{!vehicle.active ? ' · neaktivní' : ''}</option>)}</select></Field>
-      <Field label="Stav"><Select value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={statusMap} /></Field>
+      <Field label="Stav" className="span2"><Select value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={statusMap} /></Field>
       {!editing && <Field label="Opakování" className="span2"><Select value={repeat} onChange={setRepeat} options={repeatMap} /></Field>}
       <Field label="Poznámka pro plánovač" className="span2"><textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder="Např. letiště, záloha, firemní akce…" /></Field>
       <Field label="Instrukce pro řidiče" className="span2"><textarea value={form.instruction || ''} onChange={(event) => setForm({ ...form, instruction: event.target.value })} placeholder="Např. auto musí být čisté, bere terminál, SHKM, přesný čas odjezdu…" /></Field>
@@ -193,6 +193,10 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
   const [shiftFormDirty, setShiftFormDirty] = useState(false)
   const [closeDirtyDialogOpen, setCloseDirtyDialogOpen] = useState(false)
   const [plannerToast, setPlannerToast] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(() => {
+    try { return !window.matchMedia('(max-width: 760px)').matches }
+    catch { return true }
+  })
   const rangeEnd = addDays(weekStart, 13)
   const initialShiftDate = today >= weekStart && today <= rangeEnd ? today : weekStart
   const rangeAll = sortByDateTime(data.shifts.filter((shift) => shift.date >= weekStart && shift.date <= rangeEnd))
@@ -255,16 +259,36 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     if (!items.length) return alert('V daném dni nejsou žádné směny.')
     commit((prev) => ({ ...prev, shifts: [...items, ...prev.shifts] }), `Zkopírován den ${date} na další den.`)
   }
+  const shareWeek = () => copyText(weekText({ ...data, shifts: rangeShifts }, helpers, weekStart, 14))
+  const jumpToToday = () => {
+    setWeekStart(startOfWeek(today))
+    // Na telefonu je kalendář jeden dlouhý sloupec, proto dnešní den rovnou posune do zorného pole.
+    setTimeout(() => {
+      if (!window.matchMedia?.('(max-width: 900px)').matches) return
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      document.querySelector('.two-week-calendar .day.today')?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
+    }, 60)
+  }
+  const activeFilterCount = [driverFilter !== 'all', vehicleFilter !== 'all', statusFilter !== 'active'].filter(Boolean).length
   const weeks = [weekStart, addDays(weekStart, 7)]
 
   return <>
     <PageTitle title="Plán směn">
-      <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, -14))}>← Předchozí</button>
-      <button className="ghost" onClick={() => setWeekStart(startOfWeek(today))}>Dnes</button>
-      <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
-      <button className="primary" onClick={openNewShiftDrawer}>+ Nová směna</button>
-      <button className="primary" onClick={copyWeek}>Kopírovat 2 týdny</button>
-      <button className="ghost" onClick={() => copyText(weekText({ ...data, shifts: rangeShifts }, helpers, weekStart, 14))}>WhatsApp</button>
+      <div className="planner-period-nav">
+        <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, -14))}>← Předchozí</button>
+        <button className="ghost" onClick={jumpToToday}>Dnes</button>
+        <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
+      </div>
+      <button className="primary planner-new-inline" onClick={openNewShiftDrawer}>+ Nová směna</button>
+      <button className="ghost planner-secondary-inline" onClick={copyWeek}>Kopírovat 2 týdny</button>
+      <button className="ghost planner-secondary-inline" onClick={shareWeek}>WhatsApp</button>
+      <details className="planner-more-actions">
+        <summary className="ghost">Další akce</summary>
+        <div className="planner-more-panel">
+          <button type="button" className="ghost" onClick={copyWeek}>Kopírovat 2 týdny</button>
+          <button type="button" className="ghost" onClick={shareWeek}>Zkopírovat text pro WhatsApp</button>
+        </div>
+      </details>
     </PageTitle>
     <PlannerKpiBar
       periodLabel={`${formatDate(weekStart)}–${formatDate(rangeEnd)}`}
@@ -293,14 +317,14 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
         </div>)}
       </div>
     </div>}
-    <div className="card compact-card" style={{ marginBottom: 16 }}>
-      <div className="section-title"><h3>Filtry</h3></div>
+    <details className="card compact-card planner-filters-card" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)} style={{ marginBottom: 16 }}>
+      <summary className="section-title planner-filters-summary"><h3>Filtry</h3><span className={activeFilterCount ? 'pill warn' : 'pill'}>{activeFilterCount ? `${activeFilterCount} aktivní` : 'vše'}</span></summary>
       <div className="planner-filter">
         <select className="searchbox" aria-label="Filtr řidiče" value={driverFilter} onChange={(event) => setDriverFilter(event.target.value)}><option value="all">Všichni řidiči</option>{data.drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select>
         <select className="searchbox" aria-label="Filtr vozidla" value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="all">Všechna auta</option>{data.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select>
         <select className="searchbox" aria-label="Filtr stavu směny" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="active">Aktivní</option><option value="all">Všechny stavy</option>{Object.entries(statusMap).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select>
       </div>
-    </div>
+    </details>
     <div className="planner-main-grid">
       <div className="grid stack minzero">
         {selected && plannerView === 'calendar' && <ShiftDetail shift={selected} data={data} helpers={helpers} commit={commit} setSelected={setSelected} setEditing={openEditShiftDrawer} ui={ui} services={services} />}
@@ -351,6 +375,8 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
       }}
     />}
     {plannerToast && <div className="planner-toast" role="status">{plannerToast}</div>}
+    {!shiftDrawerOpen && <button type="button" className="primary planner-fab" onClick={openNewShiftDrawer}>+ Nová směna</button>}
+    <div className="planner-fab-spacer" aria-hidden="true" />
   </>
 }
 
@@ -362,9 +388,9 @@ function DayColumn({ day, today, shifts, data, helpers, setSelected, copyDay }) 
     event.preventDefault()
     copyThisDay()
   }
-  return <div className={`day ${day === today ? 'today' : ''}`} onContextMenu={handleDayContextMenu}>
+  return <div className={['day', day === today ? 'today' : '', items.length ? '' : 'day-empty'].filter(Boolean).join(' ')} onContextMenu={handleDayContextMenu}>
     <h4>
-      <span>{formatDate(day)}</span>
+      <span>{formatDate(day)}{!items.length && <small className="day-empty-label"> · volno</small>}</span>
       <details className="day-menu" onClick={(event) => event.stopPropagation()}>
         <summary aria-label="Akce dne">⋯</summary>
         <div className="day-menu-panel">
