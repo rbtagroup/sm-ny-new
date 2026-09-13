@@ -26,7 +26,7 @@ const formFromDriver = (driver = {}) => ({
 })
 
 // TODO: mimo scope - avatar upload a samostatné role řidičů vyžadují Storage/sloupce v Supabase schématu.
-export function Drivers({ data, commit, services, ui, onlineMode = false, reloadOnline, canRemoveDrivers = false }) {
+export function Drivers({ data, commit, services, ui, onlineMode = false, reloadOnline, canRemoveDrivers = false, onOpenAvailability }) {
   const { uid, supabase, copyText } = services
   const { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer } = ui
   const [form, setForm] = useState(freshDriverForm)
@@ -132,7 +132,7 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
   const sortedDrivers = [...data.drivers].sort((a, b) => Number(isPendingDriver(b)) - Number(isPendingDriver(a)))
 
   return <>
-    <PageTitle title="Řidiči"><button className="primary" onClick={openCreate}>+ Přidat řidiče</button></PageTitle>
+    <PageTitle title="Řidiči">{onOpenAvailability && <button className="ghost" onClick={onOpenAvailability}>Dostupnost a nepřítomnost</button>}<button className="primary" onClick={openCreate}>+ Přidat řidiče</button></PageTitle>
     <div className="card">
       <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem{pendingCount ? ` · ${pendingCount} čeká na schválení` : ''}{inviteCount ? ` · ${inviteCount} k pozvání` : ''}</span></div>
       <div className="stack compact-list">{sortedDrivers.map((driver) => <div className={isPendingDriver(driver) ? 'log list-row pending-driver-row' : 'log list-row'} key={driver.id}>

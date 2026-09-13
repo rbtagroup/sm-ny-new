@@ -351,6 +351,25 @@ async function runStaffChecks(page) {
   await waitForEval(page, '!document.querySelector(".action-modal") && !document.querySelector(".shift-drawer")', 'Permanent deletion should close the dialog and drawer')
   await assertEval(page, '![...document.querySelectorAll(".list-row-main")].some((row) => row.innerText.includes("Milan"))', 'Deleted driver should disappear from the list')
 
+  await assertEval(page, 'document.querySelectorAll(".sidebar-nav button").length === 7', 'Admin menu should keep seven daily items')
+  await clickByText(page, 'button', 'Dostupnost a nepřítomnost')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Dostupnost řidičů")', 'Availability should open from the drivers page')
+  await assertEval(page, 'document.querySelector(".sidebar-nav button.active")?.innerText.trim() === "Řidiči"', 'Availability should keep the drivers menu item highlighted')
+
+  await clickByText(page, '.sidebar-nav button', 'Plán směn')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Plán směn")', 'Planner did not reopen')
+  await clickByText(page, 'button', 'Šablony')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Šablony směn")', 'Shift templates should open from the planner')
+  await assertEval(page, 'document.querySelector(".sidebar-nav button.active")?.innerText.trim() === "Plán směn"', 'Templates should keep the planner menu item highlighted')
+
+  await clickByText(page, '.sidebar-nav button', 'Dashboard')
+  await waitForEval(page, 'document.querySelector(".page-tabs button.active")?.innerText.trim() === "Dnes"', 'Dashboard should open on the Dnes tab')
+  await clickByText(page, '.page-tabs button', 'Audit týdne')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Audit provozu")', 'Weekly audit tab did not open')
+  await clickByText(page, '.page-tabs button', 'Historie změn')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Historie změn")', 'Change history tab did not open')
+  await assertEval(page, 'document.querySelector(".sidebar-nav button.active")?.innerText.trim() === "Dashboard"', 'Dashboard tabs should keep the dashboard menu item highlighted')
+
   await page.send('Emulation.setDeviceMetricsOverride', {
     width: 390,
     height: 844,

@@ -180,7 +180,7 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
   </div>
 }
 
-export function Planner({ data, helpers, commit, today = todayISO(), ui, services }) {
+export function Planner({ data, helpers, commit, today = todayISO(), ui, services, onOpenTemplates }) {
   const { PageTitle, SideDrawer, ConfirmActionModal } = ui
   const { uid, copyText, weekText, shiftTableUi, shiftTableServices } = services
   const [weekStart, setWeekStart] = useState(startOfWeek(today))
@@ -283,11 +283,13 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
       <button className="primary planner-new-inline" onClick={openNewShiftDrawer}>+ Nová směna</button>
       <button className="ghost planner-secondary-inline" onClick={() => setWeekPlanOpen(true)}>Naplánovat týden</button>
       <button className="ghost planner-secondary-inline" onClick={shareWeek}>WhatsApp</button>
+      {onOpenTemplates && <button className="ghost planner-secondary-inline" onClick={onOpenTemplates}>Šablony</button>}
       <details className="planner-more-actions">
         <summary className="ghost">Další akce</summary>
         <div className="planner-more-panel">
           <button type="button" className="ghost" onClick={() => setWeekPlanOpen(true)}>Naplánovat týden</button>
           <button type="button" className="ghost" onClick={shareWeek}>Zkopírovat text pro WhatsApp</button>
+          {onOpenTemplates && <button type="button" className="ghost" onClick={onOpenTemplates}>Šablony směn</button>}
         </div>
       </details>
     </PageTitle>

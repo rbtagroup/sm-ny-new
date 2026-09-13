@@ -29,7 +29,7 @@ const logType = (log) => {
 }
 const csvEscape = (cell) => `"${String(cell).replaceAll('"', '""')}"`
 
-export function History({ data, ui, services }) {
+export function History({ data, ui, services, tabs = null }) {
   const { Field, PageTitle } = ui
   const { download } = services
   const [dateFrom, setDateFrom] = useState('')
@@ -68,6 +68,7 @@ export function History({ data, ui, services }) {
       <button className="ghost" onClick={resetFilters}>Reset filtrů</button>
       <button className="primary" onClick={exportFiltered}>Export CSV</button>
     </PageTitle>
+    {tabs}
     <div className="card">
       <div className="section-title"><h3>Filtry</h3><span className="pill">{filtered.length} / {logs.length}</span></div>
       <div className="form four">

@@ -4,7 +4,7 @@ import { dashboardOperationalIssues } from './lib/dashboard.js'
 import { backup, dayText, exportCSV } from './lib/shiftExports.js'
 import { ShiftTable } from './StaffShiftTable.jsx'
 
-export function Dashboard({ data, helpers, commit, today = todayISO(), ui, services }) {
+export function Dashboard({ data, helpers, commit, today = todayISO(), ui, services, tabs = null }) {
   const { PageTitle, Kpi, StatusPill } = ui
   const { copyText, shiftTableUi, shiftTableServices } = services
   const tomorrow = addDays(today, 1)
@@ -24,6 +24,7 @@ export function Dashboard({ data, helpers, commit, today = todayISO(), ui, servi
       <button className="ghost" onClick={() => exportCSV(data, helpers)}>Export CSV</button>
       <button className="ghost" onClick={() => backup(data)}>Záloha JSON</button>
     </PageTitle>
+    {tabs}
     <div className="grid kpis dashboard-kpis">
       <Kpi label="Dnešní směny" value={todayShifts.length} hint={`${todayShifts.filter((shift) => shift.status === 'confirmed').length} potvrzeno · ${todayShifts.filter((shift) => shift.status === 'completed').length} hotovo`} />
       <Kpi label="Čeká na reakci" value={waiting.length} hint="Budoucí návrh / čeká na potvrzení" />

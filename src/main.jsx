@@ -83,27 +83,12 @@ import {
 import { showNotice } from './lib/notice.js'
 import { buildHelpers } from './lib/shiftHelpers.js'
 import { isRoutineSchedulerLog } from './lib/auditLog.js'
+import { ADMIN_PAGE_KEYS, navPageFor, overviewTabs, staffNavSections } from './lib/navigation.js'
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const makeNotice = createNoticeFactory(uid)
 const pageTitleMap = { planner: 'Plán směn', dashboard: 'Dashboard', audit: 'Audit provozu', settlements: 'Výčetky', notifications: 'Notifikace', shifts: 'Seznam směn', drivers: 'Řidiči', vehicles: 'Vozidla', availability: 'Dostupnost', shiftTemplates: 'Šablony směn', history: 'Historie změn', settings: 'Nastavení' }
 
-const dispatcherNavItems = [
-  ['planner', 'Plán směn'],
-  ['dashboard', 'Dashboard'],
-  ['settlements', 'Výčetky'],
-  ['notifications', 'Notifikace'],
-  ['audit', 'Audit']
-]
-const adminNavItems = [
-  ['drivers', 'Řidiči'],
-  ['vehicles', 'Vozidla'],
-  ['availability', 'Dostupnost'],
-  ['shiftTemplates', 'Šablony'],
-  ['history', 'Historie'],
-  ['settings', 'Nastavení']
-]
-const adminPageKeys = new Set(adminNavItems.map(([key]) => key))
 
 const rolePolicies = [
   { role: 'Admin', can: 'vše: plánování, řidiči, auta, nastavení, audit, schvalování výměn, exporty a zálohy' },
@@ -307,7 +292,7 @@ function App({ session = null, profile = null, signOut = null }) {
   useEffect(() => {
     if (isDriver && !['driver', 'notifications', 'availability', 'driverSettings'].includes(page)) setPage('driver')
     if (!isDriver && page === 'driver') setPage('planner')
-    if (!isDriver && role !== 'admin' && adminPageKeys.has(page)) setPage('planner')
+    if (!isDriver && role !== 'admin' && ADMIN_PAGE_KEYS.has(page)) setPage('planner')
   }, [isDriver, page, role])
 
   const { unread: unreadInbox } = notificationInboxState(data, { currentDriver, isDriver, profile })
@@ -315,10 +300,10 @@ function App({ session = null, profile = null, signOut = null }) {
   const unreadNotifications = isDriver ? unreadInbox : unreadInbox.filter((notice) => staffNoticeState(notice, data, { today: currentDate }) === 'open')
   const unreadForCurrent = unreadNotifications.length
   const canOpenSettings = role === 'admin'
-  const sidebarSections = [
-    ['DISPEČINK', dispatcherNavItems],
-    ...(role === 'admin' ? [['ADMIN', adminNavItems]] : [])
-  ]
+  const sidebarSections = staffNavSections(role)
+  const overviewPageTabs = <div className="tabs page-tabs" role="tablist" aria-label="Přehled provozu">
+    {overviewTabs(role).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={page === key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}>{label}</button>)}
+  </div>
   const updateToast = <>{updateWorker && <UpdateReadyToast applying={updateApplying} onRefresh={applyPwaUpdate} onDismiss={dismissPwaUpdate} />}<NoticeToast /></>
 
   if (isDriver) return <DriverAppShell currentDriver={currentDriver} onlineMode={onlineMode} page={page} unreadCount={unreadForCurrent} onPageChange={setPage} updateToast={updateToast}>
@@ -339,23 +324,23 @@ function App({ session = null, profile = null, signOut = null }) {
       canOpenSettings={canOpenSettings}
       signOut={signOut}
       setPage={setPage}
-      activePage={page}
+      activePage={navPageFor(page)}
       sidebarSections={sidebarSections}
       onlineMode={onlineMode}
       syncState={syncState}
       updateToast={updateToast}
     >
-      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} />}
-      {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} today={currentDate} ui={dashboardUi} services={dashboardServices} />}
+      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} onOpenTemplates={role === 'admin' ? () => setPage('shiftTemplates') : undefined} />}
+      {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} today={currentDate} ui={dashboardUi} services={dashboardServices} tabs={overviewPageTabs} />}
       {page === 'settlements' && <Settlements data={data} helpers={helpers} commit={commit} />}
-      {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} />}
+      {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} tabs={overviewPageTabs} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
-      {page === 'drivers' && <Drivers data={data} commit={commit} ui={driversUi} services={driversServices} onlineMode={onlineMode} reloadOnline={reloadOnline} canRemoveDrivers={role === 'admin'} />}
+      {page === 'drivers' && <Drivers data={data} commit={commit} ui={driversUi} services={driversServices} onlineMode={onlineMode} reloadOnline={reloadOnline} canRemoveDrivers={role === 'admin'} onOpenAvailability={() => setPage('availability')} />}
       {page === 'vehicles' && <Vehicles data={data} commit={commit} ui={vehiclesUi} services={vehiclesServices} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={null} ui={availabilityUi} />}
       {page === 'shiftTemplates' && <ShiftTemplates data={data} commit={commit} ui={shiftTemplatesUi} />}
-      {page === 'history' && <History data={data} ui={historyUi} services={historyServices} />}
+      {page === 'history' && <History data={data} ui={historyUi} services={historyServices} tabs={overviewPageTabs} />}
       {page === 'settings' && <SettingsView data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} version={VERSION} ui={settingsUi} />}
   </StaffAppShell>
 }
@@ -432,7 +417,7 @@ function Settlements({ data, helpers, commit }) {
   </>
 }
 
-function OperationalAudit({ data, helpers, commit }) {
+function OperationalAudit({ data, helpers, commit, tabs = null }) {
   const [weekStart, setWeekStart] = useState(startOfWeek(todayISO()))
   const [openSections, setOpenSections] = useState(() => {
     try {
@@ -479,6 +464,7 @@ function OperationalAudit({ data, helpers, commit }) {
       <button className="primary" onClick={() => copyText(readinessText(data, helpers, weekStart))}>Kopírovat audit</button>
       <button className="ghost" onClick={() => exportAttendanceCSV(data, helpers, weekStart, to)}>Export docházky CSV</button>
     </PageTitle>
+    {tabs}
     <div className="grid kpis compact-kpis">
       <Kpi label="Připravenost" value={`${readinessPct} %`} hint={`${passed}/${audit.checks.length} kontrol OK`} kind={readinessPct === 100 ? 'good' : readinessPct >= 75 ? 'warn' : 'bad'} />
       <Kpi label="Týden" value={`${formatDate(weekStart)}–${formatDate(to)}`} hint="auditované období" />
