@@ -393,7 +393,7 @@ function App({ session = null, profile = null, signOut = null }) {
       {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
-      {page === 'drivers' && <Drivers data={data} commit={commit} ui={driversUi} services={driversServices} />}
+      {page === 'drivers' && <Drivers data={data} commit={commit} ui={driversUi} services={driversServices} onlineMode={onlineMode} reloadOnline={reloadOnline} canRemoveDrivers={role === 'admin'} />}
       {page === 'vehicles' && <Vehicles data={data} commit={commit} ui={vehiclesUi} services={vehiclesServices} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={null} ui={availabilityUi} />}
       {page === 'shiftTemplates' && <ShiftTemplates data={data} commit={commit} ui={shiftTemplatesUi} />}
@@ -412,7 +412,7 @@ const dashboardServices = { copyText, shiftTableUi, shiftTableServices }
 const driverHomeUi = { ConflictBox, Field, Kpi, Modal, ReasonActionModal, SettlementFormModal, SettlementStatusPill, SettlementSummary, ShiftActionSummary, StatusPill }
 const availabilityUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle }
 const driversUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
-const driversServices = { uid }
+const driversServices = { uid, supabase }
 const notificationUi = { Field, Kpi, Modal, PageTitle }
 const driverSettingsUi = { PageTitle }
 const historyUi = { Field, PageTitle }

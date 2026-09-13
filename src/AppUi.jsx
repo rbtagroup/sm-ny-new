@@ -72,14 +72,14 @@ export function ShiftActionSummary({ shift, helpers }) {
   />
 }
 
-export function ConfirmActionModal({ title, message, warning, children, confirmLabel = 'Potvrdit', confirmClass = 'primary', onConfirm, onClose }) {
+export function ConfirmActionModal({ title, message, warning, children, confirmLabel = 'Potvrdit', confirmClass = 'primary', confirmDisabled = false, onConfirm, onClose }) {
   return <Modal title={title} onClose={onClose} className="action-modal">
     <div className="stack action-modal-body">
       {message && <p className="action-modal-copy">{message}</p>}
       {warning && <div className="alert warn">{warning}</div>}
       {children}
       <div className="row-actions action-modal-actions">
-        <button className={confirmClass} type="button" onClick={onConfirm}>{confirmLabel}</button>
+        <button className={confirmClass} type="button" onClick={onConfirm} disabled={confirmDisabled}>{confirmLabel}</button>
         <button className="ghost" type="button" onClick={onClose}>Zpět</button>
       </div>
     </div>

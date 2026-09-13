@@ -11,6 +11,12 @@ declare
   other_driver_profile_id uuid;
   other_driver_row_id text;
   staff_profile_id uuid;
+  admin_profile_id uuid;
+  dispatcher_profile_id uuid;
+  login_probe_driver_id text;
+  login_probe_profile_id uuid;
+  login_probe_shift_count int;
+  removed_shift_ids text[];
   affected int;
 begin
   select p.id, d.id
@@ -34,6 +40,18 @@ begin
     into staff_profile_id
   from public.profiles p
   where trim(lower(p.role)) in ('admin', 'dispatcher')
+  limit 1;
+
+  select p.id
+    into admin_profile_id
+  from public.profiles p
+  where trim(lower(p.role)) = 'admin'
+  limit 1;
+
+  select p.id
+    into dispatcher_profile_id
+  from public.profiles p
+  where trim(lower(p.role)) = 'dispatcher'
   limit 1;
 
   if driver_profile_id is null or driver_row_id is null then
@@ -520,6 +538,177 @@ begin
       raise;
     end if;
   end;
+
+  -- Driver removal tools are admin-only; these probes run last because they delete the probe driver's login.
+  begin
+    perform public.rb_delete_driver_completely(driver_row_id);
+    raise exception 'UNEXPECTED_ALLOWED: driver deletes a driver completely';
+  exception when others then
+    if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+      raise;
+    end if;
+  end;
+
+  if dispatcher_profile_id is not null then
+    reset role;
+    perform set_config('request.jwt.claim.sub', dispatcher_profile_id::text, true);
+    set local role authenticated;
+
+    begin
+      perform public.rb_delete_driver_login(driver_row_id);
+      raise exception 'UNEXPECTED_ALLOWED: dispatcher removes a driver login';
+    exception when others then
+      if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+        raise;
+      end if;
+    end;
+  end if;
+
+  reset role;
+  set local role anon;
+
+  begin
+    perform public.rb_delete_driver_completely(driver_row_id);
+    raise exception 'UNEXPECTED_ALLOWED: anon deletes a driver completely';
+  exception when others then
+    if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+      raise;
+    end if;
+  end;
+
+  reset role;
+
+  if admin_profile_id is null then
+    raise exception 'RLS regression needs an admin profile for driver removal probes.';
+  end if;
+
+  insert into public.drivers (id, profile_id, name, email, active, note)
+  values ('rls_probe_staff_linked_driver', coalesce(dispatcher_profile_id, admin_profile_id), 'RLS probe staff-linked driver', 'rls-probe-staff-linked@example.invalid', true, 'rollback probe');
+
+  select d.id, d.profile_id
+    into login_probe_driver_id, login_probe_profile_id
+  from public.drivers d
+  join public.profiles p on p.id = d.profile_id
+  where d.id <> driver_row_id
+    and trim(lower(p.role)) = 'driver'
+    and nullif(trim(coalesce(d.email, '')), '') is not null
+    and not exists (
+      select 1
+      from public.drivers other
+      where other.id <> d.id
+        and other.profile_id is null
+        and lower(trim(coalesce(other.email, ''))) = lower(trim(d.email))
+    )
+  limit 1;
+
+  select count(*)::int
+    into login_probe_shift_count
+  from public.shifts
+  where driver_id = login_probe_driver_id;
+
+  select coalesce(array_agg(id), '{}'::text[])
+    into removed_shift_ids
+  from public.shifts
+  where driver_id = driver_row_id;
+
+  perform set_config('request.jwt.claim.sub', admin_profile_id::text, true);
+  set local role authenticated;
+
+  begin
+    perform public.rb_delete_driver_login('rls_probe_staff_linked_driver');
+    raise exception 'UNEXPECTED_ALLOWED: admin removes a staff login through driver tools';
+  exception when others then
+    if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+      raise;
+    end if;
+  end;
+
+  if login_probe_driver_id is not null then
+    perform public.rb_delete_driver_login(login_probe_driver_id);
+  else
+    raise notice 'Skipping driver login reset probe: no other driver with a login and unique e-mail found.';
+  end if;
+
+  perform public.rb_delete_driver_completely(driver_row_id);
+
+  reset role;
+
+  select count(*)::int
+    into affected
+  from auth.users
+  where id = coalesce(dispatcher_profile_id, admin_profile_id);
+  if affected <> 1 then
+    raise exception 'UNEXPECTED_ALLOWED: driver tools removed a staff login';
+  end if;
+
+  if login_probe_driver_id is not null then
+    select count(*)::int
+      into affected
+    from public.drivers
+    where id = login_probe_driver_id
+      and profile_id is null;
+    if affected <> 1 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: admin login reset keeps driver row without login';
+    end if;
+
+    select count(*)::int
+      into affected
+    from auth.users
+    where id = login_probe_profile_id;
+    if affected <> 0 then
+      raise exception 'EXPECTED_ALLOWED_FAILED: admin login reset removes auth user';
+    end if;
+
+    select count(*)::int
+      into affected
+    from public.shifts
+    where driver_id = login_probe_driver_id;
+    if affected <> login_probe_shift_count then
+      raise exception 'EXPECTED_ALLOWED_FAILED: admin login reset keeps shift history';
+    end if;
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.drivers
+  where id = driver_row_id;
+  if affected <> 0 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: admin deletes driver completely';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.shifts
+  where id = any(removed_shift_ids);
+  if affected <> 0 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: complete driver deletion removes shifts instead of opening them';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.shift_settlements
+  where driver_id = driver_row_id
+    or shift_id = any(removed_shift_ids);
+  if affected <> 0 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: complete driver deletion removes settlements';
+  end if;
+
+  select count(*)::int
+    into affected
+  from auth.users
+  where id = driver_profile_id;
+  if affected <> 0 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: complete driver deletion removes driver login';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.audit_logs
+  where payload ->> 'type' = 'driver-deleted'
+    and payload ->> 'driverId' = driver_row_id;
+  if affected <> 1 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: complete driver deletion is audited';
+  end if;
 
   reset role;
 end $$;

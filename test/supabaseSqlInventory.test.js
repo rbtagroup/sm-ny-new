@@ -86,6 +86,47 @@ test('RLS regression probes cover driver notification and audit RPC flows', () =
   assert.match(sql, /driver reads colleague contacts/, 'colleague contact privacy should be covered')
   assert.match(sql, /driver directory lists colleague names/, 'driver directory allow path should be covered')
   assert.match(sql, /inactive driver reads driver directory/, 'inactive driver directory denial should be covered')
+  assert.match(sql, /driver deletes a driver completely/, 'driver removal denial for drivers should be covered')
+  assert.match(sql, /dispatcher removes a driver login/, 'login removal denial for dispatchers should be covered')
+  assert.match(sql, /anon deletes a driver completely/, 'driver removal denial for anon should be covered')
+  assert.match(sql, /admin removes a staff login through driver tools/, 'staff logins must be protected from driver tools')
+  assert.match(sql, /admin login reset keeps shift history/, 'login reset allow path should keep history')
+  assert.match(sql, /complete driver deletion removes shifts instead of opening them/, 'complete deletion must not turn shifts into open shifts')
+  assert.match(sql, /complete driver deletion removes driver login/, 'complete deletion should remove the driver login')
+})
+
+test('driver removal migration is admin-only and deletes history before the driver row', () => {
+  const file = migrationFiles().find((name) => name.endsWith('_driver_removal_tools.sql'))
+  assert.ok(file, 'driver removal migration should exist')
+  const sql = readFileSync(join(migrationsDir, file), 'utf8')
+  const body = (name) => {
+    const start = sql.indexOf(`create or replace function private.${name}(`)
+    assert.ok(start >= 0, `${name} should be defined in the private schema`)
+    return sql.slice(start, sql.indexOf('$$;', sql.indexOf('$$', start) + 2))
+  }
+
+  for (const name of ['rb_delete_driver_completely', 'rb_delete_driver_login']) {
+    const fn = body(name)
+    assert.match(fn, /security definer\s+set search_path = ''/, `${name} should be a definer function with an empty search_path`)
+    assert.match(fn, /if not private\.rb_is_admin\(\) then\s+raise exception '[^']+' using errcode = '42501'/, `${name} should be admin-only`)
+    assert.match(fn, /private\.rb_removable_driver_login\(v_driver\.profile_id\)/, `${name} must not remove staff or own logins`)
+    assert.match(fn, /insert into public\.audit_logs/, `${name} should be audited`)
+    assert.match(sql, new RegExp(`revoke all on function public\\.${name}\\(text\\) from public, anon, service_role;`), `${name} wrapper should not be callable by anon`)
+    assert.match(sql, new RegExp(`grant execute on function public\\.${name}\\(text\\) to authenticated;`), `${name} wrapper should be callable by signed-in users`)
+  }
+
+  const complete = body('rb_delete_driver_completely')
+  const order = ['delete from public.shift_settlements', 'delete from public.swap_requests', 'delete from public.shifts', 'delete from public.drivers', 'delete from auth.users']
+  const positions = order.map((statement) => complete.indexOf(statement))
+  assert.ok(positions.every((position) => position >= 0), 'complete deletion should remove settlements, swaps, shifts, driver and login')
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'settlements and shifts must be removed before the driver row')
+  assert.match(complete, /set\s+status = 'cancelled'[\s\S]*?where sr\.status in \('pending', 'accepted'\)/, 'unresolved colleague swaps should be cancelled')
+
+  const login = body('rb_delete_driver_login')
+  assert.doesNotMatch(login, /delete from public\.(shifts|shift_settlements|drivers)\b/, 'login reset must keep the driver and history')
+  assert.match(login, /d\.profile_id is null\s+and lower\(trim\(coalesce\(d\.email, ''\)\)\) = lower\(trim\(v_driver\.email\)\)/, 'login reset should require an e-mail the new signup can link to')
+  assert.match(sql, /trim\(lower\(coalesce\(p\.role, ''\)\)\) = 'driver'/, 'only driver accounts are removable')
+  assert.match(sql, /p\.id is distinct from auth\.uid\(\)/, 'admins must not remove their own login')
 })
 
 test('driver directory migration hides colleague contacts from drivers', () => {

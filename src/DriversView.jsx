@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { activatedDriverPatch, driverWithDuplicateEmail, isPendingDriver } from './lib/drivers.js'
+import { activatedDriverPatch, czechCount, driverRemovalSummary, driverRemovalSummaryText, driverWithDuplicateEmail, isPendingDriver, withoutDriver } from './lib/drivers.js'
+import { todayISO } from './lib/dateTime.js'
+import { appFriendlyError } from './lib/errors.js'
 import { showNotice } from './lib/notice.js'
 
 const emptyDriverForm = Object.freeze({ name: '', phone: '', email: '', profileId: '', active: true, note: '' })
@@ -10,6 +12,7 @@ const isValidEmail = (email = '') => {
   const value = String(email || '').trim()
   return !value || emailPattern.test(value)
 }
+const confirmationText = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('cs')
 const formFromDriver = (driver = {}) => ({
   ...freshDriverForm(),
   ...driver,
@@ -22,15 +25,19 @@ const formFromDriver = (driver = {}) => ({
 })
 
 // TODO: mimo scope - avatar upload a samostatné role řidičů vyžadují Storage/sloupce v Supabase schématu.
-export function Drivers({ data, commit, services, ui }) {
-  const { uid } = services
+export function Drivers({ data, commit, services, ui, onlineMode = false, reloadOnline, canRemoveDrivers = false }) {
+  const { uid, supabase } = services
   const { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer } = ui
   const [form, setForm] = useState(freshDriverForm)
   const [editing, setEditing] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [driverToDelete, setDriverToDelete] = useState('')
+  const [removal, setRemoval] = useState(null)
+  const [removalConfirmation, setRemovalConfirmation] = useState('')
+  const [removing, setRemoving] = useState(false)
   const editingDriver = editing ? data.drivers.find((d) => d.id === editing) : null
   const deleteDriver = driverToDelete ? data.drivers.find((d) => d.id === driverToDelete) : null
+  const removalDriver = removal ? data.drivers.find((d) => d.id === removal.driverId) : null
   const activeCount = data.drivers.filter((d) => d.active !== false).length
   const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(freshDriverForm()) }
   const openCreate = () => { setForm(freshDriverForm()); setEditing(null); setDrawerOpen(true) }
@@ -64,6 +71,46 @@ export function Drivers({ data, commit, services, ui }) {
     if (wasEditing) closeDrawer()
   }
   const restore = (driver) => commit((prev) => ({ ...prev, drivers: prev.drivers.map((item) => item.id === driver.id ? activatedDriverPatch(item, { active: true }) : item) }), isPendingDriver(driver) ? 'Řidič schválen.' : 'Řidič znovu aktivován.')
+  const openRemoval = (kind) => {
+    if (!editingDriver) return
+    setRemovalConfirmation('')
+    setRemoval({ kind, driverId: editingDriver.id })
+  }
+  const closeRemoval = () => { if (!removing) setRemoval(null) }
+  const removalLabel = removalDriver?.name?.trim() || 'Bez jména'
+  const removalConfirmWord = removalDriver?.name?.trim() || 'SMAZAT'
+  const removalConfirmed = confirmationText(removalConfirmation) === confirmationText(removalConfirmWord)
+  const confirmRemoval = async () => {
+    const driver = removalDriver
+    if (!driver || removing) return
+    const label = driver.name?.trim() || 'Bez jména'
+    const complete = removal.kind === 'complete'
+    if (!onlineMode || !supabase) {
+      if (!complete) return
+      commit((prev) => withoutDriver(prev, driver.id), `Řidič ${label} byl trvale smazán i s historií.`)
+      setRemoval(null)
+      closeDrawer()
+      return
+    }
+    setRemoving(true)
+    const { data: result, error } = await supabase.rpc(complete ? 'rb_delete_driver_completely' : 'rb_delete_driver_login', { p_driver_id: driver.id })
+    if (error) {
+      setRemoving(false)
+      showNotice(appFriendlyError(error.message), { tone: 'bad' })
+      return
+    }
+    await reloadOnline?.(true)
+    setRemoving(false)
+    setRemoval(null)
+    if (complete) {
+      closeDrawer()
+      showNotice(`Řidič ${label} byl trvale smazán i s historií (${czechCount(Number(result?.shifts || 0), 'směna', 'směny', 'směn')}, ${czechCount(Number(result?.settlements || 0), 'výčetka', 'výčetky', 'výčetek')}).`, { tone: 'good' })
+    } else {
+      // The saved form must not write the removed login back.
+      setForm((current) => ({ ...current, profileId: '' }))
+      showNotice(`Přihlašovací účet řidiče ${label} byl zrušen. Ať si v aplikaci vytvoří nový účet s e-mailem ${driver.email}.`, { tone: 'good' })
+    }
+  }
   const pendingCount = data.drivers.filter(isPendingDriver).length
   const sortedDrivers = [...data.drivers].sort((a, b) => Number(isPendingDriver(b)) - Number(isPendingDriver(a)))
 
@@ -98,6 +145,15 @@ export function Drivers({ data, commit, services, ui }) {
         {editing && <div className="field span2">
           <button className="danger" type="button" onClick={() => softDelete()} disabled={editingDriver?.active === false}>Deaktivovat řidiče</button>
         </div>}
+        {editing && canRemoveDrivers && editingDriver && <div className="field span2 driver-removal">
+          <span className="driver-removal-title">Odstranění řidiče</span>
+          {onlineMode && editingDriver.profileId && <>
+            <button className="ghost danger-soft" type="button" onClick={() => openRemoval('login')}>Zrušit přihlašovací účet</button>
+            <small className="muted">Když řidič nemůže obnovit heslo. Směny i výčetky zůstanou a řidič si vytvoří nový účet se stejným e-mailem.</small>
+          </>}
+          <button className="danger" type="button" onClick={() => openRemoval('complete')}>Smazat řidiče trvale</button>
+          <small className="muted">Když řidič odešel. Smaže i jeho směny, výčetky, výměny a přihlašovací účet. Nejde vrátit.</small>
+        </div>}
       </form>
     </SideDrawer>
     {deleteDriver && <ConfirmActionModal
@@ -109,6 +165,35 @@ export function Drivers({ data, commit, services, ui }) {
       onConfirm={confirmSoftDelete}
     >
       <ActionSummary eyebrow="Řidič" title={deleteDriver.name || 'Bez jména'} meta={deleteDriver.email || deleteDriver.phone || 'Bez kontaktu'} />
+    </ConfirmActionModal>}
+    {removalDriver && removal.kind === 'complete' && <ConfirmActionModal
+      title="Smazat řidiče trvale"
+      message={`${removalLabel} zmizí z aplikace i s celou historií. Tuto akci nejde vrátit.`}
+      warning={`${driverRemovalSummaryText(driverRemovalSummary(data, removalDriver.id, todayISO()), { hasLogin: Boolean(removalDriver.profileId) })} Výčetky potřebné pro účetnictví si nejdřív ulož (Dashboard → Záloha JSON).`}
+      confirmLabel={removing ? 'Mažu…' : 'Smazat trvale'}
+      confirmClass="danger"
+      confirmDisabled={!removalConfirmed || removing}
+      onClose={closeRemoval}
+      onConfirm={confirmRemoval}
+    >
+      <ActionSummary eyebrow="Řidič" title={removalLabel} meta={removalDriver.email || removalDriver.phone || 'Bez kontaktu'} />
+      <Field label={`Pro potvrzení napiš: ${removalConfirmWord}`}>
+        <input value={removalConfirmation} onChange={(event) => setRemovalConfirmation(event.target.value)} autoComplete="off" autoFocus />
+      </Field>
+    </ConfirmActionModal>}
+    {removalDriver && removal.kind === 'login' && <ConfirmActionModal
+      title="Zrušit přihlašovací účet"
+      message={`${removalLabel} se starým účtem už nepřihlásí. Směny, výčetky i ostatní údaje zůstanou.`}
+      warning={removalDriver.email
+        ? `Potom ať si řidič v aplikaci vytvoří nový účet s e-mailem ${removalDriver.email}. Aplikace ho sama napojí na jeho historii.`
+        : 'Řidič nemá uložený e-mail. Doplň ho a ulož, jinak se nový účet na jeho historii nenapojí.'}
+      confirmLabel={removing ? 'Ruším…' : 'Zrušit účet'}
+      confirmClass="danger"
+      confirmDisabled={!removalDriver.email || removing}
+      onClose={closeRemoval}
+      onConfirm={confirmRemoval}
+    >
+      <ActionSummary eyebrow="Řidič" title={removalLabel} meta={removalDriver.email || 'Bez e-mailu'} />
     </ConfirmActionModal>}
   </>
 }

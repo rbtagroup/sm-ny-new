@@ -311,6 +311,21 @@ async function runStaffChecks(page) {
   await clickByText(page, '.shift-drawer button', 'Zrušit')
   await waitForEval(page, '!document.querySelector(".shift-drawer")', 'Add driver drawer did not close')
 
+  await evaluate(page, '[...document.querySelectorAll(".list-row-main")].find((row) => row.innerText.includes("Milan"))?.click()')
+  await waitForEval(page, 'document.querySelector(".shift-drawer")?.innerText.includes("Smazat řidiče trvale")', 'Driver detail should offer permanent deletion to admins')
+  await clickByText(page, '.shift-drawer button', 'Smazat řidiče trvale')
+  await waitForEval(page, 'document.querySelector(".action-modal")?.innerText.includes("Smaže se:")', 'Permanent deletion should summarise the removed history')
+  await assertEval(page, '[...document.querySelectorAll(".action-modal button")].find((button) => button.innerText.trim() === "Smazat trvale")?.disabled === true', 'Permanent deletion must wait for the typed confirmation')
+  await evaluate(page, `(() => {
+    const input = document.querySelector(".action-modal input")
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "milan")
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+  })()`)
+  await waitForEval(page, '[...document.querySelectorAll(".action-modal button")].find((button) => button.innerText.trim() === "Smazat trvale")?.disabled === false', 'Typing the driver name should enable permanent deletion')
+  await clickByText(page, '.action-modal button', 'Smazat trvale')
+  await waitForEval(page, '!document.querySelector(".action-modal") && !document.querySelector(".shift-drawer")', 'Permanent deletion should close the dialog and drawer')
+  await assertEval(page, '![...document.querySelectorAll(".list-row-main")].some((row) => row.innerText.includes("Milan"))', 'Deleted driver should disappear from the list')
+
   await page.send('Emulation.setDeviceMetricsOverride', {
     width: 390,
     height: 844,
