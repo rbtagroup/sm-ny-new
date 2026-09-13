@@ -1,9 +1,6 @@
 import { useState } from 'react'
+import { Field } from './AppUi.jsx'
 import { appFriendlyError } from './lib/errors.js'
-
-function Field({ label, children, className = '' }) {
-  return <div className={`field ${className}`}><label>{label}</label>{children}</div>
-}
 
 export function AuthGate({ supabase }) {
   const [email, setEmail] = useState('')
@@ -19,13 +16,13 @@ export function AuthGate({ supabase }) {
       const payload = { email, password }
       const res = mode === 'signup' ? await supabase.auth.signUp(payload) : await supabase.auth.signInWithPassword(payload)
       if (res.error) throw res.error
-      setMsg(mode === 'signup' ? 'Účet je vytvořený. Pokud Supabase vyžaduje potvrzení e-mailu, potvrď ho a potom se přihlas.' : 'Přihlášeno.')
+      setMsg(mode === 'signup' ? 'Účet je vytvořený. Potvrď e-mail a přihlas se. Pokud tvůj e-mail dispečink ještě neeviduje, účet počká na schválení.' : 'Přihlášeno.')
     } catch (err) {
       setMsg(appFriendlyError(err.message || String(err)))
     }
     setBusy(false)
   }
-  return <div className="auth-shell"><div className="card auth-card"><div className="brand"><div className="logo">RB</div><div><h1>RBSHIFT</h1><small>Online přihlášení</small></div></div><form className="stack" onSubmit={submit}><Field label="E-mail"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field><Field label="Heslo"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></Field><button className="primary" disabled={busy}>{busy ? 'Pracuji…' : mode === 'login' ? 'Přihlásit' : 'Vytvořit účet'}</button></form><div className="row-actions" style={{ marginTop: 12 }}><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Vytvořit účet' : 'Mám účet – přihlásit'}</button></div>{msg && <p className="hintline">{msg}</p>}</div></div>
+  return <div className="auth-shell"><div className="card auth-card"><div className="brand"><div className="logo">RB</div><div><h1>RBSHIFT</h1><small>Online přihlášení</small></div></div><form className="stack" onSubmit={submit}><Field label="E-mail"><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field><Field label="Heslo"><input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></Field>{mode === 'signup' && <p className="hintline">Registrace je pro řidiče. Účet s e-mailem, který dispečink neeviduje, bude čekat na schválení.</p>}<button className="primary" disabled={busy}>{busy ? 'Pracuji…' : mode === 'login' ? 'Přihlásit' : 'Vytvořit účet'}</button></form><div className="row-actions" style={{ marginTop: 12 }}><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Vytvořit účet' : 'Mám účet – přihlásit'}</button></div>{msg && <p className="hintline">{msg}</p>}</div></div>
 }
 
 export function MissingProfile({ supabase, session, error, reload }) {

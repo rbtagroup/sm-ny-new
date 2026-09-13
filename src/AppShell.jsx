@@ -22,7 +22,10 @@ export function DriverAppShell({ currentDriver, onlineMode, page, unreadCount, o
       </div>
       <span className={onlineMode ? 'pill good' : 'pill warn'}>{onlineMode ? 'Online ●' : 'Demo'}</span>
     </header>
-    <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>{children}</main>
+    <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>
+      {onlineMode && currentDriver?.active === false && <div className="alert warn" role="status"><b>Účet zatím není aktivní</b><br /><span>Dispečink tvůj řidičský účet ještě neschválil nebo ho deaktivoval. Jakmile ho aktivuje, uvidíš tady směny a zprávy.</span></div>}
+      {children}
+    </main>
     <nav className="driver-bottom-nav" aria-label="Řidičská navigace">
       {driverNavItems.map(([key, label, Icon]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => onPageChange(key)}>
         <span className="driver-nav-icon"><Icon size={24} strokeWidth={2} />{key === 'notifications' && unreadCount > 0 && <em>{unreadCount}</em>}</span>

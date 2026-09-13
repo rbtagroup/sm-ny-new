@@ -18,6 +18,7 @@ begin
   from public.profiles p
   join public.drivers d on d.profile_id = p.id
   where trim(lower(p.role)) = 'driver'
+    and d.active is distinct from false
   limit 1;
 
   select p.id, d.id
@@ -397,6 +398,103 @@ begin
   if affected <> 1 then
     raise exception 'EXPECTED_ALLOWED_FAILED: staff audit log select';
   end if;
+
+  reset role;
+  perform set_config('request.jwt.claim.sub', driver_profile_id::text, true);
+  set local role authenticated;
+
+  begin
+    update public.drivers
+    set note = 'rls probe note'
+    where id = driver_row_id;
+    get diagnostics affected = row_count;
+    if affected > 0 then
+      raise exception 'UNEXPECTED_ALLOWED: driver own note rewrite';
+    end if;
+  exception when others then
+    if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+      raise;
+    end if;
+  end;
+
+  begin
+    update public.drivers
+    set active = false
+    where id = driver_row_id;
+    get diagnostics affected = row_count;
+    if affected > 0 then
+      raise exception 'UNEXPECTED_ALLOWED: driver own activation change';
+    end if;
+  exception when others then
+    if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+      raise;
+    end if;
+  end;
+
+  update public.drivers
+  set phone = coalesce(phone, '')
+  where id = driver_row_id;
+  get diagnostics affected = row_count;
+  if affected <> 1 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: driver own phone update';
+  end if;
+
+  reset role;
+  update public.drivers
+  set active = false
+  where id = driver_row_id;
+
+  perform set_config('request.jwt.claim.sub', driver_profile_id::text, true);
+  set local role authenticated;
+
+  select count(*)::int
+    into affected
+  from public.drivers
+  where id <> driver_row_id;
+  if affected > 0 then
+    raise exception 'UNEXPECTED_ALLOWED: inactive driver reads other drivers';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.drivers
+  where id = driver_row_id;
+  if affected <> 1 then
+    raise exception 'EXPECTED_ALLOWED_FAILED: inactive driver reads own driver row';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.vehicles;
+  if affected > 0 then
+    raise exception 'UNEXPECTED_ALLOWED: inactive driver reads vehicles';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.shifts
+  where status = 'open';
+  if affected > 0 then
+    raise exception 'UNEXPECTED_ALLOWED: inactive driver reads open shifts';
+  end if;
+
+  select count(*)::int
+    into affected
+  from public.notifications
+  where target_role in ('all', 'driver_all');
+  if affected > 0 then
+    raise exception 'UNEXPECTED_ALLOWED: inactive driver reads broadcast notifications';
+  end if;
+
+  begin
+    insert into public.notifications (id, target_role, type, title, body)
+    values ('rls_probe_inactive_admin_notice', 'admin', 'info', 'RLS probe', 'rollback probe');
+    raise exception 'UNEXPECTED_ALLOWED: inactive driver notifies dispatch';
+  exception when others then
+    if sqlerrm like 'UNEXPECTED_ALLOWED:%' then
+      raise;
+    end if;
+  end;
 
   reset role;
 end $$;

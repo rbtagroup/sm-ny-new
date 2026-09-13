@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Lint
+        run: pnpm run lint:hooks
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Browser smoke test
+        env:
+          SMOKE_REQUIRE_CHROME: '1'
+        run: pnpm run smoke:browser
+
+      - name: Dependency audit
+        run: pnpm audit --prod

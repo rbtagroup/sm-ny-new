@@ -37,6 +37,7 @@ import { ShiftTemplates } from './ShiftTemplatesView.jsx'
 import { Vehicles } from './VehiclesView.jsx'
 import { useCurrentDate } from './useCurrentDate.js'
 import { createAppDataSync } from './lib/appDataSync.js'
+import { clearStore } from './lib/appStore.js'
 import {
   addDays,
   dateInRange,
@@ -545,7 +546,7 @@ function OperationalAudit({ data, helpers, commit }) {
         <summary><span><b>Tento měsíc</b><small>{monthLogs.length} záznamů historie · dlouhodobé normy</small></span><span className="pill">{monthLogs.length}</span></summary>
         <div className="collapse-content stack">
           <div className="section-title"><h3>Normy pokrytí</h3><span className="pill">{data.settings?.coverageSlots?.length || 0}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-standards-table"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Min. řidičů</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b></td><td>{slot.start}–{slot.end}</td><td><input type="number" min="0" value={slot.minDrivers} onChange={(e) => updateMinDrivers(slot.id, e.target.value)} style={{ width: 90 }} /></td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-standards-table"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Min. řidičů</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b></td><td>{slot.start}–{slot.end}</td><td><input type="number" min="0" aria-label={`Minimum řidičů: ${slot.name}`} value={slot.minDrivers} onChange={(e) => updateMinDrivers(slot.id, e.target.value)} style={{ width: 90 }} /></td></tr>)}</tbody></table></div>
           <div className="section-title"><h3>Historie za měsíc</h3><span className="pill">{monthLogs.length}</span></div>
           <div className="timeline stack audit-table-scroll">{monthLogs.slice(0, 50).map((log) => <div className="log" key={log.id}><b>{new Date(log.at).toLocaleString('cs-CZ')}</b><br /><span className="muted">{log.text}</span></div>)}{!monthLogs.length && <div className="empty">Za tento měsíc nejsou žádné záznamy.</div>}</div>
         </div>
@@ -564,8 +565,8 @@ function ShiftsList({ data, helpers, commit }) {
   }))
   return <>
     <PageTitle title="Seznam směn">
-      <input className="searchbox" placeholder="Hledat směnu…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ minWidth: 240 }} />
-      <select className="searchbox" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 190 }}>{[['all', 'Vše'], ...Object.entries(statusMap)].map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+      <input className="searchbox" aria-label="Hledat směnu" placeholder="Hledat směnu…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ minWidth: 240 }} />
+      <select className="searchbox" aria-label="Filtr stavu směny" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 190 }}>{[['all', 'Vše'], ...Object.entries(statusMap)].map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
     </PageTitle>
     <ShiftTable shifts={filtered} data={data} helpers={helpers} commit={commit} ui={shiftTableUi} services={shiftTableServices} />
   </>
@@ -589,15 +590,24 @@ function Root() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); loadProfile(data.session) })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => { setSession(sess); loadProfile(sess) })
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
+      if (event === 'SIGNED_OUT') clearStore()
+      setSession(sess)
+      loadProfile(sess)
+    })
     return () => sub.subscription.unsubscribe()
   }, [])
+
+  const signOut = async () => {
+    clearStore()
+    await supabase.auth.signOut()
+  }
 
   if (!isConfiguredSupabase) return <App />
   if (loading) return <div className="auth-shell"><div className="card"><h2>RBSHIFT</h2><p className="muted">Načítám online režim…</p></div></div>
   if (!session) return <AuthGate supabase={supabase} />
   if (!profile) return <MissingProfile supabase={supabase} session={session} error={profileError} reload={() => loadProfile(session)} />
-  return <App session={session} profile={profile} signOut={() => supabase.auth.signOut()} />
+  return <App session={session} profile={profile} signOut={signOut} />
 }
 
 const rootElement = document.getElementById('root')

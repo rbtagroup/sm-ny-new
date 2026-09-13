@@ -296,9 +296,9 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     <div className="card compact-card" style={{ marginBottom: 16 }}>
       <div className="section-title"><h3>Filtry</h3></div>
       <div className="planner-filter">
-        <select className="searchbox" value={driverFilter} onChange={(event) => setDriverFilter(event.target.value)}><option value="all">Všichni řidiči</option>{data.drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select>
-        <select className="searchbox" value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="all">Všechna auta</option>{data.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select>
-        <select className="searchbox" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="active">Aktivní</option><option value="all">Všechny stavy</option>{Object.entries(statusMap).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select>
+        <select className="searchbox" aria-label="Filtr řidiče" value={driverFilter} onChange={(event) => setDriverFilter(event.target.value)}><option value="all">Všichni řidiči</option>{data.drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select>
+        <select className="searchbox" aria-label="Filtr vozidla" value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="all">Všechna auta</option>{data.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select>
+        <select className="searchbox" aria-label="Filtr stavu směny" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="active">Aktivní</option><option value="all">Všechny stavy</option>{Object.entries(statusMap).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select>
       </div>
     </div>
     <div className="planner-main-grid">

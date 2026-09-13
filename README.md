@@ -59,7 +59,21 @@ Ten doplňuje oddělený stav smazaných notifikací (`deleted_by`), zpřísňuj
 - `PUSH_DELIVERY_SECRET` nebo odpovídající scheduler secret
 - `PUSH_DELIVERY_CONCURRENCY` volitelně pro počet paralelně odesílaných push notifikací
 
+## Přístup a registrace
+
+- Řidič se může zaregistrovat sám. Pokud jeho e-mail dispečink už eviduje v sekci Řidiči, účet se propojí s existujícím záznamem.
+- Registrace s neznámým e-mailem založí neaktivního řidiče s poznámkou „Čeká na schválení dispečinkem.“ a dispečink dostane notifikaci. Dokud ho někdo neaktivuje, vidí jen svůj vlastní záznam.
+- Sdílená data (řidiči, vozidla, volné směny, hromadné zprávy) vidí jen dispečink a aktivní řidiči. Řidič si sám může změnit jen telefon.
+
+## Monitoring
+
+- Když cron nedoručí push notifikace (`pushResult.ok = false` v `audit_logs`), vznikne dispečinku notifikace „Push notifikace se nepodařilo odeslat“.
+- Doporučený externí monitoring: pravidelná kontrola `https://sm-ny-new.vercel.app/api/push-health` (očekávaný stav 200).
+- GitHub Actions (`.github/workflows/ci.yml`) na každý push a PR spouští testy, lint, build, smoke test v prohlížeči a audit závislostí.
+
 ## Poznámky
+
+- Produkce posílá bezpečnostní hlavičky z `vercel.json` včetně Content-Security-Policy. Nový externí zdroj (API, obrázky, fonty) je potřeba do CSP doplnit, jinak ho prohlížeč zablokuje.
 
 - `package-lock.json` v projektu není potřeba; zdrojem pravdy je `pnpm-lock.yaml`.
 - Service worker a `index.html` zůstávají bez cache, hashované assety se cachují dlouhodobě.

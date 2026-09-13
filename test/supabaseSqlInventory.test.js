@@ -79,6 +79,29 @@ test('RLS regression probes cover driver notification and audit RPC flows', () =
   assert.match(sql, /target driver accept all-driver swap with side effects/, 'all-driver swap accept should be covered')
   assert.match(sql, /staff approve accepted swap with side effects/, 'staff swap approval should be covered')
   assert.match(sql, /staff swap approval assigns shift to approved driver/, 'staff approval shift assignment should be covered')
+  assert.match(sql, /driver own activation change/, 'driver self-activation denial should be covered')
+  assert.match(sql, /driver own phone update/, 'driver phone update allow path should be covered')
+  assert.match(sql, /inactive driver reads other drivers/, 'inactive driver data isolation should be covered')
+  assert.match(sql, /inactive driver notifies dispatch/, 'inactive driver notification denial should be covered')
+})
+
+test('app access migration gates shared data behind staff or active drivers', () => {
+  const file = migrationFiles().find((name) => name.endsWith('_gate_app_access_and_alert_push_failures.sql'))
+  assert.ok(file, 'app access migration should exist')
+  const sql = readFileSync(join(migrationsDir, file), 'utf8')
+
+  assert.match(sql, /and d\.active is not false/, 'current driver helper should ignore inactive drivers')
+  assert.match(sql, /create or replace function public\.rb_has_app_access\(\)/, 'policies need a public access helper')
+  for (const policy of ['drivers_select_signed', 'vehicles_select_signed', 'service_blocks_select_signed', 'settings_select_signed', 'notifications_select_visible', 'shifts_select_staff_own_or_swap', 'swap_requests_select_scoped']) {
+    assert.match(sql, new RegExp(`alter policy "${policy}"[\\s\\S]*?rb_has_app_access`), `${policy} should require app access`)
+  }
+  assert.match(sql, /alter policy "drivers_insert" on public\.drivers\s+with check \(\(select public\.rb_is_staff\(\)\)\)/, 'only staff should insert drivers directly')
+  assert.match(sql, /create trigger drivers_guard_update/, 'driver details should be guarded')
+  assert.match(sql, /new\.active is distinct from old\.active/, 'drivers must not toggle their own activation')
+  assert.match(sql, /false,\s+'Čeká na schválení dispečinkem\.'/, 'unknown signups should start as pending')
+  assert.doesNotMatch(sql.slice(sql.indexOf('rb_upsert_driver_signup')), /active = true/, 'signup must not re-activate drivers')
+  assert.match(sql, /create trigger audit_logs_alert_failed_job_push/, 'failed job pushes should alert dispatch')
+  assert.match(sql, /if auth\.uid\(\) is not null or new\.actor_id is not null then/, 'only system audit rows may raise push alerts')
 })
 
 test('push rate-limit migrations avoid ambiguous bucket_key conflict target', () => {

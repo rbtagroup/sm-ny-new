@@ -95,3 +95,10 @@ export function writeStore(data) {
     }
   }
 }
+
+// Po odhlášení nesmí v prohlížeči zůstat kontakty, výčetky ani notifikace předchozího uživatele.
+export function clearStore() {
+  for (const key of [STORAGE_KEY, AUTOBACKUP_KEY, ...LEGACY_STORAGE_KEYS]) {
+    try { localStorage.removeItem(key) } catch {}
+  }
+}

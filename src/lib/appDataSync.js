@@ -272,6 +272,8 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     const [syncState, setSyncState] = useState({ loading: online, saving: false, error: '', lastSyncAt: '' })
     const pendingSyncs = useRef(0)
     const deferredReload = useRef(false)
+    // Po odhlášení se hook odpojí; opožděné načtení nesmí data znovu zapsat do localStorage.
+    const mountedRef = useRef(true)
 
     const reloadOnline = async (silent = false) => {
       if (!online) return
@@ -282,6 +284,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '' }))
       try {
         const loaded = await loadDataFromSupabase()
+        if (!mountedRef.current) return
         dataRef.current = loaded
         setData(loaded)
         writeStore(loaded)
@@ -297,6 +300,10 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       reloadOnline(true)
     }
 
+    useEffect(() => {
+      mountedRef.current = true
+      return () => { mountedRef.current = false }
+    }, [])
     useEffect(() => { dataRef.current = data }, [data])
     useEffect(() => { if (!online) writeStore(data) }, [data, online])
     useEffect(() => { reloadOnline() }, [online, session?.user?.id])
@@ -381,6 +388,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
         })
         .catch((err) => {
           pendingSyncs.current -= 1
+          if (!mountedRef.current) return
           const shouldRollback = options.rollbackOnError !== false
           if (shouldRollback) {
             dataRef.current = prev

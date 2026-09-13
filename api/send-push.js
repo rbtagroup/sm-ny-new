@@ -111,12 +111,14 @@ const profileForToken = async (supabase, token) => {
 
   const { data: driver, error: driverError } = await supabase
     .from('drivers')
-    .select('id')
+    .select('id, active')
     .eq('profile_id', profile.id)
     .maybeSingle()
   if (driverError) throw driverError
+  // Čekající nebo deaktivovaný řidič nesmí posílat push ani dispečinku.
+  if (!driver?.id || driver.active === false) return null
 
-  return { ...profile, driverId: driver?.id || '' }
+  return { ...profile, driverId: driver.id }
 }
 
 const SWAP_DRIVER_NOTICE_TYPES = new Set(['swap-offer', 'swap-accepted', 'swap-rejected'])
@@ -407,6 +409,7 @@ export {
   createRetryingFetch,
   matchesNotice,
   normalizeNotice,
+  profileForToken,
   pushDeliveryLogRows,
   pushDeliveryRateLimitChecks,
   pushRequestRateLimitChecks,

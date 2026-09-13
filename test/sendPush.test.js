@@ -6,6 +6,7 @@ import {
   createRetryingFetch,
   matchesNotice,
   normalizeNotice,
+  profileForToken,
   pushDeliveryLogRows,
   pushDeliveryRateLimitChecks,
   pushRequestRateLimitChecks,
@@ -230,6 +231,34 @@ test('recordPushDeliveryLogs is tolerant when delivery log table is unavailable'
   assert.deepEqual(calls, [['from', 'push_delivery_logs'], ['insert', 1]])
   assert.equal(result.ok, false)
   assert.match(result.error, /push_delivery_logs/)
+})
+
+function profileLookupMock({ role = 'driver', driver = null } = {}) {
+  const single = (table) => ({
+    select() { return this },
+    eq() { return this },
+    async maybeSingle() {
+      if (table === 'profiles') return { data: { id: 'user_1', role }, error: null }
+      return { data: driver, error: null }
+    },
+  })
+  return {
+    auth: { async getUser() { return { data: { user: { id: 'user_1' } }, error: null } } },
+    from: (table) => single(table),
+  }
+}
+
+test('profileForToken lets only active drivers send push notifications', async () => {
+  assert.deepEqual(
+    await profileForToken(profileLookupMock({ driver: { id: 'drv_1', active: true } }), 'token'),
+    { id: 'user_1', role: 'driver', driverId: 'drv_1' },
+  )
+  assert.equal(await profileForToken(profileLookupMock({ driver: { id: 'drv_1', active: false } }), 'token'), null)
+  assert.equal(await profileForToken(profileLookupMock({ driver: null }), 'token'), null)
+  assert.deepEqual(
+    await profileForToken(profileLookupMock({ role: 'dispatcher' }), 'token'),
+    { id: 'user_1', role: 'dispatcher', driverId: '' },
+  )
 })
 
 function scriptedFetch(outcomes = []) {

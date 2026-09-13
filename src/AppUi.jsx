@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Children, cloneElement, isValidElement, useEffect, useId } from 'react'
 import { Trash2 } from 'lucide-react'
 import { formatDate } from './lib/dateTime.js'
 import { money } from './lib/display.js'
@@ -21,12 +21,19 @@ export function StatusPill({ status, helpers }) {
   return <span className={`pill ${helpers.statusClass(status)}`}>{statusMap[status] || status}</span>
 }
 
+const labelableTags = new Set(['input', 'select', 'textarea'])
+
+// Popisek propojí s jediným formulářovým prvkem, aby ho četla čtečka a klepnutí na popisek aktivovalo pole.
 export function Field({ label, children, className = '' }) {
-  return <div className={`field ${className}`}><label>{label}</label>{children}</div>
+  const generatedId = useId()
+  const child = Children.count(children) === 1 && isValidElement(children) ? children : null
+  const linkable = Boolean(child && (labelableTags.has(child.type) || child.type === Select))
+  const controlId = linkable ? (child.props.id || generatedId) : undefined
+  return <div className={`field ${className}`}><label htmlFor={controlId}>{label}</label>{linkable ? cloneElement(child, { id: controlId }) : children}</div>
 }
 
-export function Select({ value, onChange, options }) {
-  return <select value={value} onChange={(event) => onChange(event.target.value)}>{Object.entries(options).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+export function Select({ id, value, onChange, options }) {
+  return <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>{Object.entries(options).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
 }
 
 export function DeleteIconButton({ label = 'Odstranit', onClick, className = '' }) {

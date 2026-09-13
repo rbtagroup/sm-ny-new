@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readStore, seed, STORAGE_KEY, writeStore } from '../src/lib/appStore.js'
+import { AUTOBACKUP_KEY, clearStore, LEGACY_STORAGE_KEYS, readStore, seed, STORAGE_KEY, writeStore } from '../src/lib/appStore.js'
 
 function installLocalStorage() {
   const store = new Map()
@@ -49,6 +49,24 @@ test('writeStore omits push subscription secrets and readStore hydrates defaults
     assert.equal(restored.shifts[0].swapRequestStatus, '')
     assert.deepEqual(restored.pushSubscriptions, [])
     assert.deepEqual(restored.pushDeliveryLogs, [])
+  } finally {
+    restore()
+  }
+})
+
+test('clearStore removes the local data snapshot, backup and legacy keys', () => {
+  const restore = installLocalStorage()
+  try {
+    writeStore(seed())
+    localStorage.setItem(LEGACY_STORAGE_KEYS[0], '{}')
+    localStorage.setItem('unrelated-key', 'keep')
+
+    clearStore()
+
+    assert.equal(localStorage.getItem(STORAGE_KEY), null)
+    assert.equal(localStorage.getItem(AUTOBACKUP_KEY), null)
+    assert.equal(localStorage.getItem(LEGACY_STORAGE_KEYS[0]), null)
+    assert.equal(localStorage.getItem('unrelated-key'), 'keep')
   } finally {
     restore()
   }
