@@ -6,6 +6,7 @@ import {
   driverSettlementRowsForSync,
   driverShiftUpdatePatch,
   notificationStateRpcCalls,
+  notificationStateRpcCallsForUser,
   removedNotificationStateRpcCalls,
   staffSwapResolutionRpcCalls,
   swapRequestRpcCallsWithSideEffects,
@@ -125,7 +126,28 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
           }
         }
         if (isStaff) {
-          changed = changed.filter((row) => row.id && previousIds.has(row.id))
+          const stateCalls = notificationStateRpcCallsForUser(
+            prev.notifications,
+            changed.filter((row) => row.id && previousIds.has(row.id)),
+            profile.id ? `staff:${profile.id}` : '',
+          )
+          if (stateCalls.length) {
+            try { await runRpcCalls(stateCalls) }
+            catch (error) {
+              errors.push(error.message)
+              if (critical.has(key)) throw new Error(errors.join('\n'))
+            }
+          }
+          const removedIds = (prev.notifications || [])
+            .filter((notice) => notice.id && !nextIds.has(notice.id))
+            .map((notice) => notice.id)
+          if (removedIds.length) {
+            const { error } = await supabase.from('notifications').delete().in('id', removedIds)
+            if (error) {
+              errors.push(`notifications delete: ${error.message}`)
+              if (critical.has(key)) throw new Error(errors.join('\n'))
+            }
+          }
         } else {
           const removedPersonalIds = (prev.notifications || [])
             .filter((n) => n.id && !nextIds.has(n.id))
@@ -146,8 +168,8 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
               if (critical.has(key)) throw new Error(errors.join('\n'))
             }
           }
-          continue
         }
+        continue
       }
       if (!isStaff && key === 'swapRequests') {
         const { calls, denied, handledNotificationIds: swapNotificationIds, handledAuditIds: swapAuditIds } = swapRequestRpcCallsWithSideEffects(prev.swapRequests, changed, currentDriverId, { includeSideEffects: true, notifications: insertedNotifications, auditRows: insertedAuditRows })

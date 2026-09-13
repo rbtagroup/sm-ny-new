@@ -199,3 +199,34 @@ test('syncChangedRows sends new staff messages through the notification RPC', as
   assert.equal(supabase.rpcs[0].args.p_notifications[0].target_role, 'driver_all')
   assert.equal(supabase.upserts.some((call) => call.table === 'notifications'), false)
 })
+
+test('syncChangedRows persists staff notification state through RPC instead of upsert', async () => {
+  const supabase = fakeSyncSupabase()
+  const { syncChangedRows } = createAppDataSync({
+    supabase,
+    isConfiguredSupabase: true,
+    timePart: () => '',
+    sendPushForNotifications: async () => ({ skipped: true }),
+  })
+  const notice = {
+    id: 'ntf_old',
+    at: '2026-06-01T08:00:00.000Z',
+    title: 'Stará notifikace',
+    targetRole: 'admin',
+    readBy: [],
+    deletedBy: [],
+  }
+
+  await syncChangedRows(
+    { notifications: [notice] },
+    { notifications: [{ ...notice, deletedBy: ['staff:profile_dispatcher'] }] },
+    { id: 'profile_dispatcher', role: 'dispatcher' },
+  )
+
+  assert.equal(supabase.rpcs.length, 1)
+  assert.deepEqual(supabase.rpcs[0], {
+    fn: 'rb_set_notification_state',
+    args: { p_notification_id: notice.id, p_read: null, p_deleted: true },
+  })
+  assert.equal(supabase.upserts.some((call) => call.table === 'notifications'), false)
+})

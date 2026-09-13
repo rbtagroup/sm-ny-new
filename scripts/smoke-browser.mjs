@@ -232,6 +232,21 @@ async function fillByPlaceholder(page, placeholder, value) {
   if (!filled) throw new Error(`Could not fill field with placeholder "${placeholder}"`)
 }
 
+async function selectFieldByLabel(page, label, value) {
+  const selected = await evaluate(page, `
+    (() => {
+      const field = [...document.querySelectorAll(".field")]
+        .find((item) => item.querySelector(":scope > label")?.innerText.trim() === ${JSON.stringify(label)});
+      const target = field?.querySelector("select");
+      if (!target) return false;
+      target.value = ${JSON.stringify(value)};
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+      return target.value === ${JSON.stringify(value)};
+    })()
+  `)
+  if (!selected) throw new Error(`Could not select value "${value}" in field "${label}"`)
+}
+
 function appUrlWithParam(key, value) {
   const url = new URL(appUrl)
   url.searchParams.set(key, value)
@@ -244,6 +259,33 @@ async function runStaffChecks(page) {
   await waitForEval(page, 'document.body && document.body.innerText.includes("Plán směn")', 'Planner screen did not render')
   await assertEval(page, 'document.title.includes("RBSHIFT")', 'Document title is missing RBSHIFT')
   await assertEval(page, '!document.body.innerText.includes("Internal server error")', 'Vite error overlay is visible')
+
+  await clickByText(page, 'button', '+ Nová směna')
+  await waitForEval(page, 'document.querySelector(".shift-drawer")', 'New shift drawer did not open')
+  await selectFieldByLabel(page, 'Řidič', 'drv_roman')
+  await selectFieldByLabel(page, 'Vozidlo', 'car_tesla_2')
+  await evaluate(page, 'document.querySelector(".shift-drawer input[type=\\"checkbox\\"]")?.click()')
+  await clickByText(page, '.shift-drawer button', 'Uložit')
+  await waitForEval(page, 'document.body.innerText.includes("Směna vytvořena.")', 'New shift was not saved')
+
+  await clickByText(page, '.sidebar-nav button', 'Notifikace')
+  await waitForEval(page, 'document.body.innerText.includes("Centrum upozornění")', 'Staff notifications did not open after creating a shift')
+  await waitForEval(page, `
+    [...document.querySelectorAll(".staff-notification-row")]
+      .some((row) => row.innerText.includes("Nová směna"))
+  `, 'New shift notification did not appear')
+  await evaluate(page, `
+    (() => {
+      const row = [...document.querySelectorAll(".staff-notification-row")]
+        .find((item) => item.innerText.includes("Nová směna"));
+      row?.querySelector('[aria-label="Skrýt notifikaci"]')?.click();
+    })()
+  `)
+  await waitForEval(page, `
+    ![...document.querySelectorAll(".staff-notification-row")]
+      .some((row) => row.innerText.includes("Nová směna"))
+  `, 'Hidden notification remained visible')
+  await assertEval(page, 'document.querySelector(".toast-undo")?.innerText.includes("Notifikace skryta.")', 'Notification hide undo toast did not appear')
 
   await clickByText(page, '.sidebar-nav button', 'Řidiči')
   await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Řidiči")', 'Drivers screen did not open')

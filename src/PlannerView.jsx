@@ -9,6 +9,7 @@ import {
   todayISO,
 } from './lib/dateTime.js'
 import { addNotificationsToData } from './lib/notifications.js'
+import { canonicalDriverId } from './lib/drivers.js'
 import { canOpenSettlement, settlementForShift } from './lib/settlements.js'
 import { repeatMap, shiftTypeMap, statusMap } from './lib/appConfig.js'
 import {
@@ -93,7 +94,10 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     const preset = shiftTemplateValue(key, data.settings)
     if (preset) setForm((prev) => ({ ...prev, ...preset }))
   }
-  const normalizeShiftForm = (item) => ({ ...item, status: !item.driverId ? 'open' : (item.status === 'open' ? 'assigned' : item.status) })
+  const normalizeShiftForm = (item) => {
+    const driverId = canonicalDriverId(data.drivers, item.driverId)
+    return { ...item, driverId, status: !driverId ? 'open' : (item.status === 'open' ? 'assigned' : item.status) }
+  }
   const conflictMessages = helpers.conflictMessages({ id: editing?.id || 'new', ...normalizeShiftForm(form) })
   const buildRepeats = () => {
     if (editing || repeat === 'none') return [form]

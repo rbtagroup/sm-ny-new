@@ -1,12 +1,25 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { auditInsertRpcCalls, driverPushSubscriptionRowsForSync, driverSettlementRowsForSync, driverShiftUpdatePatch, notificationStateRpcCalls, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls, swapRequestRpcCallsWithSideEffects } from '../src/lib/sensitiveSync.js'
+import { auditInsertRpcCalls, driverPushSubscriptionRowsForSync, driverSettlementRowsForSync, driverShiftUpdatePatch, notificationStateRpcCalls, notificationStateRpcCallsForUser, removedNotificationStateRpcCalls, staffSwapResolutionRpcCalls, swapRequestRpcCalls, swapRequestRpcCallsWithSideEffects } from '../src/lib/sensitiveSync.js'
 
 test('notificationStateRpcCalls emits only changed read/delete state for current driver', () => {
   const calls = notificationStateRpcCalls(
     [{ id: 'n1', readBy: [], deletedBy: [] }],
     [{ id: 'n1', readBy: ['driver:drv_1'], deletedBy: ['driver:drv_1'] }],
     'drv_1',
+  )
+
+  assert.deepEqual(calls, [{
+    fn: 'rb_set_notification_state',
+    args: { p_notification_id: 'n1', p_read: true, p_deleted: true },
+  }])
+})
+
+test('notificationStateRpcCallsForUser persists staff-specific read/delete state', () => {
+  const calls = notificationStateRpcCallsForUser(
+    [{ id: 'n1', readBy: [], deletedBy: [] }],
+    [{ id: 'n1', readBy: ['staff:staff_1'], deletedBy: ['staff:staff_1'] }],
+    'staff:staff_1',
   )
 
   assert.deepEqual(calls, [{

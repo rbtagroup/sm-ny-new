@@ -1,9 +1,9 @@
 const driverNoticeKey = (driverId) => `driver:${driverId || ''}`
-const legacyDeletedKey = (driverId) => `deleted:${driverNoticeKey(driverId)}`
+const legacyDeletedKey = (userKey) => `deleted:${userKey}`
 
 const hasState = (items = [], key) => (items || []).includes(key)
-const hasLegacyDeletedState = (items = [], driverId) => {
-  const key = legacyDeletedKey(driverId)
+const hasLegacyDeletedState = (items = [], userKey) => {
+  const key = legacyDeletedKey(userKey)
   return (items || []).some((item) => item === key || String(item).startsWith(`${key}:`))
 }
 const pickDefined = (row = {}, keys = []) => Object.fromEntries(keys
@@ -38,19 +38,18 @@ export function driverPushSubscriptionRowsForSync(pushSubscriptions = [], { prof
   )
 }
 
-export function notificationStateRpcCalls(prevNotifications = [], changedNotifications = [], currentDriverId = '') {
-  if (!currentDriverId) return []
+export function notificationStateRpcCallsForUser(prevNotifications = [], changedNotifications = [], userKey = '') {
+  if (!userKey) return []
   const previousById = new Map((prevNotifications || []).map((notice) => [notice.id, notice]))
-  const key = driverNoticeKey(currentDriverId)
 
   return (changedNotifications || [])
     .map((notice) => {
       const before = previousById.get(notice.id)
       if (!before) return null
-      const readBefore = hasState(before.readBy, key)
-      const readAfter = hasState(notice.readBy, key)
-      const deletedBefore = hasState(before.deletedBy, key) || hasLegacyDeletedState(before.readBy, currentDriverId)
-      const deletedAfter = hasState(notice.deletedBy, key) || hasLegacyDeletedState(notice.readBy, currentDriverId)
+      const readBefore = hasState(before.readBy, userKey)
+      const readAfter = hasState(notice.readBy, userKey)
+      const deletedBefore = hasState(before.deletedBy, userKey) || hasLegacyDeletedState(before.readBy, userKey)
+      const deletedAfter = hasState(notice.deletedBy, userKey) || hasLegacyDeletedState(notice.readBy, userKey)
       if (readBefore === readAfter && deletedBefore === deletedAfter) return null
       return {
         fn: 'rb_set_notification_state',
@@ -62,6 +61,11 @@ export function notificationStateRpcCalls(prevNotifications = [], changedNotific
       }
     })
     .filter(Boolean)
+}
+
+export function notificationStateRpcCalls(prevNotifications = [], changedNotifications = [], currentDriverId = '') {
+  if (!currentDriverId) return []
+  return notificationStateRpcCallsForUser(prevNotifications, changedNotifications, driverNoticeKey(currentDriverId))
 }
 
 export function removedNotificationStateRpcCalls(prevNotifications = [], removedNotificationIds = [], currentDriverId = '') {
@@ -79,7 +83,7 @@ export function removedNotificationStateRpcCalls(prevNotifications = [], removed
 
   return (prevNotifications || [])
     .filter((notice) => notice?.id && removedIds.has(notice.id) && canDriverSeeNotice(notice))
-    .filter((notice) => !hasState(notice.deletedBy, key) && !hasLegacyDeletedState(notice.readBy, currentDriverId))
+    .filter((notice) => !hasState(notice.deletedBy, key) && !hasLegacyDeletedState(notice.readBy, key))
     .map((notice) => ({
       fn: 'rb_set_notification_state',
       args: {
