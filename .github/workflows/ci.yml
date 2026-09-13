@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          # pnpm přichází přes corepack až v dalším kroku, automatická cache by ho hledala dřív.
+          package-manager-cache: false
 
       - name: Install dependencies
         run: |
