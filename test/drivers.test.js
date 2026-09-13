@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { canonicalDriverId, driverWithDuplicateEmail, mergeDriverDirectory, normalizeDriverEmail } from '../src/lib/drivers.js'
+import { activatedDriverPatch, canonicalDriverId, driverWithDuplicateEmail, isPendingDriver, mergeDriverDirectory, normalizeDriverEmail, PENDING_DRIVER_NOTE } from '../src/lib/drivers.js'
 
 test('driver email helpers prevent duplicate identities', () => {
   const drivers = [
@@ -40,4 +40,15 @@ test('mergeDriverDirectory keeps full own row and only names for colleagues', ()
   assert.equal(merged[1].phone, '+420 1')
   assert.equal(merged[2].active, false)
   assert.deepEqual(mergeDriverDirectory(own, []), own)
+})
+
+test('pending self-registered drivers are recognised and approval clears the pending note', () => {
+  const pending = { id: 'drv_new', active: false, note: PENDING_DRIVER_NOTE }
+  assert.equal(isPendingDriver(pending), true)
+  assert.equal(isPendingDriver({ ...pending, active: true }), false)
+  assert.equal(isPendingDriver({ id: 'drv_off', active: false, note: 'Odešel' }), false)
+
+  assert.deepEqual(activatedDriverPatch(pending, { active: true }), { id: 'drv_new', active: true, note: '' })
+  assert.equal(activatedDriverPatch(pending, { active: false, note: PENDING_DRIVER_NOTE }).note, PENDING_DRIVER_NOTE)
+  assert.equal(activatedDriverPatch({ id: 'drv_1', active: true, note: 'Víkendy' }, { phone: '1' }).note, 'Víkendy')
 })

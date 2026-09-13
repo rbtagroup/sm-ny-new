@@ -38,3 +38,16 @@ export function mergeDriverDirectory(visibleDrivers = [], directory = []) {
   }
   return merged
 }
+
+export const PENDING_DRIVER_NOTE = 'Čeká na schválení dispečinkem.'
+
+// Samoregistrace s neznámým e-mailem čeká na aktivaci dispečinkem.
+export function isPendingDriver(driver) {
+  return driver?.active === false && String(driver?.note || '').trim() === PENDING_DRIVER_NOTE
+}
+
+export function activatedDriverPatch(driver = {}, changes = {}) {
+  const next = { ...driver, ...changes }
+  if (next.active !== false && String(next.note || '').trim() === PENDING_DRIVER_NOTE) next.note = ''
+  return next
+}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { driverWithDuplicateEmail } from './lib/drivers.js'
+import { activatedDriverPatch, driverWithDuplicateEmail, isPendingDriver } from './lib/drivers.js'
 import { showNotice } from './lib/notice.js'
 
 const emptyDriverForm = Object.freeze({ name: '', phone: '', email: '', profileId: '', active: true, note: '' })
@@ -48,7 +48,7 @@ export function Drivers({ data, commit, services, ui }) {
     const duplicateEmailDriver = driverWithDuplicateEmail(data.drivers, email, editing || '')
     if (duplicateEmailDriver) return showNotice(`E-mail už používá řidič ${duplicateEmailDriver.name || duplicateEmailDriver.id}. Uprav existující záznam, aby nevznikly dva profily pro stejné přihlášení.`)
     const payload = { name, phone: form.phone.trim(), email, profileId: form.profileId?.trim() || '', active: form.active !== false, note: form.note.trim() }
-    if (editing) commit((prev) => ({ ...prev, drivers: prev.drivers.map((driver) => driver.id === editing ? { ...driver, ...payload } : driver) }), 'Řidič upraven.')
+    if (editing) commit((prev) => ({ ...prev, drivers: prev.drivers.map((driver) => driver.id === editing ? activatedDriverPatch(driver, payload) : driver) }), 'Řidič upraven.')
     else commit((prev) => ({ ...prev, drivers: [{ id: uid('drv'), ...payload }, ...prev.drivers] }), 'Řidič vytvořen.')
     closeDrawer()
   }
@@ -63,20 +63,22 @@ export function Drivers({ data, commit, services, ui }) {
     setDriverToDelete('')
     if (wasEditing) closeDrawer()
   }
-  const restore = (driver) => commit((prev) => ({ ...prev, drivers: prev.drivers.map((item) => item.id === driver.id ? { ...item, active: true } : item) }), 'Řidič znovu aktivován.')
+  const restore = (driver) => commit((prev) => ({ ...prev, drivers: prev.drivers.map((item) => item.id === driver.id ? activatedDriverPatch(item, { active: true }) : item) }), isPendingDriver(driver) ? 'Řidič schválen.' : 'Řidič znovu aktivován.')
+  const pendingCount = data.drivers.filter(isPendingDriver).length
+  const sortedDrivers = [...data.drivers].sort((a, b) => Number(isPendingDriver(b)) - Number(isPendingDriver(a)))
 
   return <>
     <PageTitle title="Řidiči"><button className="primary" onClick={openCreate}>+ Přidat řidiče</button></PageTitle>
     <div className="card">
-      <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem</span></div>
-      <div className="stack compact-list">{data.drivers.map((driver) => <div className="log list-row" key={driver.id}>
+      <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem{pendingCount ? ` · ${pendingCount} čeká na schválení` : ''}</span></div>
+      <div className="stack compact-list">{sortedDrivers.map((driver) => <div className={isPendingDriver(driver) ? 'log list-row pending-driver-row' : 'log list-row'} key={driver.id}>
         <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(driver)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(driver) } }}>
-          <div className="split"><div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}{driver.profileId ? ' · profil: ' + driver.profileId.slice(0, 8) + '…' : ''}</small></div><span className={driver.active ? 'pill good' : 'pill bad'}>{driver.active ? 'Aktivní' : 'Neaktivní'}</span></div>
+          <div className="split"><div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}{driver.profileId ? ' · profil: ' + driver.profileId.slice(0, 8) + '…' : ''}</small></div><span className={driver.active ? 'pill good' : isPendingDriver(driver) ? 'pill warn' : 'pill bad'}>{driver.active ? 'Aktivní' : isPendingDriver(driver) ? 'Čeká na schválení' : 'Neaktivní'}</span></div>
           {driver.note && <p className="muted compact-note">{driver.note}</p>}
         </div>
         <div className="row-actions list-row-actions">
           <button onClick={() => openEdit(driver)}>Upravit</button>
-          {driver.active === false ? <button onClick={() => restore(driver)}>Obnovit</button> : <DeleteIconButton label="Deaktivovat řidiče" onClick={() => softDelete(driver)} />}
+          {driver.active === false ? <button className={isPendingDriver(driver) ? 'primary' : ''} onClick={() => restore(driver)}>{isPendingDriver(driver) ? 'Schválit' : 'Obnovit'}</button> : <DeleteIconButton label="Deaktivovat řidiče" onClick={() => softDelete(driver)} />}
         </div>
       </div>)}</div>
     </div>

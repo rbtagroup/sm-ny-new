@@ -22,9 +22,9 @@ export function Dashboard({ data, helpers, commit, today = todayISO(), ui, servi
     <PageTitle title="Provozní dashboard" subtitle={`Dnes je ${todayRangeTitle(today)}`}>
       <button className="ghost" onClick={() => copyText(dayText(data, helpers, today))}>WhatsApp dnes</button>
       <button className="ghost" onClick={() => exportCSV(data, helpers)}>Export CSV</button>
-      <button className="primary" onClick={() => backup(data)}>Záloha JSON</button>
+      <button className="ghost" onClick={() => backup(data)}>Záloha JSON</button>
     </PageTitle>
-    <div className="grid kpis">
+    <div className="grid kpis dashboard-kpis">
       <Kpi label="Dnešní směny" value={todayShifts.length} hint={`${todayShifts.filter((shift) => shift.status === 'confirmed').length} potvrzeno · ${todayShifts.filter((shift) => shift.status === 'completed').length} hotovo`} />
       <Kpi label="Čeká na reakci" value={waiting.length} hint="Budoucí návrh / čeká na potvrzení" />
       <Kpi label="Běží směny" value={running.length} hint="Nástup bez ukončení" kind={running.length ? 'warn' : ''} />

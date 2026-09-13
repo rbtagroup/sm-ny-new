@@ -93,7 +93,7 @@ export function Availability({ data, commit, currentDriver, ui }) {
   const removeAbsence = (id) => requestDelete('absence', id)
   const removeSlot = (id) => requestDelete('slot', id)
 
-  return <><PageTitle title="Dostupnost řidičů" />
+  return <><PageTitle title={currentDriver ? 'Moje dostupnost' : 'Dostupnost řidičů'} />
     {availabilityToast && <div className="planner-toast" role="status">{availabilityToast}</div>}
     <div className="grid two">
       <div className="card"><div className="section-title"><h3>Nová dostupnost</h3><span className="pill">od–do</span></div><form className="form two-col" onSubmit={submitSlot}>
