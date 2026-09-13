@@ -33,20 +33,19 @@ corepack enable && pnpm install --frozen-lockfile
 corepack enable && pnpm run build
 ```
 
-Po nasazení databázových změn spusť v Supabase migrace ze složky `supabase/migrations`. Aktuální bezpečnostní patch je:
+Databázové změny jsou jen v `supabase/migrations` (zdroj pravdy). Nové migrace nasaď přes Supabase CLI z propojeného repozitáře:
 
-```text
-supabase/migrations/20260511152914_harden_sync_notifications.sql
+```bash
+supabase db push --dry-run
 ```
 
-Ten doplňuje oddělený stav smazaných notifikací (`deleted_by`), zpřísňuje RLS pro výměny směn, vrací audit logy do režimu staff-only pro čtení/upravy a přidává RPC funkce pro citlivé akce:
+```bash
+supabase db push
+```
 
-- `rb_request_swap`
-- `rb_cancel_swap_request`
-- `rb_accept_swap_request`
-- `rb_resolve_swap_request`
-- `rb_set_notification_state`
-- `rb_insert_audit_log`
+Po změně RLS nebo RPC funkcí spusť proti databázi regresní sondy `supabase/rls-regression-tests.sql`. Skript všechny zkušební změny vrací a skončí chybou, pokud by se chráněná akce stala povolenou.
+
+Edge funkce `scheduler` a `driver-reminder` jsou v `supabase/functions` a nasazují se zvlášť (s `verify_jwt` vypnutým, ověřují vlastní tajný klíč).
 
 ## Důležité proměnné
 

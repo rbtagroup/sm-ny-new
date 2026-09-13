@@ -15,8 +15,8 @@ create temporary table rb_staff_seed (
 );
 
 insert into rb_staff_seed (email, role, full_name, phone) values
-  ('prace@rbgroup.cz', 'admin', 'Lukáš Blaha', null),
-  ('romana@rbgroup.cz', 'dispatcher', 'Romana Blahová', null);
+  ('admin@example.com', 'admin', 'Jméno Admina', null),
+  ('dispecer@example.com', 'dispatcher', 'Jméno Dispečera', null);
 
 insert into public.profiles (id, role, full_name, phone)
 select u.id, s.role, s.full_name, s.phone
@@ -37,9 +37,9 @@ create temporary table rb_driver_seed (
 );
 
 insert into rb_driver_seed (email, driver_id, full_name, phone, note) values
-  ('ridic1@rbgroup.cz', 'driver_roman', 'Roman', null, null),
-  ('ridic2@rbgroup.cz', 'driver_petr', 'Petr', null, null),
-  ('ridic3@rbgroup.cz', 'driver_michal', 'Michal', null, null);
+  ('ridic1@example.com', 'driver_ridic_1', 'Řidič 1', null, null),
+  ('ridic2@example.com', 'driver_ridic_2', 'Řidič 2', null, null),
+  ('ridic3@example.com', 'driver_ridic_3', 'Řidič 3', null, null);
 
 insert into public.profiles (id, role, full_name, phone)
 select u.id, 'driver', d.full_name, d.phone

@@ -1,4 +1,4 @@
-# RBSHIFT v5.3.1 – nastavení push notifikací
+# RBSHIFT – nastavení push notifikací
 
 ## 1) Vygeneruj VAPID klíče
 
@@ -54,15 +54,9 @@ Po změně proměnných ve Vercelu spusť nový deployment:
 Deployments → Redeploy
 ```
 
-## 4) Spusť SQL patch v Supabase
+## 4) Nasaď databázové migrace
 
-V Supabase SQL Editoru spusť:
-
-```text
-supabase/migrations/20260511152914_harden_sync_notifications.sql
-```
-
-Patch obsahuje i pravidla pro bezpečnější notifikace, audit, výměny směn a RPC funkce, které klient používá pro citlivé řidičské akce. Pro novou instalaci spusť základní schema a potom migrace ze složky `supabase/migrations`.
+Databázová pravidla pro notifikace, výměny směn a push odběry jsou v migracích ve složce `supabase/migrations`. Nasaď je přes `supabase db push` (viz README). Staré SQL soubory v kořeni `supabase/` se v produkci nespouští.
 
 ## 5) Test v aplikaci
 
@@ -95,7 +89,13 @@ Safari → Sdílet → Přidat na plochu → otevřít ikonu z plochy
 Push se na iOS běžně nepovolí v obyčejném Safari tabu.
 
 
-## Volné směny v5.4.1
+## Volné směny
 
 Pokud dispečer vytvoří směnu bez řidiče, notifikace se odesílá s `targetRole = driver_all`.
 To znamená, že ji vidí a dostanou všichni řidiči se zapnutými push notifikacemi.
+
+## Kde běží odesílání
+
+- Vercel funkce `/api/send-push` běží v regionu `fra1` (Frankfurt), blízko Supabase projektu.
+- Když cron (`scheduler`, `driver-reminder`) push nedoručí, vznikne dispečinku notifikace „Push notifikace se nepodařilo odeslat“.
+- Stav konfigurace ukazuje `/api/push-health` (200 = proměnné prostředí jsou nastavené).
