@@ -9,6 +9,7 @@ import {
   todayISO,
 } from './dateTime.js'
 import { sortByDateTime } from './display.js'
+import { coverageSlotAppliesOn } from './coverage.js'
 
 export function weekShifts(data, weekStart) {
   return sortByDateTime((data.shifts || []).filter((s) => s.date >= weekStart && s.date <= addDays(weekStart, 6)))
@@ -74,7 +75,7 @@ export function coverageGaps(data, weekStart = startOfWeek(todayISO())) {
   const slots = data.settings?.coverageSlots || []
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   const active = data.shifts.filter((s) => !['cancelled', 'declined'].includes(s.status))
-  return days.flatMap((day) => slots.map((slot) => {
+  return days.flatMap((day) => slots.filter((slot) => coverageSlotAppliesOn(slot, day)).map((slot) => {
     const planned = active.filter((s) => s.date === day && overlapsTimeWindow(s.start, s.end, slot.start, slot.end)).length
     return { day, ...slot, planned, missing: Math.max(0, Number(slot.minDrivers || 0) - planned) }
   })).filter((x) => x.missing > 0)

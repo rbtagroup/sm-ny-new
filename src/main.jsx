@@ -54,6 +54,7 @@ import {
 } from './lib/notifications.js'
 import { notificationInboxState } from './lib/notificationInbox.js'
 import { staffNoticeState } from './lib/staffNotifications.js'
+import { COVERAGE_WEEKDAYS, coverageDaysLabel, coverageSlotAppliesOn, coverageSlotAppliesOnWeekday, toggleCoverageDay } from './lib/coverage.js'
 import { uid } from './lib/ids.js'
 import { sendPushForNotifications } from './lib/pushDelivery.js'
 import {
@@ -347,10 +348,10 @@ function App({ session = null, profile = null, signOut = null }) {
 }
 const settlementFormUi = { Field, Modal, ReasonActionModal, SettlementStatusPill, ShiftActionSummary }
 const settlementFormServices = { uid, makeNotice, adminNotice }
-const shiftTableUi = { ConfirmActionModal, DeleteIconButton, ReasonActionModal, ShiftActionSummary, StatusPill }
+const shiftTableUi = { ConfirmActionModal, ReasonActionModal, ShiftActionSummary, StatusPill }
 const shiftTableServices = { uid, isPastLocked, statusNoticeForShift, cancelShiftData, hardDeleteShiftData }
-const plannerUi = { PageTitle, Kpi, Field, Select, ConflictBox, ConfirmActionModal, DeleteIconButton, ReasonActionModal, ShiftActionSummary, SettlementStatusPill, SettlementSummary, SideDrawer, StatusPill }
-const plannerServices = { uid, buildHelpers, makeNotice, adminNotice, appendSwapHistory, isPastLocked, statusNoticeForShift, hardDeleteShiftData, copyText, weekText, driverText, settlementFormUi, settlementFormServices, shiftTableUi, shiftTableServices }
+const plannerUi = { PageTitle, Kpi, Field, Select, ConflictBox, ConfirmActionModal, ReasonActionModal, ShiftActionSummary, SettlementStatusPill, SettlementSummary, SideDrawer, StatusPill }
+const plannerServices = { uid, buildHelpers, makeNotice, adminNotice, appendSwapHistory, isPastLocked, statusNoticeForShift, cancelShiftData, hardDeleteShiftData, copyText, weekText, driverText, settlementFormUi, settlementFormServices, shiftTableUi, shiftTableServices }
 const dashboardUi = { PageTitle, Kpi, StatusPill }
 const dashboardServices = { copyText, shiftTableUi, shiftTableServices }
 const driverHomeUi = { ConflictBox, Field, Kpi, Modal, ReasonActionModal, SettlementFormModal, SettlementStatusPill, SettlementSummary, ShiftActionSummary, StatusPill }
@@ -430,11 +431,10 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
   const audit = readinessChecks(data, helpers, weekStart)
   const passed = audit.checks.filter((c) => c.ok).length
   const readinessPct = Math.round((passed / audit.checks.length) * 100)
-  const coverageRows = (data.settings?.coverageSlots || []).flatMap((slot) => Array.from({ length: 7 }, (_, i) => {
-    const day = addDays(weekStart, i)
+  const coverageRows = (data.settings?.coverageSlots || []).flatMap((slot) => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter((day) => coverageSlotAppliesOn(slot, day)).map((day) => {
     const planned = audit.activeWeek.filter((s) => s.date === day && overlapsTimeWindow(s.start, s.end, slot.start, slot.end)).length
     return { day, slot, planned, missing: Math.max(0, Number(slot.minDrivers || 0) - planned) }
-  }))
+  })).sort((a, b) => a.day.localeCompare(b.day) || a.slot.start.localeCompare(b.slot.start))
   const attendance = attendanceRows(data, helpers, weekStart, to)
   const plannedTotal = attendance.reduce((sum, row) => sum + row.plannedMinutes, 0)
   const actualTotal = attendance.reduce((sum, row) => sum + row.actualMinutes, 0)
@@ -442,6 +442,9 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
   const monthLogs = (data.audit || []).filter((row) => String(row.at || row.createdAt || '').startsWith(currentMonth) && !isRoutineSchedulerLog(row))
   const todayIssues = audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length
   const weekIssues = coverageRows.filter((r) => r.missing).length + attendance.filter((row) => row.open || Math.abs(row.diffMinutes) > 15).length
+  const toggleSlotDay = (slotId, day) => {
+    commit((prev) => ({ ...prev, settings: { ...prev.settings, coverageSlots: (prev.settings?.coverageSlots || []).map((slot) => slot.id === slotId ? toggleCoverageDay(slot, day) : slot) } }), 'Upraveny dny normy pokrytí provozu.')
+  }
   const updateMinDrivers = (slotId, value) => {
     const n = Math.max(0, Number(value || 0))
     commit((prev) => ({ ...prev, settings: { ...prev.settings, coverageSlots: (prev.settings?.coverageSlots || []).map((slot) => slot.id === slotId ? { ...slot, minDrivers: n } : slot) } }), 'Upravena norma pokrytí provozu.')
@@ -493,7 +496,7 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
         <summary><span><b>Tento měsíc</b><small>{monthLogs.length} záznamů historie · dlouhodobé normy</small></span><span className="pill">{monthLogs.length}</span></summary>
         <div className="collapse-content stack">
           <div className="section-title"><h3>Normy pokrytí</h3><span className="pill">{data.settings?.coverageSlots?.length || 0}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-standards-table"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Min. řidičů</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b></td><td>{slot.start}–{slot.end}</td><td><input type="number" min="0" aria-label={`Minimum řidičů: ${slot.name}`} value={slot.minDrivers} onChange={(e) => updateMinDrivers(slot.id, e.target.value)} style={{ width: 90 }} /></td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-standards-table"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Min. řidičů</th><th>Dny</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b><br /><small>{coverageDaysLabel(slot)}</small></td><td>{slot.start}–{slot.end}</td><td><input type="number" min="0" aria-label={`Minimum řidičů: ${slot.name}`} value={slot.minDrivers} onChange={(e) => updateMinDrivers(slot.id, e.target.value)} style={{ width: 90 }} /></td><td><div className="weekday-toggles" role="group" aria-label={`Dny pro pásmo ${slot.name}`}>{COVERAGE_WEEKDAYS.map(([day, label]) => { const active = coverageSlotAppliesOnWeekday(slot, day); return <button type="button" key={day} className={active ? 'active' : ''} aria-pressed={active} onClick={() => toggleSlotDay(slot.id, day)}>{label}</button> })}</div></td></tr>)}</tbody></table></div>
           <div className="section-title"><h3>Historie za měsíc</h3><span className="pill">{monthLogs.length}</span></div>
           <div className="timeline stack audit-table-scroll">{monthLogs.slice(0, 50).map((log) => <div className="log" key={log.id}><b>{new Date(log.at).toLocaleString('cs-CZ')}</b><br /><span className="muted">{log.text}</span></div>)}{!monthLogs.length && <div className="empty">Za tento měsíc nejsou žádné záznamy.</div>}</div>
         </div>

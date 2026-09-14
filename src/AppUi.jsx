@@ -106,7 +106,8 @@ export function ReasonActionModal({ title, message, warning, children, label = '
 export function SideDrawer({ title, open, onClose, children }) {
   useEffect(() => {
     if (!open) return undefined
-    const onKeyDown = (event) => { if (event.key === 'Escape') onClose?.() }
+    // Escape belongs to a dialog opened from the drawer (it would lose e.g. a typed reason), not to the drawer under it.
+    const onKeyDown = (event) => { if (event.key === 'Escape' && !document.querySelector('.modal-backdrop')) onClose?.() }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, onClose])

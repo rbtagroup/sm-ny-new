@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.104.0'
 import { coverageNoticeDecision } from './coverageNotice.js'
+import { coverageSlotAppliesOn, normalizeCoverageSlots } from './coverageSlots.js'
 
 type CoverageSlot = {
   id?: string
@@ -7,6 +8,7 @@ type CoverageSlot = {
   start: string
   end: string
   minDrivers?: number
+  days?: number[] | null
 }
 
 type ShiftRow = {
@@ -112,20 +114,6 @@ function formatDate(dateISO: string) {
   return new Intl.DateTimeFormat('cs-CZ', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date(Date.UTC(y, m - 1, d, 12)))
 }
 
-function normalizeSlots(payload: any): CoverageSlot[] {
-  const fromSettings = Array.isArray(payload?.coverageSlots) ? payload.coverageSlots : []
-  const slots = fromSettings.length ? fromSettings : DEFAULT_COVERAGE_SLOTS
-  return slots
-    .map((slot: any, index: number) => ({
-      id: String(slot.id || `slot_${index + 1}`),
-      name: String(slot.name || `Pásmo ${index + 1}`),
-      start: String(slot.start || '07:00').slice(0, 5),
-      end: String(slot.end || '19:00').slice(0, 5),
-      minDrivers: Math.max(0, Number(slot.minDrivers || 0)),
-    }))
-    .filter((slot) => slot.minDrivers && slot.start && slot.end)
-}
-
 function pushDeliveryEndpoint() {
   const raw = Deno.env.get('PUSH_DELIVERY_URL') || Deno.env.get('APP_URL') || Deno.env.get('PUBLIC_APP_URL') || Deno.env.get('SITE_URL') || ''
   if (!raw) return ''
@@ -170,7 +158,7 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
 
   if (settingsError) throw settingsError
 
-  const coverageSlots = normalizeSlots(settingsRow?.payload || {})
+  const coverageSlots: CoverageSlot[] = normalizeCoverageSlots(settingsRow?.payload || {}, DEFAULT_COVERAGE_SLOTS)
 
   const { data: shifts, error: shiftsError } = await supabase
     .from('shifts')
@@ -185,7 +173,7 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
   const days = Array.from({ length: 7 }, (_, index) => addDaysISO(today, index))
 
   const gaps = days.flatMap((day) =>
-    coverageSlots.map((slot) => {
+    coverageSlots.filter((slot) => coverageSlotAppliesOn(slot, day)).map((slot) => {
       const planned = coverageShifts.filter((shift) =>
         shift.shift_date === day &&
         overlapsTimeWindow(String(shift.start_time).slice(0, 5), String(shift.end_time).slice(0, 5), slot.start, slot.end)

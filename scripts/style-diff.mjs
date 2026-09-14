@@ -36,6 +36,7 @@ const viewports = [
 ]
 
 const click = (selector, text) => `(() => { const want = ${JSON.stringify(text)}; const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (item.innerText || item.getAttribute('aria-label') || '').trim() === want && item.getClientRects().length) || [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (item.innerText || '').trim() === want); el?.click(); return Boolean(el) })()`
+const openDetailMenu = `(() => { document.querySelectorAll('.shift-detail-more, .row-more, .staff-shift-more-actions').forEach((item) => { item.open = true }); return true })()`
 const clickIfPresent = (selector, text) => `(() => { [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (item.innerText || '').trim() === ${JSON.stringify(text)} && item.getClientRects().length)?.click(); return true })()`
 const clickFirst = (selector) => `(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => item.getClientRects().length) || document.querySelector(${JSON.stringify(selector)}); el?.click(); return Boolean(el) })()`
 const staffNav = (label) => click('.sidebar-nav button', label)
@@ -48,12 +49,14 @@ const states = [
   ['staff', 'planner', [staffNav('Plán směn')]],
   ['staff', 'planner-new-shift', [staffNav('Plán směn'), click('button', '+ Nová směna')]],
   ['staff', 'planner-detail', [staffNav('Plán směn'), clickFirst('.calendar-shift-card')]],
-  ['staff', 'planner-table', [staffNav('Plán směn'), clickFirst('.planner-kpi-item')]],
+  ['staff', 'planner-table', [staffNav('Plán směn'), clickFirst('.planner-kpi-item'), openDetailMenu]],
   ['staff', 'planner-week-plan', [staffNav('Plán směn'), click('button', 'Naplánovat týden')]],
   ['staff', 'planner-dirty-close', [staffNav('Plán směn'), click('button', '+ Nová směna'), typeInto('.shift-drawer textarea', 'rozepsáno'), click('.shift-drawer-head button', 'Zavřít')]],
   // the detail offers only the steps that fit the time of day: check in and out today, or mark an older shift done
-  ['staff', 'planner-settlement', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), clickIfPresent('.main button', 'Nástup'), clickIfPresent('.main button', 'Ukončit'), clickIfPresent('.main button', 'Dokončeno'), clickIfPresent('.modal-backdrop button', 'Změnit stav'), `(() => { const b = [...document.querySelectorAll('.main button')].find((x) => ['Výčetka', 'Otevřít výčetku', 'Založit výčetku'].includes(x.innerText.trim()) && !x.disabled); b?.click(); return Boolean(b) })()`]],
-  ['staff', 'planner-decline', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), click('.main button', 'Odmítnout')]],
+  ['staff', 'planner-settlement', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), openDetailMenu, clickIfPresent('.shift-drawer button', 'Zaznamenat nástup'), openDetailMenu, clickIfPresent('.shift-drawer button', 'Zaznamenat konec'), openDetailMenu, clickIfPresent('.shift-drawer button', 'Označit jako dokončenou'), clickIfPresent('.modal-backdrop button', 'Změnit stav'), openDetailMenu, `(() => { const b = [...document.querySelectorAll('.shift-drawer button')].find((x) => ['Otevřít výčetku', 'Založit výčetku'].includes(x.innerText.trim()) && !x.disabled); b?.click(); return Boolean(b) })()`]],
+  ['staff', 'planner-decline', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), openDetailMenu, click('.shift-drawer button', 'Odmítnout směnu')]],
+  ['staff', 'planner-detail-menu', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), openDetailMenu]],
+  ['staff', 'planner-cover-gap', [staffNav('Plán směn'), clickFirst('.calendar-gap')]],
   ['staff', 'dashboard', [staffNav('Dashboard')]],
   ['staff', 'audit', [staffNav('Dashboard'), click('.page-tabs button', 'Audit týdne')]],
   ['staff', 'history', [staffNav('Dashboard'), click('.page-tabs button', 'Historie změn')]],

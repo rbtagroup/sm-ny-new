@@ -321,23 +321,6 @@
   flex-direction: column;
 }
 
-.detail-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  min-width: 0;
-}
-
-.detail-panel > .section-title {
-  align-items: flex-start;
-}
-
-.detail-panel > .section-title > .ghost {
-  width: auto;
-  flex: 0 0 auto;
-}
-
 .shift-form-hint {
   grid-column: 1/-1;
   margin: 0;
@@ -346,6 +329,272 @@
 .shift-form-hint.is-warning {
   color: #ffd7d7;
   font-weight: 800;
+}
+
+.shift-form-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.shift-form-check input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.shift-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.shift-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.shift-detail-when {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shift-detail-when span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.shift-detail-when strong {
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+}
+
+.shift-detail-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.shift-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.shift-detail-facts div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.035);
+}
+
+.shift-detail-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shift-detail-facts dd {
+  margin: 2px 0 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.shift-progress {
+  display: grid;
+  grid-template-columns: repeat(5,minmax(0,1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shift-progress li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.shift-progress li::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: calc(-50% + 16px);
+  right: calc(50% + 16px);
+  height: 2px;
+  background: var(--line);
+}
+
+.shift-progress li:first-child::before {
+  display: none;
+}
+
+.shift-progress li span {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #0b1423;
+  font-weight: 900;
+}
+
+.shift-progress li.is-done {
+  color: #d8fff0;
+}
+
+.shift-progress li.is-done::before,
+.shift-progress li.is-current::before {
+  background: rgba(72,213,151,.55);
+}
+
+.shift-progress li.is-done span {
+  border-color: rgba(72,213,151,.55);
+  background: #12342a;
+  color: #d8fff0;
+}
+
+.shift-progress li.is-current {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.shift-progress li.is-current span {
+  border-color: rgba(245,199,106,.75);
+  background: #3a2f16;
+  color: #fff3c7;
+}
+
+.shift-detail-actions {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 8px;
+}
+
+.shift-detail-more {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+  overflow: hidden;
+}
+
+.shift-detail-more > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 14px;
+  color: #dbeafe;
+  font-weight: 800;
+  list-style: none;
+  cursor: pointer;
+}
+
+.shift-detail-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shift-detail-more > summary::after {
+  content: "▾";
+  color: var(--muted);
+}
+
+.shift-detail-more[open] > summary::after {
+  content: "▴";
+}
+
+.shift-detail-more > div {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.shift-detail-note {
+  margin: 0;
+}
+
+.calendar-gap {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: 7px;
+  padding: 7px 9px;
+  border: 1px dashed rgba(255,207,90,.55);
+  border-radius: 12px;
+  background: rgba(255,207,90,.07);
+  color: #fff3c7;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.calendar-gap:hover {
+  border-style: solid;
+  background: rgba(255,207,90,.12);
+}
+
+.calendar-gap-name {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.calendar-gap-action {
+  color: var(--gold);
+  font-weight: 900;
+}
+
+/* Narrow week columns put "chybí N" on its own line; the list layout keeps it inline after a dot. */
+.day-gap-label {
+  display: block;
+  color: #ffcf5a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.day-label-sep {
+  display: none;
+}
+
+.shift-row-actions {
+  align-items: flex-start;
+}
+
+.row-more > summary {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  list-style: none;
+  cursor: pointer;
+}
+
+.row-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-more[open] > summary {
+  border-color: rgba(245,199,106,.45);
+}
+
+.row-more-panel {
+  display: grid;
+  gap: 6px;
+  min-width: 190px;
+  margin-top: 6px;
 }
 
 /* The head must not be position: sticky. Safari resolves sticky against .main (overflow: hidden) and pushes it over the form, so only .shift-drawer-body scrolls. */
@@ -767,6 +1016,11 @@
   }
 
   .week-grid .day.day-empty .day-empty-label {
+    display: inline;
+  }
+
+  .day-gap-label,
+  .day-label-sep {
     display: inline;
   }
 }

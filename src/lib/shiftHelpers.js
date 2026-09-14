@@ -1,5 +1,5 @@
 import { statusToneMap } from './appConfig.js'
-import { availabilityCoversShift, availabilityRelevantToShift } from './availability.js'
+import { availabilityStateForShift } from './availability.js'
 import { dateInRange, overlapsShift } from './dateTime.js'
 
 export function buildHelpers(data) {
@@ -32,10 +32,9 @@ export function buildHelpers(data) {
     if (shift.vehicleId) data.serviceBlocks.forEach((s) => {
       if (s.vehicleId === shift.vehicleId && dateInRange(shift.date, s.from, s.to)) conflicts.push(`Vozidlo ${vehicleName(shift.vehicleId)} je blokované: ${s.reason || 'servis'}.`)
     })
-    const availability = shift.driverId ? (data.availability || []).filter((a) => a.driverId === shift.driverId && availabilityRelevantToShift(a, shift)) : []
-    if (availability.length && !availability.some((a) => availabilityCoversShift(a, shift))) {
-      conflicts.push(`Řidič ${driverName(shift.driverId)} nemá v tomto čase zadanou dostupnost.`)
-    }
+    const availability = shift.driverId ? availabilityStateForShift((data.availability || []).filter((a) => a.driverId === shift.driverId), shift) : ''
+    if (availability === 'unavailable') conflicts.push(`Řidič ${driverName(shift.driverId)} je v tomto čase nedostupný.`)
+    if (availability === 'outside') conflicts.push(`Řidič ${driverName(shift.driverId)} nemá v tomto čase zadanou dostupnost.`)
     return [...new Set(conflicts)]
   }
   const statusClass = (status) => statusToneMap[status] || 'warn'

@@ -1,7 +1,7 @@
-import { addDays, formatDate, startOfWeek } from './dateTime.js'
+import { addDays, dateInRange, formatDate, overlapsShift, startOfWeek } from './dateTime.js'
 import { czechCount } from './drivers.js'
-import { statusMap } from './appConfig.js'
 import { normalizeShiftTemplates } from './shiftTemplates.js'
+import { availabilityStateForShift } from './availability.js'
 
 // Dates a new shift is created for. Week-based repeats never reach back before the chosen day.
 export function repeatShiftDates(date, repeat = 'none') {
@@ -16,17 +16,6 @@ export function repeatPreviewText(dates = []) {
   if (!dates.length) return 'Pro zvolený den nevznikne žádná směna. Vyber jiný den nebo jiné opakování.'
   // formatted dates already end with a dot ("čt 17. 09.")
   return `Vytvoří se ${czechCount(dates.length, 'směna', 'směny', 'směn')}: ${dates.map((day) => formatDate(day)).join(', ')}`
-}
-
-const plannableStatuses = ['draft', 'assigned', 'confirmed']
-
-// A shift without a driver is always open; with a driver dispatch picks between draft, waiting and confirmed.
-// The current status of an edited shift stays selectable so saving never changes it silently.
-export function shiftStatusOptions({ hasDriver, currentStatus = '' } = {}) {
-  if (!hasDriver) return null
-  const keys = [...plannableStatuses]
-  if (currentStatus && currentStatus !== 'open' && !keys.includes(currentStatus) && statusMap[currentStatus]) keys.push(currentStatus)
-  return Object.fromEntries(keys.map((key) => [key, statusMap[key]]))
 }
 
 // Inactive people and cars stay out of the pickers unless the edited shift already uses them.
@@ -46,4 +35,35 @@ export function gapShiftPreset(gap, settings = {}) {
     // the slot name only adds information when no template already names the shift
     note: template ? '' : (gap.name || ''),
   }
+}
+
+const choiceOrder = { available: 0, free: 1, outside: 2, busy: 3, unavailable: 4, absent: 5, inactive: 6 }
+
+// Drivers for the shift picker with what stands in the way of this shift; those who can drive come first.
+export function driverChoices(data = {}, shift = {}, selectedId = '') {
+  const hasTime = Boolean(shift.date && shift.start && shift.end)
+  const choice = (driver) => {
+    if (driver.active === false) return { state: 'inactive', note: 'neaktivní' }
+    if (!hasTime) return { state: 'free', note: '' }
+    const candidate = { ...shift, driverId: driver.id }
+    const absence = (data.absences || []).find((item) => item.driverId === driver.id && dateInRange(shift.date, item.from, item.to))
+    if (absence) return { state: 'absent', note: absence.reason ? `nepřítomnost: ${absence.reason}` : 'nepřítomnost' }
+    const busy = (data.shifts || []).find((other) => other.id !== shift.id && other.driverId === driver.id && !['cancelled', 'declined'].includes(other.status) && other.date && other.start && other.end && overlapsShift(candidate, other))
+    if (busy) return { state: 'busy', note: `má směnu ${busy.start}–${busy.end}` }
+    const availability = availabilityStateForShift((data.availability || []).filter((item) => item.driverId === driver.id), candidate)
+    if (availability === 'unavailable') return { state: 'unavailable', note: 'hlásí, že nemůže' }
+    if (availability === 'outside') return { state: 'outside', note: 'mimo zadanou dostupnost' }
+    if (availability === 'available') return { state: 'available', note: 'hlásí dostupnost' }
+    return { state: 'free', note: 'bez kolize' }
+  }
+  return selectableRecords(data.drivers || [], selectedId)
+    .map((driver) => ({ driver, ...choice(driver) }))
+    .sort((a, b) => choiceOrder[a.state] - choiceOrder[b.state] || String(a.driver.name).localeCompare(String(b.driver.name), 'cs'))
+}
+
+export const driverChoiceIsClear = (choice) => ['available', 'free'].includes(choice.state)
+
+// The template whose times match the shift, so the picker shows it instead of "Vlastní čas".
+export function matchingTemplateId(settings = {}, start = '', end = '') {
+  return normalizeShiftTemplates(settings).find((tpl) => tpl.active && tpl.start === start && tpl.end === end)?.id || 'custom'
 }

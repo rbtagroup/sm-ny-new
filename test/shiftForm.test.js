@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { gapShiftPreset, repeatPreviewText, repeatShiftDates, selectableRecords, shiftStatusOptions } from '../src/lib/shiftForm.js'
+import { gapShiftPreset, repeatPreviewText, repeatShiftDates, selectableRecords } from '../src/lib/shiftForm.js'
 
 test('week repeats start at the chosen day and never create earlier days', () => {
   // 2026-09-16 is a Wednesday
@@ -15,13 +15,6 @@ test('week repeats start at the chosen day and never create earlier days', () =>
 test('repeat preview names every created day', () => {
   assert.equal(repeatPreviewText(['2026-09-16', '2026-09-17']), 'Vytvoří se 2 směny: st 16. 09., čt 17. 09.')
   assert.match(repeatPreviewText([]), /nevznikne žádná směna/)
-})
-
-test('status options follow the driver choice and keep the edited status', () => {
-  assert.equal(shiftStatusOptions({ hasDriver: false }), null)
-  assert.deepEqual(Object.keys(shiftStatusOptions({ hasDriver: true })), ['draft', 'assigned', 'confirmed'])
-  assert.deepEqual(Object.keys(shiftStatusOptions({ hasDriver: true, currentStatus: 'completed' })), ['draft', 'assigned', 'confirmed', 'completed'])
-  assert.deepEqual(Object.keys(shiftStatusOptions({ hasDriver: true, currentStatus: 'open' })), ['draft', 'assigned', 'confirmed'])
 })
 
 test('inactive drivers stay out of the picker unless already on the shift', () => {
@@ -45,4 +38,49 @@ test('date ranges read as Czech dates', async () => {
   assert.equal(dateRangeLabel('2026-09-14', '2026-09-16'), 'po 14. 09. – st 16. 09.')
   assert.equal(dateRangeLabel('2026-09-14', '2026-09-14'), 'po 14. 09.')
   assert.equal(dateRangeLabel('2026-09-14T08:00', ''), '2026-09-14T08:00')
+})
+
+test('driver picker puts drivers who can drive first and says why others cannot', async () => {
+  const { driverChoices } = await import('../src/lib/shiftForm.js')
+  const data = {
+    drivers: [
+      { id: 'busy', name: 'Milan', active: true },
+      { id: 'free', name: 'Roman', active: true },
+      { id: 'absent', name: 'Anna', active: true },
+      { id: 'cannot', name: 'Petra', active: true },
+      { id: 'ready', name: 'Lukáš', active: true },
+      { id: 'gone', name: 'Old', active: false },
+    ],
+    shifts: [{ id: 'other', driverId: 'busy', date: '2026-09-21', start: '12:00', end: '20:00', status: 'confirmed' }],
+    absences: [{ id: 'abs', driverId: 'absent', from: '2026-09-20', to: '2026-09-22', reason: 'dovolená' }],
+    availability: [
+      { id: 'a1', driverId: 'cannot', weekday: 1, start: '06:00', end: '18:00', note: '[unavailable] škola' },
+      { id: 'a2', driverId: 'ready', weekday: 1, start: '06:00', end: '20:00', note: '[available]' },
+    ],
+  }
+  const shift = { id: 'new', date: '2026-09-21', start: '07:00', end: '19:00' }
+  assert.deepEqual(driverChoices(data, shift).map((c) => `${c.driver.name}:${c.state}`), ['Lukáš:available', 'Roman:free', 'Milan:busy', 'Petra:unavailable', 'Anna:absent'])
+  assert.equal(driverChoices(data, shift).find((c) => c.driver.id === 'busy').note, 'má směnu 12:00–20:00')
+  assert.equal(driverChoices(data, shift, 'gone').at(-1).state, 'inactive')
+})
+
+test('unavailable entries are conflicts, not availability', async () => {
+  const { buildHelpers } = await import('../src/lib/shiftHelpers.js')
+  const data = {
+    drivers: [{ id: 'petra', name: 'Petra', active: true }],
+    vehicles: [{ id: 'car', name: 'Tesla', plate: 'RB 001', active: true }],
+    shifts: [], absences: [], serviceBlocks: [],
+    availability: [{ id: 'a1', driverId: 'petra', weekday: 1, start: '06:00', end: '18:00', note: '[unavailable]' }],
+  }
+  const messages = buildHelpers(data).conflictMessages({ id: 's', date: '2026-09-21', start: '07:00', end: '15:00', driverId: 'petra', vehicleId: 'car', status: 'assigned' })
+  assert.deepEqual(messages, ['Řidič Petra je v tomto čase nedostupný.'])
+  const evening = buildHelpers(data).conflictMessages({ id: 's', date: '2026-09-21', start: '19:00', end: '23:00', driverId: 'petra', vehicleId: 'car', status: 'assigned' })
+  assert.deepEqual(evening, [])
+})
+
+test('templates are recognised from the shift times', async () => {
+  const { matchingTemplateId } = await import('../src/lib/shiftForm.js')
+  const settings = { shiftTemplates: [{ id: 'tpl_day', name: 'Denní', start: '07:00', end: '19:00', type: 'day', active: true }] }
+  assert.equal(matchingTemplateId(settings, '07:00', '19:00'), 'tpl_day')
+  assert.equal(matchingTemplateId(settings, '08:00', '19:00'), 'custom')
 })

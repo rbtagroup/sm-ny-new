@@ -177,6 +177,20 @@
   color: #ffd7d7;
 }
 
+/* .row-actions button paints every button plainly; keep the meaning of main and destructive buttons */
+.row-actions .primary {
+  border-color: rgba(245,199,106,.75);
+  background: linear-gradient(135deg,var(--gold),var(--gold2));
+  color: #07101d;
+  font-weight: 900;
+}
+
+.row-actions .danger {
+  border-color: rgba(255,107,107,.45);
+  background: rgba(255,107,107,.12);
+  color: #ffd7d7;
+}
+
 .form {
   display: grid;
   grid-template-columns: repeat(4,minmax(0,1fr));
@@ -323,11 +337,6 @@
   min-width: 0;
   overflow-wrap: anywhere;
   text-align: right;
-}
-
-.detail-panel {
-  border: 1px solid rgba(245,199,106,.34);
-  background: linear-gradient(180deg,rgba(245,199,106,.12),rgba(255,255,255,.04));
 }
 
 .compact-kpis .kpi .value {
