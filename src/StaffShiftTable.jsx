@@ -8,10 +8,15 @@ import {
 import { addNotificationsToData } from './lib/notifications.js'
 import { shiftTypeMap, statusMap } from './lib/appConfig.js'
 import { time } from './lib/display.js'
+import { czechCount } from './lib/drivers.js'
+import { settlementForShift } from './lib/settlements.js'
+import { staffShiftActions } from './lib/shiftActions.js'
 
-function StaffShiftMobileCard({ shift: s, helpers, compact, onStatus, onDuplicate, onCancel, onHardDelete, ui }) {
+function StaffShiftMobileCard({ shift: s, data, helpers, compact, onStatus, onDuplicate, onCancel, onHardDelete, ui }) {
   const { DeleteIconButton, StatusPill } = ui
   const conflicts = helpers.conflictMessages(s)
+  const can = staffShiftActions(s, { hasSettlement: Boolean(settlementForShift(data, s.id)) })
+  const hasQuickActions = can.confirm || can.decline || can.complete
   const attendance = `${s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → ${s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}`
 
   return <div className={`staff-shift-card status-${s.status}`}>
@@ -26,7 +31,7 @@ function StaffShiftMobileCard({ shift: s, helpers, compact, onStatus, onDuplicat
       <span><small>Řidič</small><b>{helpers.driverName(s.driverId)}</b></span>
       <span><small>Vozidlo</small><b>{helpers.vehicleName(s.vehicleId)}</b></span>
       <span><small>Docházka</small><b>{attendance}</b><em>{durationLabel(actualDurationMinutes(s))}</em></span>
-      <span><small>Kontrola</small>{conflicts.length ? <b className="bad-text">{conflicts.length} kolize</b> : <b className="good-text">OK</b>}</span>
+      <span><small>Kontrola</small>{conflicts.length ? <b className="bad-text">{czechCount(conflicts.length, 'kolize', 'kolize', 'kolizí')}</b> : <b className="good-text">OK</b>}</span>
     </div>
     {(s.note || s.instruction || s.declineReason || ['pending','accepted'].includes(s.swapRequestStatus)) && <div className="staff-shift-card-notes">
       {['pending','accepted'].includes(s.swapRequestStatus) && <span className="pill warn">výměna</span>}
@@ -34,16 +39,16 @@ function StaffShiftMobileCard({ shift: s, helpers, compact, onStatus, onDuplicat
       {s.instruction && <small>Instrukce: {s.instruction}</small>}
       {s.declineReason && <small>Důvod: {s.declineReason}</small>}
     </div>}
-    {!compact && <div className="row-actions staff-shift-card-actions">
-      <button type="button" onClick={() => onStatus(s, 'confirmed')}>Potvrdit</button>
-      <button type="button" onClick={() => onStatus(s, 'declined')}>Odmítnout</button>
-      <button className="staff-shift-complete" type="button" onClick={() => onStatus(s, 'completed')}>Hotovo</button>
+    {!compact && hasQuickActions && <div className="row-actions staff-shift-card-actions">
+      {can.confirm && <button type="button" onClick={() => onStatus(s, 'confirmed')}>Potvrdit</button>}
+      {can.decline && <button type="button" onClick={() => onStatus(s, 'declined')}>Odmítnout</button>}
+      {can.complete && <button className="staff-shift-complete" type="button" onClick={() => onStatus(s, 'completed')}>Hotovo</button>}
     </div>}
     {!compact && <details className="staff-shift-more-actions">
       <summary>Další akce</summary>
       <div className="staff-shift-more-actions-panel">
         <button type="button" onClick={() => onDuplicate(s)}>Duplikovat</button>
-        <button className="danger-mini" type="button" onClick={() => onCancel(s)}>Zrušit</button>
+        {can.cancel && <button className="danger-mini" type="button" onClick={() => onCancel(s)}>Zrušit</button>}
         <DeleteIconButton label="Trvale odstranit směnu" onClick={() => onHardDelete(s)} />
       </div>
     </details>}
@@ -93,10 +98,11 @@ export function ShiftTable({ shifts, data, helpers, commit, compact = false, ui,
   return <>
     <div className="table-wrap shift-table-desktop"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Řidič</th><th>Vozidlo</th><th>Stav</th><th>Docházka</th><th>Kontrola</th>{!compact && <th>Akce</th>}</tr></thead><tbody>{shifts.map((s) => {
       const conflicts = helpers.conflictMessages(s)
-      return <tr key={s.id}><td><b>{formatDate(s.date)}</b><br /><small>{s.date}</small></td><td>{time(s.start)}–{time(s.end)}<br /><small>{shiftTypeMap[s.type] || s.type}</small></td><td>{helpers.driverName(s.driverId)}<br /><small>{s.note || 'Bez poznámky'}</small>{s.instruction && <><br /><small>Instrukce: {s.instruction}</small></>}{s.declineReason && <><br /><small>Důvod: {s.declineReason}</small></>}</td><td>{helpers.vehicleName(s.vehicleId)}</td><td><StatusPill status={s.status} helpers={helpers} />{['pending','accepted'].includes(s.swapRequestStatus) && <><br /><span className="pill warn">výměna</span></>}</td><td>{s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → {s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}<br /><small>{durationLabel(actualDurationMinutes(s))}</small></td><td>{conflicts.length ? <span className="pill bad">{conflicts.length} kolize</span> : <span className="pill good">OK</span>}</td>{!compact && <td><div className="row-actions"><button onClick={() => requestStatus(s, 'confirmed')}>Potvrdit</button><button onClick={() => requestStatus(s, 'declined')}>Odmítnout</button><button onClick={() => requestStatus(s, 'completed')}>Hotovo</button><button onClick={() => duplicate(s)}>Duplikovat</button><button className="danger-mini" onClick={() => requestCancel(s)}>Zrušit</button><DeleteIconButton label="Trvale odstranit směnu" onClick={() => requestHardDelete(s)} /></div></td>}</tr>
+      const can = staffShiftActions(s, { hasSettlement: Boolean(settlementForShift(data, s.id)) })
+      return <tr key={s.id}><td><b>{formatDate(s.date)}</b></td><td>{time(s.start)}–{time(s.end)}<br /><small>{shiftTypeMap[s.type] || s.type}</small></td><td>{helpers.driverName(s.driverId)}<br /><small>{s.note || 'Bez poznámky'}</small>{s.instruction && <><br /><small>Instrukce: {s.instruction}</small></>}{s.declineReason && <><br /><small>Důvod: {s.declineReason}</small></>}</td><td>{helpers.vehicleName(s.vehicleId)}</td><td><StatusPill status={s.status} helpers={helpers} />{['pending','accepted'].includes(s.swapRequestStatus) && <><br /><span className="pill warn">výměna</span></>}</td><td>{s.actualStartAt ? new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} → {s.actualEndAt ? new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'}<br /><small>{durationLabel(actualDurationMinutes(s))}</small></td><td>{conflicts.length ? <span className="pill bad">{czechCount(conflicts.length, 'kolize', 'kolize', 'kolizí')}</span> : <span className="pill good">OK</span>}</td>{!compact && <td><div className="row-actions">{can.confirm && <button onClick={() => requestStatus(s, 'confirmed')}>Potvrdit</button>}{can.decline && <button onClick={() => requestStatus(s, 'declined')}>Odmítnout</button>}{can.complete && <button onClick={() => requestStatus(s, 'completed')}>Hotovo</button>}<button onClick={() => duplicate(s)}>Duplikovat</button>{can.cancel && <button className="danger-mini" onClick={() => requestCancel(s)}>Zrušit</button>}<DeleteIconButton label="Trvale odstranit směnu" onClick={() => requestHardDelete(s)} /></div></td>}</tr>
     })}</tbody></table></div>
     <div className="staff-shift-mobile-list">
-      {shifts.map((s) => <StaffShiftMobileCard key={s.id} shift={s} helpers={helpers} compact={compact} onStatus={requestStatus} onDuplicate={duplicate} onCancel={requestCancel} onHardDelete={requestHardDelete} ui={ui} />)}
+      {shifts.map((s) => <StaffShiftMobileCard key={s.id} shift={s} data={data} helpers={helpers} compact={compact} onStatus={requestStatus} onDuplicate={duplicate} onCancel={requestCancel} onHardDelete={requestHardDelete} ui={ui} />)}
     </div>
     {actionDialog?.type === 'decline' && actionShift && <ReasonActionModal
       title="Odmítnout směnu"

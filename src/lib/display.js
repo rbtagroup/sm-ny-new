@@ -4,6 +4,12 @@ import { roleMap, shiftTypeMap } from './appConfig.js'
 export const money = (n) => `${Math.round(Number(n || 0)).toLocaleString('cs-CZ')} Kč`
 export const time = (v) => v || '—'
 
+// "po 14. 09. – st 16. 09."; a single day is shown once and values that are not plain dates are shown as they are.
+export function dateRangeLabel(from, to) {
+  const label = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? formatDate(value) : (value || '—'))
+  return !to || to === from ? label(from) : `${label(from)} – ${label(to)}`
+}
+
 export function formatNoticeDate(date) {
   const d = new Date(`${date}T12:00:00`)
   return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`

@@ -20,6 +20,8 @@ export function SettlementFormModal({ data, helpers, commit, shift, currentDrive
   const [saving, setSaving] = useState(false)
   const [returnDialogOpen, setReturnDialogOpen] = useState(false)
   const [returnReason, setReturnReason] = useState('')
+  // Errors appear once the user tries to send or approve, not while the form is still empty.
+  const [showErrors, setShowErrors] = useState(false)
   const readOnly = existing?.status === 'approved' || (isDriver && existing?.status === 'submitted')
   const metrics = useMemo(() => computeSettlementMetrics(inputs, config), [inputs, config])
   const errors = useMemo(() => validateSettlementInputs(inputs, config), [inputs, config])
@@ -29,7 +31,10 @@ export function SettlementFormModal({ data, helpers, commit, shift, currentDrive
   const setValue = (key, value) => setInputs((prev) => ({ ...prev, [key]: value }))
   const upsertSettlement = (status, returnedReason = '') => {
     if (!shift?.id) return
-    if (['submitted','approved'].includes(status) && errors.length) return showNotice(errors[0])
+    if (['submitted','approved'].includes(status) && errors.length) {
+      setShowErrors(true)
+      return showNotice(errors[0])
+    }
     setSaving(true)
     const now = new Date().toISOString()
     const nextSettlement = {
@@ -105,7 +110,7 @@ export function SettlementFormModal({ data, helpers, commit, shift, currentDrive
             <div><span>Smluvní km</span><b>{Math.round(metrics.invoiceKm || 0).toLocaleString('cs-CZ')}</b></div>
             <div><span>Hotovost rozdíl</span><b style={metrics.hasCashActual ? { color: metrics.cashDiff > 0 ? 'var(--good)' : metrics.cashDiff < 0 ? 'var(--bad)' : undefined } : undefined}>{metrics.hasCashActual ? `${metrics.cashDiff > 0 ? '+' : ''}${money(metrics.cashDiff)}` : '—'}</b></div>
           </div>
-          {errors.length > 0 && <div className="alert warn">{errors[0]}</div>}
+          {showErrors && errors.length > 0 && <div className="alert warn" role="alert">{errors[0]}</div>}
           <div className="actions settlement-actions">
             {isDriver && existing?.status !== 'approved' && existing?.status !== 'submitted' && <>
               <button className="ghost" type="button" onClick={() => upsertSettlement('draft')} disabled={saving}>{saving ? 'Ukládám…' : 'Uložit rozpracované'}</button>

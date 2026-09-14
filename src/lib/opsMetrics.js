@@ -2,6 +2,7 @@ import {
   actualDurationMinutes,
   addDays,
   formatDate,
+  intervalForShift,
   overlapsTimeWindow,
   plannedDurationMinutes,
   startOfWeek,
@@ -33,15 +34,18 @@ export function readinessChecks(data, helpers, weekStart = startOfWeek(todayISO(
     { key: 'confirmed', label: 'Všichni řidiči potvrzeni', ok: waiting.length === 0, detail: waiting.length ? `${waiting.length} čeká na reakci` : 'Vše potvrzeno / hotovo' },
     { key: 'declined', label: 'Odmítnuté směny vyřešené', ok: declined.length === 0, detail: declined.length ? `${declined.length} odmítnuto` : 'Bez odmítnutí' },
     { key: 'swaps', label: 'Žádné čekající výměny', ok: pendingSwaps.length === 0, detail: pendingSwaps.length ? `${pendingSwaps.length} žádostí` : 'Bez žádostí' },
-    { key: 'attendance', label: 'Nedořešená docházka', ok: runningOld.length === 0, detail: runningOld.length ? `${runningOld.length} starších běžících směn` : 'Docházka OK' },
+    { key: 'attendance', label: 'Docházka uzavřená', ok: runningOld.length === 0, detail: runningOld.length ? `${runningOld.length} starších běžících směn` : 'Docházka OK' },
   ]
   return { checks, conflicts, gaps, pendingSwaps, openInterests, waiting, declined, runningOld, week, activeWeek }
 }
 
-export function attendanceRows(data, helpers, from, to) {
+// Planned time counts only active shifts that should already be over (checked out or past their planned end),
+// so a week in progress does not show missing hours for shifts that are still running or ahead.
+export function attendanceRows(data, helpers, from, to, now = Date.now()) {
   const rows = data.drivers.map((driver) => {
-    const shifts = (data.shifts || []).filter((s) => s.driverId === driver.id && s.date >= from && s.date <= to)
-    const plannedMinutes = shifts.reduce((sum, s) => sum + plannedDurationMinutes(s), 0)
+    const shifts = (data.shifts || []).filter((s) => s.driverId === driver.id && s.date >= from && s.date <= to && !['cancelled', 'declined'].includes(s.status))
+    const due = shifts.filter((s) => s.actualEndAt || intervalForShift(s)[1] <= now)
+    const plannedMinutes = due.reduce((sum, s) => sum + plannedDurationMinutes(s), 0)
     const actualMinutes = shifts.reduce((sum, s) => sum + (actualDurationMinutes(s) || 0), 0)
     const completed = shifts.filter((s) => s.status === 'completed').length
     const open = shifts.filter((s) => s.actualStartAt && !s.actualEndAt).length
@@ -61,7 +65,7 @@ export function readinessText(data, helpers, weekStart) {
   }
   if (r.conflicts.length) {
     lines.push('', 'Kolize:')
-    r.conflicts.slice(0, 20).forEach((c) => lines.push(`${c.shift.date} ${c.shift.start}–${c.shift.end}: ${c.message}`))
+    r.conflicts.slice(0, 20).forEach((c) => lines.push(`${formatDate(c.shift.date)} ${c.shift.start}–${c.shift.end}: ${c.message}`))
   }
   return lines.join('\n')
 }

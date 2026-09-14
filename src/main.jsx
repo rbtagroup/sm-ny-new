@@ -306,8 +306,8 @@ function App({ session = null, profile = null, signOut = null }) {
   </div>
   const updateToast = <>{updateWorker && <UpdateReadyToast applying={updateApplying} onRefresh={applyPwaUpdate} onDismiss={dismissPwaUpdate} />}<NoticeToast /></>
 
-  if (isDriver) return <DriverAppShell currentDriver={currentDriver} onlineMode={onlineMode} page={page} unreadCount={unreadForCurrent} onPageChange={setPage} updateToast={updateToast}>
-      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} syncState={syncState} ui={driverHomeUi} services={driverHomeServices} />}
+  if (isDriver) return <DriverAppShell currentDriver={currentDriver} onlineMode={onlineMode} page={page} unreadCount={unreadForCurrent} onPageChange={setPage} syncState={syncState} onRetrySync={() => reloadOnline()} updateToast={updateToast}>
+      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} ui={driverHomeUi} services={driverHomeServices} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} ui={availabilityUi} />}
       {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} session={session} onlineMode={onlineMode} signOut={signOut} syncState={syncState} version={VERSION} ui={driverSettingsUi} notificationUi={notificationUi} notificationServices={notificationServices} />}
@@ -328,6 +328,7 @@ function App({ session = null, profile = null, signOut = null }) {
       sidebarSections={sidebarSections}
       onlineMode={onlineMode}
       syncState={syncState}
+      onRetrySync={() => reloadOnline()}
       updateToast={updateToast}
     >
       {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} onOpenTemplates={role === 'admin' ? () => setPage('shiftTemplates') : undefined} />}
@@ -348,7 +349,7 @@ const settlementFormUi = { Field, Modal, ReasonActionModal, SettlementStatusPill
 const settlementFormServices = { uid, makeNotice, adminNotice }
 const shiftTableUi = { ConfirmActionModal, DeleteIconButton, ReasonActionModal, ShiftActionSummary, StatusPill }
 const shiftTableServices = { uid, isPastLocked, statusNoticeForShift, cancelShiftData, hardDeleteShiftData }
-const plannerUi = { PageTitle, Kpi, Field, Select, ConflictBox, ConfirmActionModal, DeleteIconButton, ReasonActionModal, ShiftActionSummary, SettlementStatusPill, SettlementSummary, SideDrawer }
+const plannerUi = { PageTitle, Kpi, Field, Select, ConflictBox, ConfirmActionModal, DeleteIconButton, ReasonActionModal, ShiftActionSummary, SettlementStatusPill, SettlementSummary, SideDrawer, StatusPill }
 const plannerServices = { uid, buildHelpers, makeNotice, adminNotice, appendSwapHistory, isPastLocked, statusNoticeForShift, hardDeleteShiftData, copyText, weekText, driverText, settlementFormUi, settlementFormServices, shiftTableUi, shiftTableServices }
 const dashboardUi = { PageTitle, Kpi, StatusPill }
 const dashboardServices = { copyText, shiftTableUi, shiftTableServices }
@@ -469,7 +470,7 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
       <Kpi label="Připravenost" value={`${readinessPct} %`} hint={`${passed}/${audit.checks.length} kontrol OK`} kind={readinessPct === 100 ? 'good' : readinessPct >= 75 ? 'warn' : 'bad'} />
       <Kpi label="Týden" value={`${formatDate(weekStart)}–${formatDate(to)}`} hint="auditované období" />
       <Kpi label="Problémy" value={audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length} hint="kolize + pokrytí + výměny" kind={(audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length) ? 'bad' : 'good'} />
-      <Kpi label="Docházka" value={hoursLabel(actualTotal)} hint={`plán ${hoursLabel(plannedTotal)} · rozdíl ${hoursLabel(actualTotal - plannedTotal)}`} />
+      <Kpi label="Docházka" value={hoursLabel(actualTotal)} hint={`proběhlé směny: plán ${hoursLabel(plannedTotal)} · rozdíl ${hoursLabel(actualTotal - plannedTotal)}`} />
     </div>
     <div className="stack" style={{ marginTop: 16 }}>
       <details className="card collapse-card" {...sectionProps('today')}>

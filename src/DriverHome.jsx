@@ -11,12 +11,13 @@ import { DriverActionModal, DriverTwoWeekCalendar, ShiftMobileCard } from './Dri
 import { localStamp } from './lib/dateTime.js'
 import { statusMap } from './lib/appConfig.js'
 import { selectDriverHomeState } from './lib/driverHome.js'
-import { appFriendlyError } from './lib/errors.js'
+import { settlementForShift } from './lib/settlements.js'
+import { driverShiftActions, statusAfterCheckIn } from './lib/shiftActions.js'
 import { addNotificationsToData } from './lib/notifications.js'
 import { notificationInboxState } from './lib/notificationInbox.js'
 import { shiftNoticeBody } from './lib/display.js'
 
-export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui, services }) {
+export function DriverHome({ data, helpers, commit, currentDriver, ui, services }) {
   const { SettlementFormModal } = ui
   const { uid, makeNotice, adminNotice, appendSwapHistory } = services
   const [expandedShiftId, setExpandedShiftId] = useState('')
@@ -48,15 +49,23 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')}`, `driver-${status}`, id, { push: status === 'declined' })] : []
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, status, declineReason: reason } : s) }, notices), `${currentDriver?.name || 'Řidič'} změnil stav směny na ${statusMap[status]}.`, options)
   }
+  // The driver cannot change attendance times once they are saved, so both steps are guarded.
   const checkIn = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
-    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: s.status === 'assigned' ? 'confirmed' : s.status } : s) }, shift ? adminNotice('Řidič nastoupil na směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-start', id, { push: false }) : null), `${currentDriver?.name || 'Řidič'} nastoupil na směnu.`)
+    if (!shift) return
+    if (!driverShiftActions(shift, { hasSettlement: Boolean(settlementForShift(data, id)) }).checkIn) {
+      showDriverToast('Nástup jde potvrdit od hodiny před začátkem do dvou hodin po konci směny.')
+      return
+    }
+    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualStartAt: s.actualStartAt || localStamp(), status: statusAfterCheckIn(s.status) } : s) }, adminNotice('Řidič nastoupil na směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-start', id, { push: false })), `${currentDriver?.name || 'Řidič'} nastoupil na směnu.`)
   }
   const checkOut = (id) => {
     const shift = data.shifts.find((s) => s.id === id)
-    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, shift ? adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-end', id, { push: false }) : null), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
-    if (shift) setSettlementShiftId(id)
+    if (!shift?.actualStartAt || shift.actualEndAt) return
+    commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((s) => s.id === id ? { ...s, actualEndAt: s.actualEndAt || localStamp(), status: 'completed' } : s) }, adminNotice('Řidič ukončil směnu', `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers)}`, 'attendance-end', id, { push: false })), `${currentDriver?.name || 'Řidič'} ukončil směnu.`)
+    setSettlementShiftId(id)
   }
+  const requestCheckOut = (shift) => setActionDialog({ type: 'checkOut', shiftId: shift.id })
   const requestSwap = (shift) => {
     setSwapDraft({ shiftId: shift.id, targetDriverId: '', reason: '' })
   }
@@ -90,6 +99,11 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     setActionDialog({ type: 'cancelSwap', shiftId: shift.id, requestId: activeReq.id })
   }
   const closeActionDialog = () => setActionDialog(null)
+  const confirmCheckOut = () => {
+    const shiftId = actionDialog?.shiftId
+    closeActionDialog()
+    if (shiftId) checkOut(shiftId)
+  }
   const confirmCancelSwap = () => {
     const activeReq = (data.swapRequests || []).find((r) => r.id === actionDialog?.requestId && ['pending','accepted'].includes(r.status))
     const shift = data.shifts.find((s) => s.id === actionDialog?.shiftId)
@@ -211,15 +225,13 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
     awaiting.length > 0 ? { key: 'awaiting', label: `⏳ ${awaiting.length} čeká`, kind: 'warn', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
     incomingSwaps.length > 0 ? { key: 'swaps', label: `↔ ${incomingSwaps.length} výměny`, kind: 'warn', onClick: () => scrollToDriverSection('driver-incoming-swaps-section') } : null,
   ].filter(Boolean)
-  const actions = { setStatus, checkIn, checkOut, setSettlementShiftId, requestSwap, cancelSwap, decline }
+  const actions = { setStatus, checkIn, requestCheckOut, setSettlementShiftId, requestSwap, cancelSwap, decline }
   const cardProps = { data, helpers, expandedShiftId, onExpand: setExpandedShiftId, actions, ui }
   const otherShifts = shifts.filter((s) => s.id !== focus?.id)
   const highlightOpenShifts = openShifts.length >= 4
   const settlementShift = data.shifts.find((s) => s.id === settlementShiftId)
   return <div className="driver-view driver-mobile-view driver-priority-view">
     {driverToast && <div className="planner-toast" role="status">{driverToast}</div>}
-    {syncState?.saving && <div className="driver-sync-banner saving" role="status">Ukládám změny…</div>}
-    {!syncState?.saving && syncState?.error && <div className="driver-sync-banner warn" role="status">{appFriendlyError(syncState.error)}</div>}
     {focus && <div className="driver-section-kicker">Aktuální směna</div>}
     {focus ? <ShiftMobileCard s={focus} focusCard {...cardProps} /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
     <DriverQuickStrip chips={quickChips} />
@@ -241,6 +253,7 @@ export function DriverHome({ data, helpers, commit, currentDriver, syncState, ui
       onConfirmAcceptSwap={confirmAcceptSwap}
       onConfirmDeclineSwap={confirmDeclineSwap}
       onConfirmOpenShift={confirmOpenShift}
+      onConfirmCheckOut={confirmCheckOut}
       ui={ui}
     />
     {settlementShift && <SettlementFormModal data={data} helpers={helpers} commit={commit} shift={settlementShift} currentDriver={currentDriver} isDriver onClose={() => setSettlementShiftId('')} ui={ui} services={services} />}

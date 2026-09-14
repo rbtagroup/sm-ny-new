@@ -157,14 +157,17 @@
   min-height: 48px;
 }
 
-.action-modal-actions .primary {
+/* .row-actions button would otherwise paint the confirm buttons like plain ones */
+.action-modal-actions .primary,
+.driver-swap-actions .primary {
   border-color: rgba(245,199,106,.75);
   background: linear-gradient(135deg,var(--gold),var(--gold2));
   color: #07101d;
   font-weight: 900;
 }
 
-.action-modal-actions .danger {
+.action-modal-actions .danger,
+.driver-swap-actions .danger {
   border-color: rgba(255,107,107,.45);
   background: rgba(255,107,107,.12);
   color: #ffd7d7;

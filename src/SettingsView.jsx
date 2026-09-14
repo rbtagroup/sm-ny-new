@@ -9,6 +9,7 @@ import {
   parseDriverReminderCron,
   weekdayCronMap,
 } from './lib/driverReminderSchedule.js'
+import { roleMap } from './lib/appConfig.js'
 import { deviceLabelFromUserAgent } from './lib/display.js'
 import { appFriendlyError } from './lib/errors.js'
 import { configuredShiftTimes } from './lib/shiftTemplates.js'
@@ -197,11 +198,10 @@ export function SettingsView({ title = 'Nastavení', data, commit, supabase, onl
       </div>
       <div className="card">
         <div className="section-title"><h3>O aplikaci</h3><span className="pill">v{version}</span></div>
-        <div className="grid four">
-          <Kpi label="Verze" value={`v${version}`} hint="aktuální build" />
-          <Kpi label="Build" value="React + Vite" hint="webová administrace" />
-          <Kpi label="Prostředí" value={onlineMode ? 'Online' : 'Lokální'} hint={onlineMode ? 'Supabase' : 'bez Supabase'} />
-          <Kpi label="Uživatel" value={profile?.role || 'admin'} hint="aktuální role" />
+        <div className="quick-list about-list">
+          <div className="quick-item"><span>Verze</span><strong>v{version}</strong></div>
+          <div className="quick-item"><span>Prostředí</span><strong>{onlineMode ? 'Online' : 'Lokální demo'}</strong></div>
+          <div className="quick-item"><span>Role</span><strong>{roleMap[profile?.role] || profile?.role || 'Admin'}</strong></div>
         </div>
         <div className="stack" style={{ marginTop: 14 }}>
           <div className="log"><b>Changelog</b><br /><span className="muted">Přidáno nastavení připomínky volných směn pro řidiče.</span></div>

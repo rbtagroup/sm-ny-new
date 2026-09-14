@@ -293,7 +293,8 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
     const online = Boolean(isConfiguredSupabase && session?.user && profile)
     const [data, setData] = useState(readStore)
     const dataRef = useRef(data)
-    const [syncState, setSyncState] = useState({ loading: online, saving: false, error: '', lastSyncAt: '' })
+    // errorKind tells the UI whether a save, a load or only the push delivery failed; savedAt marks the last finished save.
+    const [syncState, setSyncState] = useState({ loading: online, saving: false, error: '', errorKind: '', lastSyncAt: '', savedAt: '' })
     const pendingSyncs = useRef(0)
     const deferredReload = useRef(false)
     // Po odhlášení se hook odpojí; opožděné načtení nesmí data znovu zapsat do localStorage.
@@ -305,7 +306,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       dataRef.current = loaded
       setData(loaded)
       writeStore(loaded)
-      setSyncState((s) => ({ ...s, loading: false, saving: false, error: '', lastSyncAt: new Date().toISOString() }))
+      setSyncState((s) => ({ ...s, loading: false, saving: false, error: '', errorKind: '', lastSyncAt: new Date().toISOString() }))
     }
 
     const reloadOnline = async (silent = false, keys = null) => {
@@ -314,7 +315,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
         deferredReload.current = true
         return
       }
-      if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '' }))
+      if (!silent) setSyncState((s) => ({ ...s, loading: true, error: '', errorKind: '' }))
       try {
         if (keys?.length) {
           const partial = await loadTablesFromSupabase(keys, { role })
@@ -337,7 +338,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
           reloadOnline(true)
           return
         }
-        setSyncState((s) => ({ ...s, loading: false, error: appFriendlyError(err.message || String(err)) }))
+        setSyncState((s) => ({ ...s, loading: false, error: appFriendlyError(err.message || String(err)), errorKind: 'load' }))
       }
     }
 
@@ -424,7 +425,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
       setData(next)
       if (!online) return
       pendingSyncs.current += 1
-      setSyncState((s) => ({ ...s, saving: true, error: '' }))
+      setSyncState((s) => ({ ...s, saving: true, error: '', errorKind: '' }))
       const pushNotices = addedRows(prev.notifications, next.notifications)
       syncChangedRows(prev, next, profile)
         .then(async () => {
@@ -434,11 +435,14 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
           const warning = pushDeliveryWarning(pushResult)
           pendingSyncs.current -= 1
           if (pendingSyncs.current === 0) {
+            const now = new Date().toISOString()
             setSyncState({
               loading: false,
               saving: false,
               error: warning ? `Uloženo, ale push notifikace se nepodařilo doručit: ${warning}` : '',
-              lastSyncAt: new Date().toISOString(),
+              errorKind: warning ? 'push' : '',
+              lastSyncAt: now,
+              savedAt: now,
             })
           }
           options.onSuccess?.()
@@ -456,7 +460,7 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
             dataRef.current = next
             writeStore(next)
           }
-          setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)) }))
+          setSyncState((s) => ({ ...s, saving: false, error: appFriendlyError(err.message || String(err)), errorKind: 'save' }))
           options.onError?.(err)
           flushDeferredReload()
         })

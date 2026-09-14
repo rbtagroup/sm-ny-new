@@ -8,37 +8,41 @@ import {
   startOfWeek,
   todayISO,
 } from './lib/dateTime.js'
-import { canOpenSettlement, settlementForShift } from './lib/settlements.js'
+import { settlementForShift } from './lib/settlements.js'
+import { driverShiftActions } from './lib/shiftActions.js'
 import { formatNoticeDate, shiftTypeName } from './lib/display.js'
 import { statusMap, weekdayMap } from './lib/appConfig.js'
 
+const shortTime = (timestamp) => new Date(timestamp).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
+
 export function DriverActions({ shift, compact = false, data, actions }) {
-  const canConfirm = !['confirmed','completed','cancelled'].includes(shift.status)
-  const canDecline = !['declined','completed','cancelled'].includes(shift.status) && !shift.actualStartAt
-  const canCheckIn = !shift.actualStartAt && !['declined','cancelled','completed'].includes(shift.status)
-  const canCheckOut = Boolean(shift.actualStartAt && !shift.actualEndAt)
-  const canSwap = !['cancelled','completed'].includes(shift.status) && !['pending','accepted'].includes(shift.swapRequestStatus)
   const settlement = settlementForShift(data, shift.id)
-  const canSettlement = canOpenSettlement(shift) || settlement
-  const primaryKind = canCheckOut ? 'checkout' : canCheckIn ? 'checkin' : canSettlement ? 'settlement' : canConfirm ? 'confirm' : ''
+  const can = driverShiftActions(shift, { hasSettlement: Boolean(settlement) })
+  // The main button is the next step: finish a running shift, start one in its window, hand in the settlement, confirm.
+  const primaryKind = can.checkOut ? 'checkout' : can.checkIn ? 'checkin' : can.settlement ? 'settlement' : can.confirm ? 'confirm' : ''
   const primaryAction = primaryKind === 'checkout'
-    ? <button className="primary driver-primary-action" onClick={() => actions.checkOut(shift.id)}>Ukončit směnu</button>
+    ? <button className="primary driver-primary-action" onClick={() => actions.requestCheckOut(shift)}>Ukončit směnu</button>
     : primaryKind === 'checkin'
       ? <button className="primary soft-primary driver-primary-action" onClick={() => actions.checkIn(shift.id)}>Nastoupil jsem</button>
       : primaryKind === 'settlement'
         ? <button className="primary soft-primary driver-primary-action" onClick={() => actions.setSettlementShiftId(shift.id)}>{settlement ? 'Otevřít výčetku' : 'Vyplnit výčetku'}</button>
         : primaryKind === 'confirm'
-          ? <button className="primary driver-primary-action" onClick={() => actions.setStatus(shift.id, 'confirmed')}>Potvrdit</button>
+          ? <button className="primary driver-primary-action" onClick={() => actions.setStatus(shift.id, 'confirmed')}>Potvrdit směnu</button>
           : null
+  // Checking in confirms a waiting shift, so a separate confirm button would only duplicate it.
   const secondaryActions = [
-    canConfirm && primaryKind !== 'confirm' ? <button className="ghost" onClick={() => actions.setStatus(shift.id, 'confirmed')} key="confirm">Potvrdit</button> : null,
-    canSettlement && primaryKind !== 'settlement' ? <button className="ghost" onClick={() => actions.setSettlementShiftId(shift.id)} key="settlement">{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button> : null,
-    canSwap ? <button className="ghost" onClick={() => actions.requestSwap(shift)} key="swap">Nabídnout výměnu</button> : null,
-    ['pending','accepted'].includes(shift.swapRequestStatus) ? <button className="danger" onClick={() => actions.cancelSwap(shift)} key="cancelSwap">Zrušit výměnu</button> : null,
-    canDecline ? <button className="danger" onClick={() => actions.decline(shift)} key="decline">Odmítnout směnu</button> : null,
+    can.confirm && !['confirm', 'checkin'].includes(primaryKind) ? <button className="ghost" onClick={() => actions.setStatus(shift.id, 'confirmed')} key="confirm">Potvrdit směnu</button> : null,
+    can.settlement && primaryKind !== 'settlement' ? <button className="ghost" onClick={() => actions.setSettlementShiftId(shift.id)} key="settlement">{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button> : null,
+    can.swap ? <button className="ghost" onClick={() => actions.requestSwap(shift)} key="swap">Nabídnout výměnu</button> : null,
+    can.cancelSwap ? <button className="danger" onClick={() => actions.cancelSwap(shift)} key="cancelSwap">Zrušit výměnu</button> : null,
+    can.decline ? <button className="danger" onClick={() => actions.decline(shift)} key="decline">Odmítnout směnu</button> : null,
   ].filter(Boolean)
+  const checkInHint = can.checkInOpensAt && can.checkInOpensAt - Date.now() < 24 * 60 * 60 * 1000
+    ? <p className="driver-actions-hint">Nástup půjde potvrdit od {shortTime(can.checkInOpensAt)}.</p>
+    : null
   return <div className={compact ? 'driver-actions driver-actions-compact' : 'driver-actions'}>
     {primaryAction}
+    {checkInHint}
     {secondaryActions.length > 0 && <details className="driver-more-actions">
       <summary>Další akce</summary>
       <div>{secondaryActions}</div>
@@ -78,7 +82,7 @@ export function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedS
     {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
     {s.note && <p className="muted driver-note">{s.note}</p>}
     {(s.actualStartAt || s.actualEndAt) && <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div>}
-    {showStartPrompt && <div className="driver-info-line">Začněte směnu kliknutím na „Nastoupil jsem".</div>}
+    {showStartPrompt && <div className="driver-info-line">Až budeš na místě, klepni na „Nastoupil jsem“.</div>}
     {settlement && <div className="settlement-driver-strip"><SettlementStatusPill settlement={settlement} /><SettlementSummary settlement={settlement} /></div>}
     {conflictMessages.length > 0 && <ConflictBox messages={conflictMessages} />}
     {['pending','accepted'].includes(s.swapRequestStatus) && <div className="alert warn">Žádost o výměnu je odeslaná a čeká na admina.</div>}
@@ -87,7 +91,7 @@ export function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedS
   </div>
 }
 
-export function DriverActionModal({ dialog, shift, request, helpers, onClose, onDeclineReasonChange, onSubmitDecline, onConfirmCancelSwap, onConfirmAcceptSwap, onConfirmDeclineSwap, onConfirmOpenShift, ui }) {
+export function DriverActionModal({ dialog, shift, request, helpers, onClose, onDeclineReasonChange, onSubmitDecline, onConfirmCancelSwap, onConfirmAcceptSwap, onConfirmDeclineSwap, onConfirmOpenShift, onConfirmCheckOut, ui }) {
   const { Field, Modal } = ui
   if (!dialog || !shift) return null
   const summary = <div className="driver-swap-summary">
@@ -110,6 +114,13 @@ export function DriverActionModal({ dialog, shift, request, helpers, onClose, on
     </Modal>
   }
   const configs = {
+    checkOut: {
+      title: 'Ukončit směnu?',
+      body: `Konec se zapíše teď (${shortTime(Date.now())}) a potom vyplníš výčetku. Čas konce už pak sám nezměníš.`,
+      confirmLabel: 'Ukončit směnu',
+      confirmClass: 'primary',
+      onConfirm: onConfirmCheckOut,
+    },
     cancelSwap: {
       title: 'Zrušit výměnu',
       body: 'Žádost o výměnu se označí jako zrušená a dispečink dostane upozornění.',

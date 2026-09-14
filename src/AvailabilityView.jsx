@@ -10,6 +10,7 @@ import {
   availabilityRangeOverlaps,
 } from './lib/availability.js'
 import { showNotice } from './lib/notice.js'
+import { dateRangeLabel } from './lib/display.js'
 
 const absenceDefaults = (driverId = '') => ({ driverId, from: todayISO(), to: todayISO(), reason: '' })
 const availabilityDefaults = (driverId = '') => ({ driverId, kind: 'available', fromAt: datetimeLocal(todayISO(), '07:00'), toAt: datetimeLocal(todayISO(), '19:00'), note: '' })
@@ -123,7 +124,7 @@ export function Availability({ data, commit, currentDriver, ui }) {
           <div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit dostupnost" onClick={() => removeSlot(item.id)} /></div>
         </div>
       })}{!availability.length && <div className="empty">Není zadaná žádná dostupnost.</div>}</div></div>
-      <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack compact-list">{absences.map((item) => <div className="alert warn" key={item.id}><b>{data.drivers.find((driver) => driver.id === item.driverId)?.name}</b> · {item.from} až {item.to}<br /><small>{item.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit nepřítomnost" onClick={() => removeAbsence(item.id)} /></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Nepřítomnosti</h3><span className="pill warn">{absences.length}</span></div><div className="stack compact-list">{absences.map((item) => <div className="alert warn" key={item.id}><b>{data.drivers.find((driver) => driver.id === item.driverId)?.name}</b> · {dateRangeLabel(item.from, item.to)}<br /><small>{item.reason || 'Bez důvodu'}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit nepřítomnost" onClick={() => removeAbsence(item.id)} /></div></div>)}{!absences.length && <div className="empty">Žádné nepřítomnosti.</div>}</div></div>
     </div>
     {deleteTarget && <ConfirmActionModal
       title={deleteDialog.type === 'absence' ? 'Odstranit nepřítomnost' : 'Odstranit dostupnost'}
@@ -135,7 +136,7 @@ export function Availability({ data, commit, currentDriver, ui }) {
     >
       <ActionSummary
         eyebrow={deleteDialog.type === 'absence' ? 'Nepřítomnost' : 'Dostupnost'}
-        title={deleteDialog.type === 'absence' ? `${deleteTarget.from} až ${deleteTarget.to}` : availabilityLabel(deleteTarget)}
+        title={deleteDialog.type === 'absence' ? dateRangeLabel(deleteTarget.from, deleteTarget.to) : availabilityLabel(deleteTarget)}
         meta={`${data.drivers.find((driver) => driver.id === deleteTarget.driverId)?.name || 'Řidič'} · ${deleteDialog.type === 'absence' ? (deleteTarget.reason || 'Bez důvodu') : (availabilityNoteText(deleteTarget) || availabilityKindMap[availabilityKind(deleteTarget)] || 'Dostupnost')}`}
       />
     </ConfirmActionModal>}

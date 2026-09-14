@@ -73,6 +73,15 @@
 .driver-actions .soft-primary {
   background: linear-gradient(135deg,#d8fff0,#48d597);
   border-color: rgba(72,213,151,.72);
+  color: #06251a;
+}
+
+.driver-actions-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .driver-actions-compact {
@@ -779,29 +788,6 @@
   font-weight: 950;
   letter-spacing: .10em;
   text-transform: uppercase;
-}
-
-.driver-sync-banner {
-  border: 1px solid rgba(255,207,90,.42);
-  border-radius: 14px;
-  padding: 10px 12px;
-  background: rgba(255,207,90,.11);
-  color: #ffe6a6;
-  font-size: 13px;
-  font-weight: 850;
-  line-height: 1.35;
-}
-
-.driver-sync-banner.saving {
-  border-color: rgba(128,199,255,.36);
-  background: rgba(128,199,255,.10);
-  color: #dbeafe;
-}
-
-.driver-sync-banner.warn {
-  border-color: rgba(255,207,90,.48);
-  background: rgba(255,207,90,.13);
-  color: #ffe6a6;
 }
 
 .driver-priority-view .driver-hero .driver-date {

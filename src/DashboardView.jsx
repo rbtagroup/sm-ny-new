@@ -1,6 +1,7 @@
 import { addDays, formatDate, todayISO } from './lib/dateTime.js'
-import { sortByDateTime, todayRangeTitle } from './lib/display.js'
+import { dateRangeLabel, sortByDateTime, todayRangeTitle } from './lib/display.js'
 import { dashboardOperationalIssues } from './lib/dashboard.js'
+import { czechCount } from './lib/drivers.js'
 import { backup, dayText, exportCSV } from './lib/shiftExports.js'
 import { ShiftTable } from './StaffShiftTable.jsx'
 
@@ -30,12 +31,12 @@ export function Dashboard({ data, helpers, commit, today = todayISO(), ui, servi
       <Kpi label="Čeká na reakci" value={waiting.length} hint="Budoucí návrh / čeká na potvrzení" />
       <Kpi label="Běží směny" value={running.length} hint="Nástup bez ukončení" kind={running.length ? 'warn' : ''} />
       <Kpi label="Kolize" value={conflicts.length} hint={conflicts.length ? 'Nutná kontrola' : 'Bez zásahu'} kind={conflicts.length ? 'bad' : 'good'} />
-      <Kpi label="Výměny / obsazení" value={pendingSwaps.length + gaps.length} hint={`${pendingSwaps.length} výměn · ${gaps.length} děr`} kind={pendingSwaps.length + gaps.length ? 'bad' : 'good'} />
+      <Kpi label="Výměny / obsazení" value={pendingSwaps.length + gaps.length} hint={`${czechCount(pendingSwaps.length, 'výměna', 'výměny', 'výměn')} · ${czechCount(gaps.length, 'díra', 'díry', 'děr')}`} kind={pendingSwaps.length + gaps.length ? 'bad' : 'good'} />
     </div>
-    <div className="grid two" style={{ marginTop: 16 }}>
+    <div className="grid" style={{ marginTop: 16 }}>
       <div className="card"><div className="section-title"><h3>Dnešní provoz</h3><span className="pill">{formatDate(today)}</span></div><ShiftTable shifts={todayShifts} data={data} helpers={helpers} commit={commit} compact ui={shiftTableUi} services={shiftTableServices} /></div>
       <div className="card"><div className="section-title"><h3>Priorita k řešení</h3><span className={priorityCount ? 'pill bad' : 'pill good'}>{priorityCount}</span></div><div className="stack">
-        {conflicts.slice(0, 8).map((item, index) => <div className="alert bad" key={`c-${index}`}><b>{item.shift.date} {item.shift.start}–{item.shift.end}</b><br />{item.message}</div>)}
+        {conflicts.slice(0, 8).map((item, index) => <div className="alert bad" key={`c-${index}`}><b>{formatDate(item.shift.date)} {item.shift.start}–{item.shift.end}</b><br />{item.message}</div>)}
         {declined.slice(0, 5).map((shift) => <div className="alert bad" key={shift.id}><b>Odmítnuto: {formatDate(shift.date)} {shift.start}–{shift.end}</b><br />{helpers.driverName(shift.driverId)} · {shift.declineReason || 'bez důvodu'}</div>)}
         {pendingSwaps.slice(0, 5).map((request) => {
           const shift = data.shifts.find((item) => item.id === request.shiftId)
@@ -51,10 +52,10 @@ export function Dashboard({ data, helpers, commit, today = todayISO(), ui, servi
       <div className="card"><div className="section-title"><h3>Volní řidiči dnes</h3><span className="pill good">{freeDrivers.length}</span></div><div className="quick-list">{freeDrivers.map((driver) => <div className="quick-item" key={driver.id}><div><strong>{driver.name}</strong><small>{driver.phone || driver.email || 'bez kontaktu'}</small></div><span className="pill good">volný</span></div>)}{!freeDrivers.length && <div className="empty">Všichni aktivní řidiči jsou dnes v plánu.</div>}</div></div>
     </div>
     <div className="grid two" style={{ marginTop: 16 }}>
-      <div className="card"><div className="section-title"><h3>Zítra</h3><span className="pill">{tomorrowShifts.length} směn</span></div><pre className="copybox">{dayText(data, helpers, tomorrow)}</pre></div>
+      <div className="card"><div className="section-title"><h3>Zítra</h3><span className="pill">{czechCount(tomorrowShifts.length, 'směna', 'směny', 'směn')}</span></div><pre className="copybox">{dayText(data, helpers, tomorrow)}</pre></div>
       <div className="card"><div className="section-title"><h3>Servis / nepřítomnosti</h3><span className="pill warn">{data.serviceBlocks.length + data.absences.length}</span></div><div className="stack">
-        {data.serviceBlocks.slice(0, 4).map((service) => <div className="alert warn" key={service.id}>{helpers.vehicleName(service.vehicleId)} · {service.from} až {service.to}<br /><small>{service.reason}</small></div>)}
-        {data.absences.slice(0, 4).map((absence) => <div className="alert warn" key={absence.id}>{helpers.driverName(absence.driverId)} · {absence.from} až {absence.to}<br /><small>{absence.reason}</small></div>)}
+        {data.serviceBlocks.slice(0, 4).map((service) => <div className="alert warn" key={service.id}>{helpers.vehicleName(service.vehicleId)} · {dateRangeLabel(service.from, service.to)}<br /><small>{service.reason}</small></div>)}
+        {data.absences.slice(0, 4).map((absence) => <div className="alert warn" key={absence.id}>{helpers.driverName(absence.driverId)} · {dateRangeLabel(absence.from, absence.to)}<br /><small>{absence.reason}</small></div>)}
         {!data.serviceBlocks.length && !data.absences.length && <div className="empty">Bez blokací.</div>}
       </div></div>
     </div>

@@ -321,6 +321,33 @@
   flex-direction: column;
 }
 
+.detail-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  min-width: 0;
+}
+
+.detail-panel > .section-title {
+  align-items: flex-start;
+}
+
+.detail-panel > .section-title > .ghost {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.shift-form-hint {
+  grid-column: 1/-1;
+  margin: 0;
+}
+
+.shift-form-hint.is-warning {
+  color: #ffd7d7;
+  font-weight: 800;
+}
+
 /* The head must not be position: sticky. Safari resolves sticky against .main (overflow: hidden) and pushes it over the form, so only .shift-drawer-body scrolls. */
 .shift-drawer-head {
   position: relative;

@@ -94,7 +94,8 @@ export function withoutDriver(data = {}, driverId = '', now = new Date().toISOSt
   return next
 }
 
-export const czechCount = (count, one, few, many) => `${count} ${count === 1 ? one : count >= 2 && count <= 4 ? few : many}`
+export const czechWord = (count, one, few, many) => (count === 1 ? one : count >= 2 && count <= 4 ? few : many)
+export const czechCount = (count, one, few, many) => `${count} ${czechWord(count, one, few, many)}`
 
 export function driverRemovalSummaryText(summary = {}, { hasLogin = false } = {}) {
   const parts = [

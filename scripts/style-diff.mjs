@@ -36,6 +36,7 @@ const viewports = [
 ]
 
 const click = (selector, text) => `(() => { const want = ${JSON.stringify(text)}; const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (item.innerText || item.getAttribute('aria-label') || '').trim() === want && item.getClientRects().length) || [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (item.innerText || '').trim() === want); el?.click(); return Boolean(el) })()`
+const clickIfPresent = (selector, text) => `(() => { [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (item.innerText || '').trim() === ${JSON.stringify(text)} && item.getClientRects().length)?.click(); return true })()`
 const clickFirst = (selector) => `(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => item.getClientRects().length) || document.querySelector(${JSON.stringify(selector)}); el?.click(); return Boolean(el) })()`
 const staffNav = (label) => click('.sidebar-nav button', label)
 const driverNav = (label) => `(() => { const el = [...document.querySelectorAll('.driver-bottom-nav button')].find((item) => item.querySelector('b')?.textContent.trim() === ${JSON.stringify(label)}); el?.click(); return Boolean(el) })()`
@@ -50,7 +51,8 @@ const states = [
   ['staff', 'planner-table', [staffNav('Plán směn'), clickFirst('.planner-kpi-item')]],
   ['staff', 'planner-week-plan', [staffNav('Plán směn'), click('button', 'Naplánovat týden')]],
   ['staff', 'planner-dirty-close', [staffNav('Plán směn'), click('button', '+ Nová směna'), typeInto('.shift-drawer textarea', 'rozepsáno'), click('.shift-drawer-head button', 'Zavřít')]],
-  ['staff', 'planner-settlement', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), click('.main button', 'Dokončeno'), `(() => { [...document.querySelectorAll('.modal-backdrop button')].find((item) => item.innerText.trim() === 'Změnit stav')?.click(); return true })()`, `(() => { const b = [...document.querySelectorAll('.main button')].find((x) => ['Výčetka', 'Otevřít výčetku', 'Založit výčetku'].includes(x.innerText.trim()) && !x.disabled); b?.click(); return Boolean(b) })()`]],
+  // the detail offers only the steps that fit the time of day: check in and out today, or mark an older shift done
+  ['staff', 'planner-settlement', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), clickIfPresent('.main button', 'Nástup'), clickIfPresent('.main button', 'Ukončit'), clickIfPresent('.main button', 'Dokončeno'), clickIfPresent('.modal-backdrop button', 'Změnit stav'), `(() => { const b = [...document.querySelectorAll('.main button')].find((x) => ['Výčetka', 'Otevřít výčetku', 'Založit výčetku'].includes(x.innerText.trim()) && !x.disabled); b?.click(); return Boolean(b) })()`]],
   ['staff', 'planner-decline', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), click('.main button', 'Odmítnout')]],
   ['staff', 'dashboard', [staffNav('Dashboard')]],
   ['staff', 'audit', [staffNav('Dashboard'), click('.page-tabs button', 'Audit týdne')]],
@@ -198,6 +200,8 @@ try {
 
     for (const [role, name, steps] of states) {
       const port = role === 'auth' ? authPort : demoPort
+      // every state starts from fresh demo data; earlier scenarios check in, finish or decline shifts
+      await page('Storage.clearDataForOrigin', { origin: `http://127.0.0.1:${port}`, storageTypes: 'local_storage,session_storage,indexeddb' }).catch(() => {})
       await page('Page.navigate', { url: `http://127.0.0.1:${port}/${role === 'auth' ? '' : `?demoRole=${role === 'staff' ? 'admin' : 'driver'}`}` })
       const ready = role === 'auth' ? '.auth-card' : role === 'staff' ? '.sidebar-nav button' : '.driver-bottom-nav button'
       for (let attempt = 0; attempt < 120 && !(await evaluate(`Boolean(document.querySelector(${JSON.stringify(ready)}))`)); attempt++) await delay(100)

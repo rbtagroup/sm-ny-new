@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   actualDurationMinutes,
   addDays,
@@ -12,7 +12,7 @@ import {
   todayISO,
 } from './lib/dateTime.js'
 import { addNotificationsToData } from './lib/notifications.js'
-import { canonicalDriverId, czechCount } from './lib/drivers.js'
+import { canonicalDriverId, czechCount, czechWord } from './lib/drivers.js'
 import { canOpenSettlement, settlementForShift } from './lib/settlements.js'
 import { repeatMap, shiftTypeMap, statusMap } from './lib/appConfig.js'
 import {
@@ -29,6 +29,8 @@ import {
   shiftTemplateValue,
 } from './lib/shiftTemplates.js'
 import { coverageGaps } from './lib/opsMetrics.js'
+import { gapShiftPreset, repeatPreviewText, repeatShiftDates, selectableRecords, shiftStatusOptions } from './lib/shiftForm.js'
+import { staffShiftActions, statusAfterCheckIn } from './lib/shiftActions.js'
 import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
 import { WeekPlanDialog } from './WeekPlanDialog.jsx'
@@ -60,24 +62,32 @@ const blankShift = (date = todayISO(), settings = {}) => {
 function PlannerKpiBar({ periodLabel, totalShifts, confirmedCount, conflictsCount, gapsCount, gapsOpen, conflictsOnly, onShowTable, onToggleConflicts, onToggleGaps }) {
   return <div className="planner-kpi-bar" aria-label="Souhrn plánu směn">
     <div className="planner-kpi-context"><span>📅</span><b>{periodLabel}</b></div>
-    {totalShifts > 0 && <button type="button" className="planner-kpi-item" onClick={onShowTable}><b>{totalShifts}</b><span>směn</span></button>}
+    {totalShifts > 0 && <button type="button" className="planner-kpi-item" onClick={onShowTable}><b>{totalShifts}</b><span>{czechWord(totalShifts, 'směna', 'směny', 'směn')}</span></button>}
     {confirmedCount > 0 && <div className="planner-kpi-item passive"><b>{confirmedCount}</b><span>potvrzeno</span></div>}
-    {conflictsCount > 0 && <button type="button" className={`planner-kpi-item danger ${conflictsOnly ? 'active' : ''}`} onClick={onToggleConflicts}><b>⚠ {conflictsCount}</b><span>kolize</span></button>}
+    {conflictsCount > 0 && <button type="button" className={`planner-kpi-item danger ${conflictsOnly ? 'active' : ''}`} onClick={onToggleConflicts}><b>⚠ {conflictsCount}</b><span>{czechWord(conflictsCount, 'kolize', 'kolize', 'kolizí')}</span></button>}
     {gapsCount > 0 && <div className="planner-kpi-item missing"><b>{gapsCount}</b><span>chybí</span><button type="button" onClick={onToggleGaps}>{gapsOpen ? 'Sbalit ▴' : 'Rozbalit ▾'}</button></div>}
     {conflictsOnly && <button type="button" className="planner-kpi-reset" onClick={onToggleConflicts}>Zrušit filtr kolizí</button>}
   </div>
 }
 
-function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, onSaved, onCancel, onDirtyChange, variant = 'card', ui, services }) {
+// A preset (e.g. from missing coverage) fills the day, time and template of a new shift.
+const presetShift = (preset, initialDate, settings) => {
+  if (!preset) return blankShift(initialDate, settings)
+  const { template, ...fields } = preset
+  return { ...blankShift(preset.date || initialDate, settings), ...fields }
+}
+
+function ShiftForm({ data, helpers, commit, initialDate, preset = null, editing, setEditing, onSaved, onCancel, onDirtyChange, variant = 'card', ui, services }) {
   const { Field, Select, ConflictBox, ConfirmActionModal, ShiftActionSummary } = ui
   const { uid, makeNotice, isPastLocked } = services
-  const [form, setForm] = useState(blankShift(initialDate, data.settings))
+  const [form, setForm] = useState(() => presetShift(preset, initialDate, data.settings))
   const [repeat, setRepeat] = useState('none')
-  const [template, setTemplate] = useState('custom')
+  const [template, setTemplate] = useState(preset?.template || 'custom')
   const [override, setOverride] = useState(false)
   const [pastSaveDialogOpen, setPastSaveDialogOpen] = useState(false)
+  const conflictRef = useRef(null)
 
-  useEffect(() => { if (!editing) setForm((current) => ({ ...current, date: initialDate })) }, [initialDate, editing])
+  useEffect(() => { if (!editing && !preset) setForm((current) => ({ ...current, date: initialDate })) }, [initialDate, editing, preset])
   useEffect(() => {
     if (editing) {
       setForm({ ...blankShift(undefined, data.settings), ...editing })
@@ -88,10 +98,10 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
   }, [editing, data.settings])
   useEffect(() => {
     if (!onDirtyChange) return
-    const baseline = editing ? { ...blankShift(undefined, data.settings), ...editing } : blankShift(initialDate, data.settings)
-    const isDirty = JSON.stringify(form) !== JSON.stringify(baseline) || repeat !== 'none' || template !== 'custom' || override
+    const baseline = editing ? { ...blankShift(undefined, data.settings), ...editing } : presetShift(preset, initialDate, data.settings)
+    const isDirty = JSON.stringify(form) !== JSON.stringify(baseline) || repeat !== 'none' || template !== (preset?.template || 'custom') || override
     onDirtyChange(isDirty)
-  }, [form, repeat, template, override, editing, initialDate, data.settings, onDirtyChange])
+  }, [form, repeat, template, override, editing, initialDate, preset, data.settings, onDirtyChange])
 
   const applyTemplate = (key) => {
     setTemplate(key)
@@ -103,16 +113,15 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     const driverId = canonicalDriverId(data.drivers, item.driverId)
     return { ...item, driverId, status: !driverId ? 'open' : (item.status === 'open' ? 'assigned' : item.status) }
   }
-  const conflictMessages = helpers.conflictMessages({ id: editing?.id || 'new', ...normalizeShiftForm(form) })
-  const buildRepeats = () => {
-    if (editing || repeat === 'none') return [form]
-    if (repeat === 'daily7') return Array.from({ length: 7 }, (_, index) => ({ ...form, date: addDays(form.date, index) }))
-    if (repeat === 'workweek') return Array.from({ length: 5 }, (_, index) => ({ ...form, date: addDays(startOfWeek(form.date), index) }))
-    if (repeat === 'weekend') return [5, 6].map((index) => ({ ...form, date: addDays(startOfWeek(form.date), index) }))
-    return [form]
-  }
+  const normalizedForm = normalizeShiftForm(form)
+  const conflictMessages = helpers.conflictMessages({ id: editing?.id || 'new', ...normalizedForm })
+  const repeatDates = editing ? [form.date] : repeatShiftDates(form.date, repeat)
+  const buildRepeats = () => repeatDates.map((date) => ({ ...form, date }))
+  const statusOptions = shiftStatusOptions({ hasDriver: Boolean(normalizedForm.driverId), currentStatus: editing?.status })
+  const driverOptions = selectableRecords(data.drivers, editing?.driverId)
+  const vehicleOptions = selectableRecords(data.vehicles, editing?.vehicleId)
+  const showConflicts = Boolean(form.driverId || form.vehicleId || conflictMessages.length)
   const saveShift = () => {
-    const normalizedForm = normalizeShiftForm(form)
     const wasEditing = Boolean(editing)
     if (editing) {
       const notice = normalizedForm.status === 'open'
@@ -137,7 +146,11 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
     event.preventDefault()
     if (!form.date || !form.start || !form.end) return showNotice('Vyplň datum a čas směny.')
     if (!isPlausiblePlanDate(form.date)) return showNotice('Zkontroluj datum směny, rok musí být mezi 2020 a 2100.')
-    if (conflictMessages.length && !override) return showNotice('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
+    if (!repeatDates.length) return showNotice(repeatPreviewText([]))
+    if (conflictMessages.length && !override) {
+      conflictRef.current?.scrollIntoView({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+      return showNotice('Směna má kolizi. Buď ji oprav, nebo zaškrtni uložení i s kolizí.')
+    }
     if (editing && isPastLocked(editing)) {
       setPastSaveDialogOpen(true)
       return
@@ -154,16 +167,19 @@ function ShiftForm({ data, helpers, commit, initialDate, editing, setEditing, on
       <Field label="Typ"><Select value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={shiftTypeMap} /></Field>
       <Field label="Začátek"><input type="time" value={form.start} onChange={(event) => setForm({ ...form, start: event.target.value })} /></Field>
       <Field label="Konec"><input type="time" value={form.end} onChange={(event) => setForm({ ...form, end: event.target.value })} /></Field>
-      <Field label="Řidič" className="span2"><select value={form.driverId} onChange={(event) => setForm({ ...form, driverId: event.target.value })}><option value="">Volná směna bez řidiče</option>{data.drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}{!driver.active ? ' · neaktivní' : ''}</option>)}</select></Field>
-      <Field label="Vozidlo" className="span2"><select value={form.vehicleId} onChange={(event) => setForm({ ...form, vehicleId: event.target.value })}><option value="">Bez vozu / doplnit později</option>{data.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}{!vehicle.active ? ' · neaktivní' : ''}</option>)}</select></Field>
-      <Field label="Stav" className="span2"><Select value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={statusMap} /></Field>
+      <Field label="Řidič" className="span2"><select value={form.driverId} onChange={(event) => setForm({ ...form, driverId: event.target.value })}><option value="">Volná směna bez řidiče</option>{driverOptions.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}{driver.active === false ? ' · neaktivní' : ''}</option>)}</select></Field>
+      <Field label="Vozidlo" className="span2"><select value={form.vehicleId} onChange={(event) => setForm({ ...form, vehicleId: event.target.value })}><option value="">Bez vozu / doplnit později</option>{vehicleOptions.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}{vehicle.active === false ? ' · neaktivní' : ''}</option>)}</select></Field>
+      {showConflicts && <div className="field span2" ref={conflictRef}><ConflictBox messages={conflictMessages} /></div>}
+      {conflictMessages.length > 0 && <label className="field span2" style={{ display: 'flex', gap: 10, alignItems: 'center' }}><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} style={{ width: 18 }} />Uložit i s kolizí / mimo dostupnost</label>}
+      {statusOptions
+        ? <Field label="Stav" className="span2"><Select value={normalizedForm.status} onChange={(value) => setForm({ ...form, status: value })} options={statusOptions} /></Field>
+        : <p className="hintline span2 shift-form-hint">Bez řidiče se směna uloží jako volná a řidiči se na ni můžou přihlásit.</p>}
       {!editing && <Field label="Opakování" className="span2"><Select value={repeat} onChange={setRepeat} options={repeatMap} /></Field>}
+      {!editing && repeat !== 'none' && <p className={`hintline span2 shift-form-hint ${repeatDates.length ? '' : 'is-warning'}`} role="status">{repeatPreviewText(repeatDates)}</p>}
       <Field label="Poznámka pro plánovač" className="span2"><textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder="Např. letiště, záloha, firemní akce…" /></Field>
       <Field label="Instrukce pro řidiče" className="span2"><textarea value={form.instruction || ''} onChange={(event) => setForm({ ...form, instruction: event.target.value })} placeholder="Např. auto musí být čisté, bere terminál, SHKM, přesný čas odjezdu…" /></Field>
-      {conflictMessages.length > 0 && <label className="field span2" style={{ display: 'flex', gap: 10, alignItems: 'center' }}><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} style={{ width: 18 }} />Uložit i s kolizí / mimo dostupnost</label>}
       <div className="field span2 drawer-form-actions"><button className="primary" type="submit">Uložit</button><button className="ghost" type="button" onClick={onCancel}>Zrušit</button></div>
     </form>
-    <div style={{ marginTop: 14 }}><ConflictBox messages={conflictMessages} /></div>
     {pastSaveDialogOpen && <ConfirmActionModal
       title="Upravit minulou směnu?"
       message="Tahle směna je v minulosti. Změna se uloží do historie a může ovlivnit docházku nebo výčetku."
@@ -196,6 +212,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
   const [plannerView, setPlannerView] = useState('calendar')
   const [conflictsOnly, setConflictsOnly] = useState(false)
   const [shiftDrawerOpen, setShiftDrawerOpen] = useState(false)
+  const [shiftPreset, setShiftPreset] = useState(null)
   const [shiftFormDirty, setShiftFormDirty] = useState(false)
   const [closeDirtyDialogOpen, setCloseDirtyDialogOpen] = useState(false)
   const [plannerToast, setPlannerToast] = useState('')
@@ -229,19 +246,26 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     const timer = setTimeout(() => setPlannerToast(''), 2800)
     return () => clearTimeout(timer)
   }, [plannerToast])
-  const openNewShiftDrawer = () => {
+  const openNewShiftDrawer = (preset = null) => {
     setEditing(null)
+    setShiftPreset(preset)
     setShiftFormDirty(false)
     setShiftDrawerOpen(true)
   }
+  const createShiftForGap = (gap) => {
+    setPlannerView('calendar')
+    openNewShiftDrawer(gapShiftPreset(gap, data.settings))
+  }
   const openEditShiftDrawer = (shift) => {
     setEditing(shift)
+    setShiftPreset(null)
     setShiftFormDirty(false)
     setShiftDrawerOpen(true)
   }
   const closeShiftDrawer = () => {
     setShiftDrawerOpen(false)
     setEditing(null)
+    setShiftPreset(null)
     setShiftFormDirty(false)
   }
   const requestCloseShiftDrawer = () => {
@@ -280,7 +304,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
         <button className="ghost" onClick={jumpToToday}>Dnes</button>
         <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
       </div>
-      <button className="primary planner-new-inline" onClick={openNewShiftDrawer}>+ Nová směna</button>
+      <button className="primary planner-new-inline" onClick={() => openNewShiftDrawer()}>+ Nová směna</button>
       <button className="ghost planner-secondary-inline" onClick={() => setWeekPlanOpen(true)}>Naplánovat týden</button>
       <button className="ghost planner-secondary-inline" onClick={shareWeek}>WhatsApp</button>
       {onOpenTemplates && <button className="ghost planner-secondary-inline" onClick={onOpenTemplates}>Šablony</button>}
@@ -307,7 +331,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     />
     {gaps.length > 0 && gapsOpen && <div className="card planner-kpi-detail">
       <div className="section-title"><h3>Chybí obsazení</h3><span className="pill bad">{gaps.length}</span></div>
-      <div className="table-wrap missing-coverage-table"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Typ směny</th><th>Stav</th><th>Akce</th></tr></thead><tbody>{gaps.map((gap) => <tr key={gap.day + gap.id}><td><b>{formatDate(gap.day)}</b><br /><small>{gap.day}</small></td><td>{gap.start}–{gap.end}</td><td>{gap.name}</td><td><span className="pill bad">chybí {gap.missing}</span><br /><small>plánováno {gap.planned} z {gap.minDrivers}</small></td><td><button className="ghost" type="button" onClick={() => { setPlannerView('calendar'); setShiftDrawerOpen(true); setShiftFormDirty(false); setEditing(null) }}>Vytvořit směnu</button></td></tr>)}</tbody></table></div>
+      <div className="table-wrap missing-coverage-table"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Typ směny</th><th>Stav</th><th>Akce</th></tr></thead><tbody>{gaps.map((gap) => <tr key={gap.day + gap.id}><td><b>{formatDate(gap.day)}</b></td><td>{gap.start}–{gap.end}</td><td>{gap.name}</td><td><span className="pill bad">chybí {gap.missing}</span><br /><small>plánováno {gap.planned} z {gap.minDrivers}</small></td><td><button className="ghost" type="button" onClick={() => createShiftForGap(gap)}>Vytvořit směnu</button></td></tr>)}</tbody></table></div>
       <div className="missing-coverage-mobile-list">
         {gaps.map((gap) => <div className="missing-coverage-card" key={gap.day + gap.id}>
           <div>
@@ -316,7 +340,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
           </div>
           <span className="pill bad">chybí {gap.missing}</span>
           <small>Plánováno {gap.planned} z {gap.minDrivers}</small>
-          <button className="ghost" type="button" onClick={() => { setPlannerView('calendar'); setShiftDrawerOpen(true); setShiftFormDirty(false); setEditing(null) }}>Vytvořit směnu</button>
+          <button className="ghost" type="button" onClick={() => createShiftForGap(gap)}>Vytvořit směnu</button>
         </div>)}
       </div>
     </div>}
@@ -356,6 +380,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
         helpers={helpers}
         commit={commit}
         initialDate={initialShiftDate}
+        preset={shiftPreset}
         editing={editing}
         setEditing={setEditing}
         onSaved={handleShiftSaved}
@@ -388,7 +413,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
       }}
     />}
     {plannerToast && <div className="planner-toast" role="status">{plannerToast}</div>}
-    {!shiftDrawerOpen && <button type="button" className="primary planner-fab" onClick={openNewShiftDrawer}>+ Nová směna</button>}
+    {!shiftDrawerOpen && <button type="button" className="primary planner-fab" onClick={() => openNewShiftDrawer()}>+ Nová směna</button>}
     <div className="planner-fab-spacer" aria-hidden="true" />
   </>
 }
@@ -411,7 +436,7 @@ function DayColumn({ day, today, shifts, data, helpers, setSelected, copyDay }) 
         </div>
       </details>
     </h4>
-    <span className="mobile-day-head">{items.length ? `${items.length} směn` : 'volno'}</span>
+    <span className="mobile-day-head">{items.length ? czechCount(items.length, 'směna', 'směny', 'směn') : 'volno'}</span>
     {items.map((shift) => <ShiftMini key={shift.id} shift={shift} data={data} helpers={helpers} setSelected={setSelected} />)}
     {!items.length && <div className="empty calendar-empty">Bez směn</div>}
   </div>
@@ -422,7 +447,7 @@ function ShiftMini({ shift, data, helpers, setSelected }) {
   const activeSwap = activeSwapForShift(shift, data)
   const driverLabel = calendarDriverLabel(shift.driverId, data, helpers)
   const lineClass = calendarShiftLineClass(shift, conflicts, activeSwap)
-  const conflictLabel = conflicts.length === 1 ? '⚠ kolize' : `⚠ ${conflicts.length} kolize`
+  const conflictLabel = conflicts.length === 1 ? '⚠ kolize' : `⚠ ${czechCount(conflicts.length, 'kolize', 'kolize', 'kolizí')}`
   const swapLabel = activeSwap?.targetMode === 'open' ? 'zájemce čeká' : (activeSwap?.status === 'accepted' ? 'výměna přijata' : 'čeká výměna')
   const title = [`${shift.start} – ${shift.end}`, helpers.driverName(shift.driverId), activeSwap ? swapLabel : '', ...conflicts].filter(Boolean).join('\n')
   return <button
@@ -449,6 +474,7 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
     ReasonActionModal,
     ShiftActionSummary,
     ConfirmActionModal,
+    StatusPill,
   } = ui
   const {
     makeNotice,
@@ -468,6 +494,12 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
   const swaps = (data.swapRequests || []).filter((request) => request.shiftId === fresh.id)
   const settlement = settlementForShift(data, fresh.id)
   const duration = actualDurationMinutes(fresh)
+  const can = staffShiftActions(fresh, { hasSettlement: Boolean(settlement) })
+  // One highlighted next step; the remaining actions stay available but quieter.
+  // After the planned end an unstarted shift is usually just marked done rather than checked in late.
+  const nextStep = can.checkOut ? 'checkOut' : can.checkIn && !can.ended ? 'checkIn' : can.confirm ? 'confirm' : can.settlement && (!settlement || settlement.status === 'submitted') ? 'settlement' : can.complete ? 'complete' : can.checkIn ? 'checkIn' : ''
+  const stepClass = (step) => (nextStep === step ? 'primary' : 'ghost')
+  const activeSwap = swaps.find((request) => ['pending', 'accepted'].includes(request.status))
   const closeActionDialog = () => setActionDialog(null)
   const commitStatus = (status, reason = fresh.declineReason || '') => {
     commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, status, declineReason: reason } : item) }, statusNoticeForShift({ ...fresh, status, declineReason: reason }, status, helpers, reason)), `Detail směny: stav změněn na ${statusMap[status]}.`)
@@ -500,8 +532,14 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
     setEditing(fresh)
   }
   // Dispatch records attendance itself here, so there is nobody to notify.
-  const checkIn = () => commit((prev) => ({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualStartAt: item.actualStartAt || localStamp(), status: item.status === 'assigned' ? 'confirmed' : item.status } : item) }), 'V detailu směny zaznamenán nástup.')
-  const checkOut = () => commit((prev) => ({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualEndAt: item.actualEndAt || localStamp(), status: 'completed' } : item) }), 'V detailu směny zaznamenáno ukončení.')
+  const checkIn = () => {
+    if (!can.checkIn) return
+    commit((prev) => ({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualStartAt: item.actualStartAt || localStamp(), status: statusAfterCheckIn(item.status) } : item) }), 'V detailu směny zaznamenán nástup.')
+  }
+  const checkOut = () => {
+    if (!can.checkOut) return
+    commit((prev) => ({ ...prev, shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, actualEndAt: item.actualEndAt || localStamp(), status: 'completed' } : item) }), 'V detailu směny zaznamenáno ukončení.')
+  }
   const requestHardDelete = () => setActionDialog({ type: 'hardDelete' })
   const confirmHardDelete = () => {
     commit((prev) => hardDeleteShiftData(prev, fresh), '')
@@ -529,13 +567,13 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
 
   return <>
     <div className="card detail-panel">
-      <div className="section-title"><h3>Detail směny</h3><button className="ghost" onClick={() => setSelected(null)}>Zavřít</button></div>
+      <div className="section-title"><div className="detail-title"><h3>Detail směny</h3><StatusPill status={fresh.status} helpers={helpers} />{activeSwap && <span className="pill warn">{activeSwap.targetMode === 'open' ? 'zájemce čeká' : 'výměna čeká'}</span>}</div><button className="ghost" onClick={() => setSelected(null)}>Zavřít</button></div>
       <div className="grid three">
         <Kpi label="Datum" value={formatDate(fresh.date)} hint={`${fresh.start}–${fresh.end}`} />
         <Kpi label="Řidič" value={helpers.driverName(fresh.driverId)} hint="Přiřazená osoba" />
         <Kpi label="Auto" value={helpers.vehicle(fresh.vehicleId)?.plate || '—'} hint={helpers.vehicle(fresh.vehicleId)?.name || 'Bez vozu'} />
       </div>
-      <p className="muted">Typ: {shiftTypeMap[fresh.type]} · Poznámka: {fresh.note || 'bez poznámky'}</p>
+      <p className="muted">Typ: {shiftTypeMap[fresh.type]}{fresh.note ? ` · Poznámka: ${fresh.note}` : ''}</p>
       {fresh.instruction && <div className="alert good"><b>Instrukce pro řidiče:</b><br />{fresh.instruction}</div>}
       <div className="grid three" style={{ marginTop: 12 }}>
         <Kpi label="Nástup" value={fresh.actualStartAt ? new Date(fresh.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—'} hint={fresh.actualStartAt ? new Date(fresh.actualStartAt).toLocaleDateString('cs-CZ') : 'nezadáno'} />
@@ -545,20 +583,19 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, ui
       {(canOpenSettlement(fresh) || settlement) && <div className="card-soft settlement-inline-card">
         <div className="split"><div><b>Výčetka</b><br /><small className="muted">Navázaná na ukončenou směnu</small></div><SettlementStatusPill settlement={settlement} /></div>
         <SettlementSummary settlement={settlement} />
-        <div className="row-actions" style={{ marginTop: 10 }}><button onClick={() => setSettlementOpen(true)}>{settlement ? 'Otevřít výčetku' : 'Založit výčetku'}</button></div>
+        <div className="row-actions" style={{ marginTop: 10 }}><button className={nextStep === 'settlement' ? 'primary' : undefined} onClick={() => setSettlementOpen(true)}>{settlement ? 'Otevřít výčetku' : 'Založit výčetku'}</button></div>
       </div>}
       {fresh.declineReason && <div className="alert bad"><b>Důvod odmítnutí:</b><br />{fresh.declineReason}</div>}
       {swaps.length > 0 && <div className="card-soft"><h4>Žádosti / zájemci</h4><div className="stack">{swaps.map((request) => <div className="alert warn" key={request.id}><b>{request.targetMode === 'open' ? 'Zájem o volnou směnu' : swapStatusMap[request.status]}</b> · {new Date(request.createdAt).toLocaleString('cs-CZ')}<br />Od: {helpers.driverName(request.driverId)} · Komu: {request.targetMode === 'open' ? 'volná směna' : (request.targetMode === 'driver' ? helpers.driverName(request.targetDriverId) : 'všem kolegům')}{request.acceptedByDriverId && <><br />Přijal: <b>{helpers.driverName(request.acceptedByDriverId)}</b></>}{request.approvedDriverId && <><br />Schválený řidič: <b>{helpers.driverName(request.approvedDriverId)}</b></>}{request.rejectedReason && <><br />Důvod zamítnutí: {request.rejectedReason}</>}<br />{request.reason || 'Bez důvodu'}{request.history?.length ? <div className="swap-history">{request.history.map((historyItem, index) => <small key={index}>{new Date(historyItem.at).toLocaleString('cs-CZ')} · {historyItem.text}</small>)}</div> : null}{['pending','accepted'].includes(request.status) && <div className="row-actions" style={{ marginTop: 8 }}><button onClick={() => resolveSwap(request.id, 'approved')}>Schválit a potvrdit</button><button onClick={() => resolveSwap(request.id, 'rejected')}>Zamítnout</button></div>}</div>)}</div></div>}
       <div style={{ marginTop: 12 }}><ConflictBox messages={conflicts} /></div>
       <div className="actions" style={{ marginTop: 14, justifyContent: 'flex-start' }}>
-        <button className="primary" onClick={() => requestStatus('confirmed')}>Potvrdit</button>
-        <button className="ghost" onClick={checkIn}>Nástup</button>
-        <button className="ghost" onClick={checkOut}>Ukončit</button>
-        <button className="ghost" onClick={() => setSettlementOpen(true)} disabled={!canOpenSettlement(fresh) && !settlement}>Výčetka</button>
-        <button className="ghost" onClick={() => requestStatus('completed')}>Dokončeno</button>
-        <button className="danger" onClick={() => requestStatus('declined')}>Odmítnout</button>
+        {can.confirm && <button className={stepClass('confirm')} onClick={() => requestStatus('confirmed')}>Potvrdit</button>}
+        {can.checkIn && <button className={stepClass('checkIn')} onClick={checkIn}>Nástup</button>}
+        {can.checkOut && <button className={stepClass('checkOut')} onClick={checkOut}>Ukončit</button>}
+        {can.complete && <button className={stepClass('complete')} onClick={() => requestStatus('completed')}>Dokončeno</button>}
+        {can.decline && <button className="danger" onClick={() => requestStatus('declined')}>Odmítnout</button>}
         <button className="ghost" onClick={requestEdit}>Upravit</button>
-        <button className="ghost" onClick={() => copyText(driverText(data, helpers, fresh.driverId))}>WhatsApp řidič</button>
+        {can.messageDriver && <button className="ghost" onClick={() => copyText(driverText(data, helpers, fresh.driverId))}>WhatsApp řidič</button>}
         <DeleteIconButton className="detail-delete-button" label="Trvale odstranit směnu" onClick={requestHardDelete} />
       </div>
     </div>
