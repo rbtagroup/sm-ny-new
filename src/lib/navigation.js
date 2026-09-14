@@ -14,7 +14,7 @@ export const ADMIN_NAV = [
 
 export const ADMIN_PAGE_KEYS = new Set(['drivers', 'vehicles', 'availability', 'shiftTemplates', 'history', 'settings'])
 
-const NAV_PARENT = { audit: 'dashboard', history: 'dashboard', shifts: 'planner', shiftTemplates: 'planner', availability: 'drivers' }
+const NAV_PARENT = { audit: 'dashboard', history: 'dashboard', shifts: 'planner', shiftTemplates: 'planner', coverageNorms: 'planner', availability: 'drivers' }
 
 export function staffNavSections(role = '') {
   return [['DISPEČINK', DISPATCH_NAV], ...(role === 'admin' ? [['ADMIN', ADMIN_NAV]] : [])]

@@ -15,6 +15,7 @@ test('pages moved out of the menu stay admin-only and highlight where they open 
   assert.equal(navPageFor('audit'), 'dashboard')
   assert.equal(navPageFor('history'), 'dashboard')
   assert.equal(navPageFor('shiftTemplates'), 'planner')
+  assert.equal(navPageFor('coverageNorms'), 'planner')
   assert.equal(navPageFor('availability'), 'drivers')
   assert.equal(navPageFor('settlements'), 'settlements')
 })

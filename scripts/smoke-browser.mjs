@@ -216,6 +216,12 @@ async function clickByText(page, selector, text) {
   if (!clicked) throw new Error(`Could not click ${selector} with text "${text}"`)
 }
 
+// secondary planner actions live in the 'Další akce' menu on every screen size
+async function clickPlannerMenu(page, text) {
+  await evaluate(page, 'document.querySelector(".planner-more-actions")?.setAttribute("open", "")')
+  await clickByText(page, '.planner-more-panel button', text)
+}
+
 async function fillByPlaceholder(page, placeholder, value) {
   const filled = await evaluate(page, `
     (() => {
@@ -269,7 +275,7 @@ async function runStaffChecks(page) {
   await waitForEval(page, 'document.body.innerText.includes("Směna vytvořena.")', 'New shift was not saved')
 
   await waitForEval(page, '!document.querySelector(".planner-toast")', 'Shift saved toast did not disappear', 6000)
-  await clickByText(page, 'button', 'Naplánovat týden')
+  await clickPlannerMenu(page, 'Naplánovat týden')
   await waitForEval(page, 'document.querySelector(".action-modal")?.innerText.includes("Zkopírovat předchozí týden")', 'Week plan dialog did not open')
   await evaluate(page, '[...document.querySelectorAll(".week-plan-weeks button")].at(-1)?.click()')
   await evaluate(page, `(() => {
@@ -358,9 +364,37 @@ async function runStaffChecks(page) {
 
   await clickByText(page, '.sidebar-nav button', 'Plán směn')
   await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Plán směn")', 'Planner did not reopen')
-  await clickByText(page, 'button', 'Šablony')
+  await clickPlannerMenu(page, 'Šablony směn')
   await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Šablony směn")', 'Shift templates should open from the planner')
   await assertEval(page, 'document.querySelector(".sidebar-nav button.active")?.innerText.trim() === "Plán směn"', 'Templates should keep the planner menu item highlighted')
+
+  // a need set for one day shows in the calendar and is filled with a driver and open shifts at once
+  await clickByText(page, '.sidebar-nav button', 'Plán směn')
+  await waitForEval(page, '[...document.querySelectorAll(".calendar-gap")].some((card) => card.innerText.includes("z 3"))', 'The demo need of three drivers should show in the calendar')
+  await evaluate(page, '[...document.querySelectorAll(".calendar-gap")].find((card) => card.innerText.includes("z 3"))?.click()')
+  await waitForEval(page, 'document.querySelector(".cover-fill-status")?.innerText.includes("0 z 3")', 'Cover panel should show the need of the day')
+  await evaluate(page, 'document.querySelector(".cover-driver-list input")?.click()')
+  await clickByText(page, '.cover-fill button', 'Vypsat zbývající jako volné (2)')
+  await evaluate(page, '[...document.querySelectorAll(".cover-fill label")].find((label) => label.innerText.includes("Uložit i s kolizí"))?.querySelector("input")?.click()')
+  await clickByText(page, '.cover-fill button', 'Vytvořit 1 směnu a 2 volné')
+  await waitForEval(page, 'document.body.innerText.includes("Vytvořeno: 1 směna pro řidiče a 2 volné směny.")', 'Filling the slot did not create the shifts')
+  await waitForEval(page, '[...document.querySelectorAll(".calendar-gap.is-met")].some((card) => card.innerText.includes("3 z 3"))', 'A met need of the day should stay visible')
+
+  await evaluate(page, 'document.querySelector(".day.today .day-menu")?.setAttribute("open", "")')
+  await clickByText(page, '.day.today .day-menu-panel button', 'Potřeba řidičů')
+  await waitForEval(page, 'document.querySelector(".coverage-need-form")', 'Day need panel did not open')
+  await evaluate(page, `document.querySelector('.coverage-need-list button[aria-label^="Více"]')?.click()`)
+  await clickByText(page, '.coverage-need-form button', 'Uložit potřebu')
+  await waitForEval(page, '!document.querySelector(".coverage-need-form") && document.body.innerText.includes("uložena.")', 'Day need was not saved')
+
+  await clickPlannerMenu(page, 'Normy pokrytí')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Normy pokrytí")', 'Coverage norms should open from the planner')
+  await assertEval(page, 'document.querySelector(".sidebar-nav button.active")?.innerText.trim() === "Plán směn"', 'Coverage norms should keep the planner menu item highlighted')
+  await assertEval(page, 'document.querySelector(".coverage-needs-card")?.innerText.includes("3 řidiči")', 'Needs of particular days should be listed on the norms page')
+  await clickByText(page, 'button', '+ Přidat pásmo')
+  await fillByPlaceholder(page, 'Např. Noc, Páteční špička, Ples', 'Ples')
+  await clickByText(page, '.shift-drawer button', 'Přidat pásmo')
+  await waitForEval(page, '!document.querySelector(".shift-drawer") && [...document.querySelectorAll(".list-row-main")].some((row) => row.innerText.includes("Ples"))', 'A new coverage slot should be listed')
 
   await clickByText(page, '.sidebar-nav button', 'Dashboard')
   await waitForEval(page, 'document.querySelector(".page-tabs button.active")?.innerText.trim() === "Dnes"', 'Dashboard should open on the Dnes tab')

@@ -84,3 +84,42 @@ test('templates are recognised from the shift times', async () => {
   assert.equal(matchingTemplateId(settings, '07:00', '19:00'), 'tpl_day')
   assert.equal(matchingTemplateId(settings, '08:00', '19:00'), 'custom')
 })
+
+test('filling a slot creates a shift for each picked driver and open shifts for the rest', async () => {
+  const { coverShifts } = await import('../src/lib/shiftForm.js')
+  let counter = 0
+  const settings = { shiftTemplates: [{ id: 'tpl_night', name: 'Noční', start: '19:00', end: '07:00', type: 'night', active: true }] }
+  const gap = { day: '2026-09-19', id: 'cov_night', name: 'Noc', start: '19:00', end: '07:00' }
+  const shifts = coverShifts({ gap, picks: [{ driverId: 'd1', vehicleId: 'car1' }, { driverId: 'd2', vehicleId: '' }], openCount: 2, confirmed: true, settings, uid: (prefix) => `${prefix}_${++counter}` })
+  assert.deepEqual(shifts.map((shift) => [shift.id, shift.driverId, shift.vehicleId, shift.status]), [
+    ['sh_1', 'd1', 'car1', 'confirmed'],
+    ['sh_2', 'd2', '', 'confirmed'],
+    ['sh_3', '', '', 'open'],
+    ['sh_4', '', '', 'open'],
+  ])
+  assert.ok(shifts.every((shift) => shift.date === '2026-09-19' && shift.start === '19:00' && shift.end === '07:00' && shift.type === 'night' && shift.note === ''))
+  assert.equal(coverShifts({ gap, picks: [{ driverId: 'd1' }], settings: {}, uid: (prefix) => `${prefix}_x` })[0].status, 'assigned')
+})
+
+test('a batch reports cars used twice and lists drivers still without a car together', async () => {
+  const { coverBatchProblems, coverShifts, vehicleChoices } = await import('../src/lib/shiftForm.js')
+  const { buildHelpers } = await import('../src/lib/shiftHelpers.js')
+  const data = {
+    drivers: [{ id: 'd1', name: 'Roman', active: true }, { id: 'd2', name: 'Petra', active: true }, { id: 'd3', name: 'Milan', active: true }],
+    vehicles: [{ id: 'car1', name: 'Tesla', plate: 'RB 001', active: true }, { id: 'car2', name: 'Octavia', plate: 'RB 002', active: true }, { id: 'car3', name: 'VAN', plate: 'RB 007', active: true }, { id: 'car4', name: 'Staré', plate: 'RB 000', active: false }],
+    shifts: [{ id: 'old', date: '2026-09-19', start: '18:00', end: '23:00', driverId: 'd9', vehicleId: 'car2', status: 'confirmed' }],
+    absences: [],
+    serviceBlocks: [{ vehicleId: 'car3', from: '2026-09-18', to: '2026-09-20', reason: 'pneu' }],
+    availability: [],
+  }
+  let counter = 0
+  const gap = { day: '2026-09-19', id: 'cov_night', name: 'Noc', start: '22:00', end: '06:00' }
+  const shifts = coverShifts({ gap, picks: [{ driverId: 'd1', vehicleId: 'car1' }, { driverId: 'd2', vehicleId: 'car1' }, { driverId: 'd3', vehicleId: '' }], uid: (prefix) => `${prefix}_${++counter}` })
+  const problems = coverBatchProblems(data, shifts, buildHelpers)
+  assert.deepEqual(problems, ['Zatím bez vozu: Milan.', 'Vozidlo Tesla · RB 001 je ve stejném čase v jiné směně.'])
+  assert.deepEqual(vehicleChoices(data, { id: 'slot', date: gap.day, start: gap.start, end: gap.end }).map((choice) => [choice.vehicle.id, choice.state, choice.note]), [
+    ['car1', 'free', ''],
+    ['car2', 'busy', 'jede 18:00–23:00'],
+    ['car3', 'blocked', 'servis: pneu'],
+  ])
+})

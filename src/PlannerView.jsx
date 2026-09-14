@@ -28,9 +28,10 @@ import {
   shiftTemplateOptions,
   shiftTemplateValue,
 } from './lib/shiftTemplates.js'
-import { coverageGaps } from './lib/opsMetrics.js'
+import { coverageDayRows } from './lib/coverage.js'
 import { driverChoiceIsClear, driverChoices, gapShiftPreset, matchingTemplateId, repeatPreviewText, repeatShiftDates, selectableRecords } from './lib/shiftForm.js'
 import { shiftProgress, staffActionItems, staffNextStep, staffShiftActions, statusAfterCheckIn } from './lib/shiftActions.js'
+import { CoverFillForm, DayNeedForm } from './CoverageForms.jsx'
 import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
 import { WeekPlanDialog } from './WeekPlanDialog.jsx'
@@ -68,6 +69,32 @@ function PlannerKpiBar({ periodLabel, totalShifts, confirmedCount, conflictsCoun
     {gapsCount > 0 && <div className="planner-kpi-item missing"><b>{gapsCount}</b><span>chybí obsazení</span><button type="button" onClick={onToggleGaps}>{gapsOpen ? 'Sbalit ▴' : 'Rozbalit ▾'}</button></div>}
     {conflictsOnly && <button type="button" className="planner-kpi-reset" onClick={onToggleConflicts}>Zrušit filtr kolizí</button>}
   </div>
+}
+
+// Menu items close their <details> menu before acting, so it is not left open behind a side panel.
+const fromMenu = (action) => (event) => {
+  event.currentTarget.closest('details')?.removeAttribute('open')
+  action()
+}
+
+// A <details> menu also closes on a click outside it or on Escape, like any dropdown.
+function useDismissableMenu() {
+  const ref = useRef(null)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return undefined
+    const dismiss = (event) => {
+      if (event.type === 'keydown' ? event.key !== 'Escape' : ref.current?.contains(event.target)) return
+      ref.current?.removeAttribute('open')
+    }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', dismiss)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      document.removeEventListener('keydown', dismiss)
+    }
+  }, [open])
+  return { ref, onToggle: (event) => setOpen(event.currentTarget.open) }
 }
 
 // A preset (e.g. from missing coverage) fills the day, time and template of a new shift.
@@ -218,7 +245,7 @@ function ShiftForm({ data, helpers, commit, initialDate, preset = null, editing,
   </div>
 }
 
-export function Planner({ data, helpers, commit, today = todayISO(), ui, services, onOpenTemplates }) {
+export function Planner({ data, helpers, commit, today = todayISO(), ui, services, onOpenTemplates, onOpenNorms }) {
   const { PageTitle, SideDrawer, ConfirmActionModal } = ui
   const { uid, copyText, weekText, shiftTableUi, shiftTableServices } = services
   const [weekStart, setWeekStart] = useState(startOfWeek(today))
@@ -239,6 +266,11 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
   const [closeDirtyDialogOpen, setCloseDirtyDialogOpen] = useState(false)
   const [plannerToast, setPlannerToast] = useState('')
   const [weekPlanOpen, setWeekPlanOpen] = useState(false)
+  // Side panel for coverage: { mode: 'fill', gap } fills a slot, { mode: 'need', date } sets the need of one day.
+  const [coverDrawer, setCoverDrawer] = useState(null)
+  const [coverDirty, setCoverDirty] = useState(false)
+  const [pendingCoverAction, setPendingCoverAction] = useState(null)
+  const moreMenu = useDismissableMenu()
   const [filtersOpen, setFiltersOpen] = useState(() => {
     try { return !window.matchMedia('(max-width: 760px)').matches }
     catch { return true }
@@ -253,10 +285,12 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     return byDriver && byVehicle && byStatus
   })
   const conflicts = rangeAll.flatMap((shift) => helpers.conflictMessages(shift).map((message) => ({ shift, message })))
-  // Past days cannot be covered any more, so only today and later count as missing.
-  const gaps = [...coverageGaps(data, weekStart), ...coverageGaps(data, addDays(weekStart, 7))].filter((gap) => gap.day >= today)
-  const gapsByDay = new Map()
-  for (const gap of gaps) gapsByDay.set(gap.day, [...(gapsByDay.get(gap.day) || []), gap])
+  // Past days cannot be covered any more, so only today and later count as missing. A day shows slots that still
+  // miss drivers and needs set for that day even when they are met.
+  const coverageByDay = new Map(Array.from({ length: 14 }, (_, index) => addDays(weekStart, index))
+    .filter((day) => day >= today)
+    .map((day) => [day, coverageDayRows(data, day).filter((row) => row.missing > 0 || (row.override && row.need > 0))]))
+  const gaps = [...coverageByDay.values()].flat().filter((row) => row.missing > 0)
   const visibleShifts = conflictsOnly ? rangeShifts.filter((shift) => helpers.conflictMessages(shift).length > 0) : rangeShifts
   const confirmedCount = rangeShifts.filter((shift) => ['confirmed', 'completed'].includes(shift.status)).length
   useEffect(() => {
@@ -277,10 +311,26 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     setShiftFormDirty(false)
     setShiftDrawerOpen(true)
   }
-  const createShiftForGap = (gap) => {
-    setPlannerView('calendar')
-    openNewShiftDrawer(gapShiftPreset(gap, data.settings))
+  const closeCoverDrawer = () => {
+    setCoverDrawer(null)
+    setCoverDirty(false)
   }
+  // Leaving a half-filled panel asks first, like the shift form does.
+  const guardCover = (action) => {
+    if (coverDirty) setPendingCoverAction(() => action)
+    else action()
+  }
+  const openCoverDrawer = (next) => {
+    setSelected(null)
+    setCoverDirty(false)
+    setCoverDrawer(next)
+  }
+  const createShiftForGap = (gap) => openCoverDrawer({ mode: 'fill', gap })
+  const openDayNeed = (date) => openCoverDrawer({ mode: 'need', date })
+  const openDetailedFormForGap = (gap) => guardCover(() => {
+    closeCoverDrawer()
+    openNewShiftDrawer(gapShiftPreset(gap, data.settings))
+  })
   const openEditShiftDrawer = (shift) => {
     setSelected(null)
     setEditing(shift)
@@ -331,15 +381,14 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
         <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
       </div>
       <button className="primary planner-new-inline" onClick={() => openNewShiftDrawer()}>+ Nová směna</button>
-      <button className="ghost planner-secondary-inline" onClick={() => setWeekPlanOpen(true)}>Naplánovat týden</button>
-      <button className="ghost planner-secondary-inline" onClick={shareWeek}>WhatsApp</button>
-      {onOpenTemplates && <button className="ghost planner-secondary-inline" onClick={onOpenTemplates}>Šablony</button>}
-      <details className="planner-more-actions">
+      {/* the same menu on every screen; the header stays one row even on a 13" laptop */}
+      <details className="planner-more-actions" ref={moreMenu.ref} onToggle={moreMenu.onToggle}>
         <summary className="ghost">Další akce</summary>
         <div className="planner-more-panel">
-          <button type="button" className="ghost" onClick={() => setWeekPlanOpen(true)}>Naplánovat týden</button>
-          <button type="button" className="ghost" onClick={shareWeek}>Zkopírovat text pro WhatsApp</button>
-          {onOpenTemplates && <button type="button" className="ghost" onClick={onOpenTemplates}>Šablony směn</button>}
+          <button type="button" className="ghost" onClick={fromMenu(() => setWeekPlanOpen(true))}>Naplánovat týden</button>
+          <button type="button" className="ghost" onClick={fromMenu(shareWeek)}>Zkopírovat text pro WhatsApp</button>
+          {onOpenNorms && <button type="button" className="ghost" onClick={fromMenu(onOpenNorms)}>Normy pokrytí</button>}
+          {onOpenTemplates && <button type="button" className="ghost" onClick={fromMenu(onOpenTemplates)}>Šablony směn</button>}
         </div>
       </details>
     </PageTitle>
@@ -357,7 +406,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     />
     {gaps.length > 0 && gapsOpen && <div className="card planner-kpi-detail">
       <div className="section-title"><h3>Chybí obsazení</h3><span className="pill bad">{gaps.length}</span></div>
-      <div className="table-wrap missing-coverage-table"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Typ směny</th><th>Stav</th><th>Akce</th></tr></thead><tbody>{gaps.map((gap) => <tr key={gap.day + gap.id}><td><b>{formatDate(gap.day)}</b></td><td>{gap.start}–{gap.end}</td><td>{gap.name}</td><td><span className="pill bad">chybí {gap.missing}</span><br /><small>plánováno {gap.planned} z {gap.minDrivers}</small></td><td><button className="ghost" type="button" onClick={() => createShiftForGap(gap)}>Vytvořit směnu</button></td></tr>)}</tbody></table></div>
+      <div className="table-wrap missing-coverage-table"><table className="table"><thead><tr><th>Datum</th><th>Čas</th><th>Typ směny</th><th>Stav</th><th>Akce</th></tr></thead><tbody>{gaps.map((gap) => <tr key={gap.day + gap.id}><td><b>{formatDate(gap.day)}</b></td><td>{gap.start}–{gap.end}</td><td>{gap.name}</td><td><span className="pill bad">chybí {gap.missing}</span><br /><small>plánováno {gap.planned} z {gap.need}</small></td><td><button className="ghost" type="button" onClick={() => createShiftForGap(gap)}>Obsadit</button></td></tr>)}</tbody></table></div>
       <div className="missing-coverage-mobile-list">
         {gaps.map((gap) => <div className="missing-coverage-card" key={gap.day + gap.id}>
           <div>
@@ -365,8 +414,8 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
             <span>{gap.name}</span>
           </div>
           <span className="pill bad">chybí {gap.missing}</span>
-          <small>Plánováno {gap.planned} z {gap.minDrivers}</small>
-          <button className="ghost" type="button" onClick={() => createShiftForGap(gap)}>Vytvořit směnu</button>
+          <small>Plánováno {gap.planned} z {gap.need}</small>
+          <button className="ghost" type="button" onClick={() => createShiftForGap(gap)}>Obsadit</button>
         </div>)}
       </div>
     </div>}
@@ -391,7 +440,7 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
               return <div className="week-block" key={weekStartDate}>
                 <div className="week-block-title"><b>{index + 1}. týden</b><span>{formatDate(weekStartDate)}–{formatDate(addDays(weekStartDate, 6))}</span></div>
                 <div className="week-grid">
-                  {weekDays.map((day) => <DayColumn key={day} day={day} today={today} shifts={visibleShifts} gaps={gapsByDay.get(day) || []} data={data} helpers={helpers} setSelected={setSelected} copyDay={copyToday} onCoverGap={createShiftForGap} />)}
+                  {weekDays.map((day) => <DayColumn key={day} day={day} today={today} shifts={visibleShifts} coverage={coverageByDay.get(day) || []} data={data} helpers={helpers} setSelected={setSelected} copyDay={copyToday} onCoverGap={createShiftForGap} onSetNeed={openDayNeed} />)}
                 </div>
               </div>
             })}
@@ -401,6 +450,39 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     </div>
     <SideDrawer title="Detail směny" open={Boolean(selected)} onClose={() => setSelected(null)}>
       {selected && <ShiftDetail shift={selected} data={data} helpers={helpers} commit={commit} setSelected={setSelected} setEditing={openEditShiftDrawer} onToast={setPlannerToast} ui={ui} services={services} />}
+    </SideDrawer>
+    <SideDrawer title={coverDrawer?.mode === 'need' ? 'Potřeba řidičů' : 'Obsadit'} open={Boolean(coverDrawer)} onClose={() => guardCover(closeCoverDrawer)}>
+      {coverDrawer?.mode === 'fill' && <CoverFillForm
+        key={`${coverDrawer.gap.day}-${coverDrawer.gap.id}`}
+        data={data}
+        commit={commit}
+        gap={coverDrawer.gap}
+        ui={ui}
+        services={services}
+        onDirtyChange={setCoverDirty}
+        onCancel={() => guardCover(closeCoverDrawer)}
+        onSaved={(summary) => {
+          closeCoverDrawer()
+          setPlannerToast(`Vytvořeno: ${summary}.`)
+        }}
+        onChangeNeed={() => guardCover(() => openDayNeed(coverDrawer.gap.day))}
+        onDetailedForm={() => openDetailedFormForGap(coverDrawer.gap)}
+      />}
+      {coverDrawer?.mode === 'need' && <DayNeedForm
+        key={coverDrawer.date}
+        data={data}
+        commit={commit}
+        date={coverDrawer.date}
+        today={today}
+        ui={ui}
+        onDirtyChange={setCoverDirty}
+        onCancel={() => guardCover(closeCoverDrawer)}
+        onSaved={(date) => {
+          closeCoverDrawer()
+          setPlannerToast(`Potřeba na ${formatDate(date)} uložena.`)
+        }}
+        onOpenNorms={onOpenNorms}
+      />}
     </SideDrawer>
     <SideDrawer title={editing ? 'Upravit směnu' : 'Nová směna'} open={shiftDrawerOpen} onClose={requestCloseShiftDrawer}>
       <ShiftForm
@@ -440,37 +522,58 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
         closeShiftDrawer()
       }}
     />}
+    {pendingCoverAction && <ConfirmActionModal
+      title="Zahodit rozepsané?"
+      message="Vybraní řidiči, volné směny nebo upravená potřeba se neuloží."
+      confirmLabel="Zahodit"
+      confirmClass="danger"
+      onClose={() => setPendingCoverAction(null)}
+      onConfirm={() => {
+        const action = pendingCoverAction
+        setPendingCoverAction(null)
+        setCoverDirty(false)
+        action()
+      }}
+    />}
     {plannerToast && <div className="planner-toast" role="status">{plannerToast}</div>}
-    {!shiftDrawerOpen && !selected && <button type="button" className="primary planner-fab" onClick={() => openNewShiftDrawer()}>+ Nová směna</button>}
+    {!shiftDrawerOpen && !selected && !coverDrawer && <button type="button" className="primary planner-fab" onClick={() => openNewShiftDrawer()}>+ Nová směna</button>}
     <div className="planner-fab-spacer" aria-hidden="true" />
   </>
 }
 
-function DayColumn({ day, today, shifts, gaps = [], data, helpers, setSelected, copyDay, onCoverGap }) {
+// What a coverage card says: how many drivers are still missing, or that a need set for the day is met.
+function coverageCardStatus(row) {
+  if (!row.missing) return `${row.planned} z ${row.need} ✓`
+  return row.need > 1 ? `chybí ${row.missing} z ${row.need} · Obsadit` : `chybí ${row.missing} · Obsadit`
+}
+
+function DayColumn({ day, today, shifts, coverage = [], data, helpers, setSelected, copyDay, onCoverGap, onSetNeed }) {
   const items = sortByDateTime(shifts.filter((shift) => shift.date === day))
-  const missing = gaps.reduce((sum, gap) => sum + gap.missing, 0)
-  const empty = !items.length && !gaps.length
+  const missing = coverage.reduce((sum, row) => sum + row.missing, 0)
+  const empty = !items.length && !coverage.length
   const copyThisDay = () => copyDay(day)
   const handleDayContextMenu = (event) => {
     if (event.target.closest?.('.calendar-shift-card')) return
     event.preventDefault()
     copyThisDay()
   }
+  const dayMenu = useDismissableMenu()
   return <div className={['day', day === today ? 'today' : '', empty ? 'day-empty' : ''].filter(Boolean).join(' ')} onContextMenu={handleDayContextMenu}>
     <h4>
       <span>{formatDate(day)}{empty && <small className="day-empty-label"> · bez směn</small>}{missing > 0 && <small className="day-gap-label"><span className="day-label-sep"> · </span>chybí {missing}</small>}</span>
-      <details className="day-menu" onClick={(event) => event.stopPropagation()}>
+      <details className="day-menu" ref={dayMenu.ref} onToggle={dayMenu.onToggle} onClick={(event) => event.stopPropagation()}>
         <summary aria-label="Akce dne">⋯</summary>
         <div className="day-menu-panel">
-          <button type="button" onClick={copyThisDay}>Kopírovat den</button>
+          {onSetNeed && day >= today && <button type="button" onClick={fromMenu(() => onSetNeed(day))}>Potřeba řidičů</button>}
+          <button type="button" onClick={fromMenu(copyThisDay)}>Kopírovat den</button>
         </div>
       </details>
     </h4>
     <span className="mobile-day-head">{items.length ? czechCount(items.length, 'směna', 'směny', 'směn') : 'bez směn'}</span>
     {items.map((shift) => <ShiftMini key={shift.id} shift={shift} data={data} helpers={helpers} setSelected={setSelected} />)}
-    {gaps.map((gap) => <button type="button" key={gap.id} className="calendar-gap" title={`${gap.name} ${gap.start}–${gap.end}: plánováno ${gap.planned} z ${gap.minDrivers}`} onClick={() => onCoverGap(gap)}>
-      <span className="calendar-gap-name">{gap.name} {gap.start}–{gap.end}</span>
-      <span className="calendar-gap-action">chybí {gap.missing} · Obsadit</span>
+    {coverage.map((row) => <button type="button" key={row.id} className={`calendar-gap${row.missing ? '' : ' is-met'}`} title={`${row.name} ${row.start}–${row.end}: naplánováno ${row.planned} z ${row.need}${row.override ? ' (potřeba na tento den)' : ''}`} onClick={() => onCoverGap(row)}>
+      <span className="calendar-gap-name">{row.name} {row.start}–{row.end}</span>
+      <span className="calendar-gap-action">{coverageCardStatus(row)}</span>
     </button>)}
     {empty && <div className="empty calendar-empty">Bez směn</div>}
   </div>

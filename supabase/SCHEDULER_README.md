@@ -10,7 +10,7 @@ Tento balík přidává základní backend scheduler přes Supabase Edge Functio
 
 ## Job S1: daily-coverage
 
-Každé ráno zkontroluje příštích 7 dní podle `app_settings.payload.coverageSlots`.
+Každé ráno zkontroluje příštích 7 dní podle `app_settings.payload.coverageSlots` (pásma s běžným počtem řidičů, volitelně jen v některé dny týdne `days`) a `app_settings.payload.coverageNeeds` (potřeba na konkrétní den, `{ date, slotId, minDrivers }`, má přednost před běžnou normou). Prázdný seznam pásem znamená, že se nic nehlídá.
 
 Kontroluje tabulku:
 

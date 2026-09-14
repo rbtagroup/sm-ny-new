@@ -47,7 +47,10 @@ export function seed() {
       { id: 'cov_night', name: 'Noční', start: '19:00', end: '07:00', minDrivers: 1 },
       { id: 'cov_peak_fri', name: 'Pá/Sobota špička', start: '20:00', end: '03:00', minDrivers: 2, days: [5, 6] },
       { id: 'cov_event', name: 'Akce / plesy', start: '18:00', end: '02:00', minDrivers: 0 },
-    ], deploymentChecklist: [] },
+    ],
+    // example of a need set for one day: next week's Saturday night needs three drivers
+    coverageNeeds: [{ date: addDays(w, 12), slotId: 'cov_night', minDrivers: 3 }],
+    deploymentChecklist: [] },
   }
 }
 

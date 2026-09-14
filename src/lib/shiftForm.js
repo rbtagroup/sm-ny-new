@@ -63,6 +63,44 @@ export function driverChoices(data = {}, shift = {}, selectedId = '') {
 
 export const driverChoiceIsClear = (choice) => ['available', 'free'].includes(choice.state)
 
+// Active cars for a shift, free ones first, with what already holds the busy ones.
+export function vehicleChoices(data = {}, shift = {}) {
+  const choice = (vehicle) => {
+    const block = (data.serviceBlocks || []).find((item) => item.vehicleId === vehicle.id && dateInRange(shift.date, item.from, item.to))
+    if (block) return { state: 'blocked', note: block.reason ? `servis: ${block.reason}` : 'servis' }
+    const busy = (data.shifts || []).find((other) => other.id !== shift.id && other.vehicleId === vehicle.id && !['cancelled', 'declined'].includes(other.status) && other.date && other.start && other.end && overlapsShift(shift, other))
+    return busy ? { state: 'busy', note: `jede ${busy.start}–${busy.end}` } : { state: 'free', note: '' }
+  }
+  return (data.vehicles || [])
+    .filter((vehicle) => vehicle.active !== false)
+    .map((vehicle) => ({ vehicle, ...choice(vehicle) }))
+    .sort((a, b) => (a.state === 'free' ? 0 : 1) - (b.state === 'free' ? 0 : 1) || String(a.vehicle.name).localeCompare(String(b.vehicle.name), 'cs'))
+}
+
+// Shifts that fill a coverage slot at once: one for each picked driver and open shifts drivers can sign up for.
+export function coverShifts({ gap, picks = [], openCount = 0, confirmed = false, settings = {}, uid }) {
+  const preset = gapShiftPreset(gap, settings)
+  const base = { date: preset.date, start: preset.start, end: preset.end, type: preset.type, note: preset.note, instruction: '', declineReason: '', actualStartAt: '', actualEndAt: '', swapRequestStatus: '' }
+  return [
+    ...picks.map((pick) => ({ id: uid('sh'), ...base, driverId: pick.driverId, vehicleId: pick.vehicleId || '', status: confirmed ? 'confirmed' : 'assigned' })),
+    ...Array.from({ length: Math.max(0, Math.floor(Number(openCount) || 0)) }, () => ({ id: uid('sh'), ...base, driverId: '', vehicleId: '', status: 'open' })),
+  ]
+}
+
+// Problems of a batch of new shifts, checked against the plan and each other. Cars still missing are listed together.
+export function coverBatchProblems(data = {}, shifts = [], buildHelpers) {
+  const helpers = buildHelpers({ ...data, shifts: [...(data.shifts || []), ...shifts] })
+  const withoutCar = []
+  const other = new Set()
+  for (const shift of shifts) {
+    for (const message of helpers.conflictMessages(shift)) {
+      if (message === 'Není vybrané vozidlo.') withoutCar.push(helpers.driverName(shift.driverId))
+      else other.add(message)
+    }
+  }
+  return [...(withoutCar.length ? [`Zatím bez vozu: ${withoutCar.join(', ')}.`] : []), ...other]
+}
+
 // The template whose times match the shift, so the picker shows it instead of "Vlastní čas".
 export function matchingTemplateId(settings = {}, start = '', end = '') {
   return normalizeShiftTemplates(settings).find((tpl) => tpl.active && tpl.start === start && tpl.end === end)?.id || 'custom'

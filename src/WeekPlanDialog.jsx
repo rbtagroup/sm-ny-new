@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { addDays, formatDate } from './lib/dateTime.js'
 import { czechCount } from './lib/drivers.js'
 import { activeShiftsInWeek, planWeek } from './lib/weekPlan.js'
+import { coverageNeedsList } from './lib/coverage.js'
 
 const DUPLICATE_REASON = 'Stejná směna už v týdnu je.'
 const shiftCount = (count) => czechCount(count, 'směna', 'směny', 'směn')
@@ -16,7 +17,7 @@ export function WeekPlanDialog({ data, weeks, helpers, commit, services, ui, onC
   const [allowConflicts, setAllowConflicts] = useState(false)
   const sourceWeekStart = addDays(targetWeekStart, -7)
   const sourceCount = activeShiftsInWeek(data.shifts, sourceWeekStart).length
-  const hasCoverageNorms = (data.settings?.coverageSlots || []).some((slot) => Number(slot.minDrivers) > 0)
+  const hasCoverageNorms = (data.settings?.coverageSlots || []).some((slot) => Number(slot.minDrivers) > 0) || coverageNeedsList(data.settings).some((entry) => entry.minDrivers > 0)
   const options = { data, targetWeekStart, sourceWeekStart, copyShifts, fillGaps, allowConflicts, buildHelpers }
   const preview = useMemo(() => {
     let counter = 0

@@ -40,6 +40,7 @@ const openDetailMenu = `(() => { document.querySelectorAll('.shift-detail-more, 
 const clickIfPresent = (selector, text) => `(() => { [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (item.innerText || '').trim() === ${JSON.stringify(text)} && item.getClientRects().length)?.click(); return true })()`
 const clickFirst = (selector) => `(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => item.getClientRects().length) || document.querySelector(${JSON.stringify(selector)}); el?.click(); return Boolean(el) })()`
 const staffNav = (label) => click('.sidebar-nav button', label)
+const plannerMenu = (label) => [`(() => { const menu = document.querySelector('.planner-more-actions'); if (menu) menu.open = true; return Boolean(menu) })()`, click('.planner-more-panel button', label)]
 const driverNav = (label) => `(() => { const el = [...document.querySelectorAll('.driver-bottom-nav button')].find((item) => item.querySelector('b')?.textContent.trim() === ${JSON.stringify(label)}); el?.click(); return Boolean(el) })()`
 const typeInto = (selector, value) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true })()`
 
@@ -50,7 +51,7 @@ const states = [
   ['staff', 'planner-new-shift', [staffNav('Plán směn'), click('button', '+ Nová směna')]],
   ['staff', 'planner-detail', [staffNav('Plán směn'), clickFirst('.calendar-shift-card')]],
   ['staff', 'planner-table', [staffNav('Plán směn'), clickFirst('.planner-kpi-item'), openDetailMenu]],
-  ['staff', 'planner-week-plan', [staffNav('Plán směn'), click('button', 'Naplánovat týden')]],
+  ['staff', 'planner-week-plan', [staffNav('Plán směn'), ...plannerMenu('Naplánovat týden')]],
   ['staff', 'planner-dirty-close', [staffNav('Plán směn'), click('button', '+ Nová směna'), typeInto('.shift-drawer textarea', 'rozepsáno'), click('.shift-drawer-head button', 'Zavřít')]],
   // the detail offers only the steps that fit the time of day: check in and out today, or mark an older shift done
   ['staff', 'planner-settlement', [staffNav('Plán směn'), clickFirst('.calendar-shift-card'), openDetailMenu, clickIfPresent('.shift-drawer button', 'Zaznamenat nástup'), openDetailMenu, clickIfPresent('.shift-drawer button', 'Zaznamenat konec'), openDetailMenu, clickIfPresent('.shift-drawer button', 'Označit jako dokončenou'), clickIfPresent('.modal-backdrop button', 'Změnit stav'), openDetailMenu, `(() => { const b = [...document.querySelectorAll('.shift-drawer button')].find((x) => ['Otevřít výčetku', 'Založit výčetku'].includes(x.innerText.trim()) && !x.disabled); b?.click(); return Boolean(b) })()`]],
@@ -70,8 +71,12 @@ const states = [
   ['staff', 'vehicles', [staffNav('Vozidla')]],
   ['staff', 'vehicles-edit', [staffNav('Vozidla'), clickFirst('.list-row-main')]],
   ['staff', 'availability', [staffNav('Řidiči'), click('button', 'Dostupnost a nepřítomnost')]],
-  ['staff', 'templates', [staffNav('Plán směn'), click('button', 'Šablony')]],
-  ['staff', 'templates-create', [staffNav('Plán směn'), click('button', 'Šablony'), click('button', '+ Přidat šablonu')]],
+  ['staff', 'templates', [staffNav('Plán směn'), ...plannerMenu('Šablony směn')]],
+  ['staff', 'templates-create', [staffNav('Plán směn'), ...plannerMenu('Šablony směn'), click('button', '+ Přidat šablonu')]],
+  ['staff', 'planner-more-menu', [staffNav('Plán směn'), `(() => { const menu = document.querySelector('.planner-more-actions'); if (menu) menu.open = true; return Boolean(menu) })()`]],
+  ['staff', 'planner-day-need', [staffNav('Plán směn'), `(() => { const menu = document.querySelector('.day.today .day-menu'); if (menu) menu.open = true; return Boolean(menu) })()`, click('.day-menu-panel button', 'Potřeba řidičů')]],
+  ['staff', 'coverage-norms', [staffNav('Plán směn'), ...plannerMenu('Normy pokrytí')]],
+  ['staff', 'coverage-norms-edit', [staffNav('Plán směn'), ...plannerMenu('Normy pokrytí'), clickFirst('.list-row-main')]],
   ['staff', 'settings', [staffNav('Nastavení')]],
   ['staff', 'user-menu', [staffNav('Plán směn'), clickFirst('.topbar-user-button')]],
   ['staff', 'bell-menu', [staffNav('Plán směn'), clickFirst('.topbar-icon-button')]],
@@ -201,18 +206,22 @@ try {
       return nodeIds.slice(0, 250)
     }
 
-    for (const [role, name, steps] of states) {
+    const runState = async (role, name, steps) => {
       const port = role === 'auth' ? authPort : demoPort
+      const setupFailures = []
       // every state starts from fresh demo data; earlier scenarios check in, finish or decline shifts
       await page('Storage.clearDataForOrigin', { origin: `http://127.0.0.1:${port}`, storageTypes: 'local_storage,session_storage,indexeddb' }).catch(() => {})
+      // a blank page first, so the same URL twice in a row cannot leave the old page looking ready while it reloads
+      await page('Page.navigate', { url: 'about:blank' })
       await page('Page.navigate', { url: `http://127.0.0.1:${port}/${role === 'auth' ? '' : `?demoRole=${role === 'staff' ? 'admin' : 'driver'}`}` })
       const ready = role === 'auth' ? '.auth-card' : role === 'staff' ? '.sidebar-nav button' : '.driver-bottom-nav button'
-      for (let attempt = 0; attempt < 120 && !(await evaluate(`Boolean(document.querySelector(${JSON.stringify(ready)}))`)); attempt++) await delay(100)
+      const readyCheck = `Boolean(document.querySelector(${JSON.stringify(ready)})) && [...document.querySelectorAll('style[data-vite-dev-id]')].some((item) => item.dataset.viteDevId.endsWith('/src/main.css'))`
+      for (let attempt = 0; attempt < 120 && !(await evaluate(readyCheck).catch(() => false)); attempt++) await delay(100)
       await delay(400)
       await evaluate(`(() => { const style = document.createElement('style'); style.id = 'style-diff-freeze'; style.textContent = '*,*::before,*::after{transition:none!important;animation:none!important;caret-color:transparent!important}'; document.head.appendChild(style); return true })()`)
       for (const step of steps) {
         const ok = await evaluate(step).catch((error) => String(error))
-        if (ok !== true && ok !== undefined) report.setupFailures.push(`${vp.name} ${role}:${name} step ${steps.indexOf(step)} → ${ok}`)
+        if (ok !== true && ok !== undefined) setupFailures.push(`${vp.name} ${role}:${name} step ${steps.indexOf(step)} → ${ok}`)
         await delay(450)
       }
       await delay(300)
@@ -228,9 +237,22 @@ try {
         found.push(...await checkVariant('focus'))
         for (const nodeId of focused) await page('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] })
       }
+      report.setupFailures.push(...setupFailures)
       const unique = new Map(found.map((diff) => [`${diff.variant}|${diff.element}|${diff.changes.join(';')}`, diff]))
       if (unique.size) report.differences.push({ viewport: vp.name, state: `${role}:${name}`, count: unique.size, sample: [...unique.values()].slice(0, 25) })
       process.stdout.write(`${unique.size ? '✖' : '·'} ${vp.name} ${role}:${name}${unique.size ? ` (${unique.size})` : ''}\n`)
+    }
+    for (const [role, name, steps] of states) {
+      // Vite can reload the page on its own (e.g. after optimizing dependencies); such a state is simply run again
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await runState(role, name, steps)
+          break
+        } catch (error) {
+          if (attempt >= 3 || !String(error?.message).includes('main.css style element not found')) throw error
+          process.stdout.write(`↻ ${vp.name} ${role}:${name} page reloaded, running the state again\n`)
+        }
+      }
     }
     await cdp.send('Target.closeTarget', { targetId })
     await cdp.send('Target.disposeBrowserContext', { browserContextId })

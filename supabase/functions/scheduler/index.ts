@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.104.0'
 import { coverageNoticeDecision } from './coverageNotice.js'
-import { coverageSlotAppliesOn, normalizeCoverageSlots } from './coverageSlots.js'
+import { coverageNeedOn, normalizeCoverageNeeds, normalizeCoverageSlots } from './coverageSlots.js'
 
 type CoverageSlot = {
   id?: string
@@ -159,6 +159,7 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
   if (settingsError) throw settingsError
 
   const coverageSlots: CoverageSlot[] = normalizeCoverageSlots(settingsRow?.payload || {}, DEFAULT_COVERAGE_SLOTS)
+  const coverageNeeds = normalizeCoverageNeeds(settingsRow?.payload || {})
 
   const { data: shifts, error: shiftsError } = await supabase
     .from('shifts')
@@ -173,7 +174,8 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
   const days = Array.from({ length: 7 }, (_, index) => addDaysISO(today, index))
 
   const gaps = days.flatMap((day) =>
-    coverageSlots.filter((slot) => coverageSlotAppliesOn(slot, day)).map((slot) => {
+    coverageSlots.map((slot) => {
+      const need = coverageNeedOn(slot, day, coverageNeeds)
       const planned = coverageShifts.filter((shift) =>
         shift.shift_date === day &&
         overlapsTimeWindow(String(shift.start_time).slice(0, 5), String(shift.end_time).slice(0, 5), slot.start, slot.end)
@@ -186,8 +188,8 @@ async function runDailyCoverage(supabase: ReturnType<typeof createClient>, start
         start: slot.start,
         end: slot.end,
         planned,
-        minDrivers: slot.minDrivers || 0,
-        missing: Math.max(0, (slot.minDrivers || 0) - planned),
+        minDrivers: need,
+        missing: Math.max(0, need - planned),
       }
     })
   ).filter((row) => row.missing > 0)

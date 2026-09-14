@@ -35,6 +35,7 @@ import { SettingsView } from './SettingsView.jsx'
 import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
 import { ShiftTemplates } from './ShiftTemplatesView.jsx'
+import { CoverageNorms } from './CoverageNormsView.jsx'
 import { Vehicles } from './VehiclesView.jsx'
 import { useCurrentDate } from './useCurrentDate.js'
 import { createAppDataSync } from './lib/appDataSync.js'
@@ -43,7 +44,6 @@ import {
   addDays,
   formatDate,
   hoursLabel,
-  overlapsTimeWindow,
   startOfWeek,
   timePart,
   todayISO,
@@ -54,7 +54,7 @@ import {
 } from './lib/notifications.js'
 import { notificationInboxState } from './lib/notificationInbox.js'
 import { staffNoticeState } from './lib/staffNotifications.js'
-import { COVERAGE_WEEKDAYS, coverageDaysLabel, coverageSlotAppliesOn, coverageSlotAppliesOnWeekday, toggleCoverageDay } from './lib/coverage.js'
+import { coverageDayRows, coverageDaysLabel } from './lib/coverage.js'
 import { uid } from './lib/ids.js'
 import { sendPushForNotifications } from './lib/pushDelivery.js'
 import {
@@ -88,7 +88,7 @@ import { ADMIN_PAGE_KEYS, navPageFor, overviewTabs, staffNavSections } from './l
 
 const VERSION = `${__APP_VERSION__}-vycetka`
 const makeNotice = createNoticeFactory(uid)
-const pageTitleMap = { planner: 'Plán směn', dashboard: 'Dashboard', audit: 'Audit provozu', settlements: 'Výčetky', notifications: 'Notifikace', shifts: 'Seznam směn', drivers: 'Řidiči', vehicles: 'Vozidla', availability: 'Dostupnost', shiftTemplates: 'Šablony směn', history: 'Historie změn', settings: 'Nastavení' }
+const pageTitleMap = { planner: 'Plán směn', dashboard: 'Dashboard', audit: 'Audit provozu', settlements: 'Výčetky', notifications: 'Notifikace', shifts: 'Seznam směn', drivers: 'Řidiči', vehicles: 'Vozidla', availability: 'Dostupnost', shiftTemplates: 'Šablony směn', coverageNorms: 'Normy pokrytí', history: 'Historie změn', settings: 'Nastavení' }
 
 
 const rolePolicies = [
@@ -332,16 +332,17 @@ function App({ session = null, profile = null, signOut = null }) {
       onRetrySync={() => reloadOnline()}
       updateToast={updateToast}
     >
-      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} onOpenTemplates={role === 'admin' ? () => setPage('shiftTemplates') : undefined} />}
+      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} onOpenTemplates={role === 'admin' ? () => setPage('shiftTemplates') : undefined} onOpenNorms={() => setPage('coverageNorms')} />}
       {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} today={currentDate} ui={dashboardUi} services={dashboardServices} tabs={overviewPageTabs} />}
       {page === 'settlements' && <Settlements data={data} helpers={helpers} commit={commit} />}
-      {page === 'audit' && <OperationalAudit data={data} helpers={helpers} commit={commit} tabs={overviewPageTabs} />}
+      {page === 'audit' && <OperationalAudit data={data} helpers={helpers} tabs={overviewPageTabs} onOpenNorms={() => setPage('coverageNorms')} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
       {page === 'drivers' && <Drivers data={data} commit={commit} ui={driversUi} services={driversServices} onlineMode={onlineMode} reloadOnline={reloadOnline} canRemoveDrivers={role === 'admin'} onOpenAvailability={() => setPage('availability')} />}
       {page === 'vehicles' && <Vehicles data={data} commit={commit} ui={vehiclesUi} services={vehiclesServices} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={null} ui={availabilityUi} />}
       {page === 'shiftTemplates' && <ShiftTemplates data={data} commit={commit} ui={shiftTemplatesUi} />}
+      {page === 'coverageNorms' && <CoverageNorms data={data} commit={commit} today={currentDate} ui={coverageNormsUi} />}
       {page === 'history' && <History data={data} ui={historyUi} services={historyServices} tabs={overviewPageTabs} />}
       {page === 'settings' && <SettingsView data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} version={VERSION} ui={settingsUi} />}
   </StaffAppShell>
@@ -364,6 +365,7 @@ const historyUi = { Field, PageTitle }
 const historyServices = { download }
 const settingsUi = { Field, Kpi, PageTitle }
 const shiftTemplatesUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, Select, SideDrawer }
+const coverageNormsUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer }
 const vehiclesUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
 const vehiclesServices = { todayISO, uid }
 
@@ -419,7 +421,7 @@ function Settlements({ data, helpers, commit }) {
   </>
 }
 
-function OperationalAudit({ data, helpers, commit, tabs = null }) {
+function OperationalAudit({ data, helpers, tabs = null, onOpenNorms }) {
   const [weekStart, setWeekStart] = useState(startOfWeek(todayISO()))
   const [openSections, setOpenSections] = useState(() => {
     try {
@@ -431,10 +433,9 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
   const audit = readinessChecks(data, helpers, weekStart)
   const passed = audit.checks.filter((c) => c.ok).length
   const readinessPct = Math.round((passed / audit.checks.length) * 100)
-  const coverageRows = (data.settings?.coverageSlots || []).flatMap((slot) => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter((day) => coverageSlotAppliesOn(slot, day)).map((day) => {
-    const planned = audit.activeWeek.filter((s) => s.date === day && overlapsTimeWindow(s.start, s.end, slot.start, slot.end)).length
-    return { day, slot, planned, missing: Math.max(0, Number(slot.minDrivers || 0) - planned) }
-  })).sort((a, b) => a.day.localeCompare(b.day) || a.slot.start.localeCompare(b.slot.start))
+  const coverageRows = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+    .flatMap((day) => coverageDayRows(data, day).filter((row) => row.need > 0))
+    .map((row) => ({ day: row.day, slot: row, planned: row.planned, need: row.need, override: row.override, missing: row.missing }))
   const attendance = attendanceRows(data, helpers, weekStart, to)
   const plannedTotal = attendance.reduce((sum, row) => sum + row.plannedMinutes, 0)
   const actualTotal = attendance.reduce((sum, row) => sum + row.actualMinutes, 0)
@@ -442,13 +443,6 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
   const monthLogs = (data.audit || []).filter((row) => String(row.at || row.createdAt || '').startsWith(currentMonth) && !isRoutineSchedulerLog(row))
   const todayIssues = audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length
   const weekIssues = coverageRows.filter((r) => r.missing).length + attendance.filter((row) => row.open || Math.abs(row.diffMinutes) > 15).length
-  const toggleSlotDay = (slotId, day) => {
-    commit((prev) => ({ ...prev, settings: { ...prev.settings, coverageSlots: (prev.settings?.coverageSlots || []).map((slot) => slot.id === slotId ? toggleCoverageDay(slot, day) : slot) } }), 'Upraveny dny normy pokrytí provozu.')
-  }
-  const updateMinDrivers = (slotId, value) => {
-    const n = Math.max(0, Number(value || 0))
-    commit((prev) => ({ ...prev, settings: { ...prev.settings, coverageSlots: (prev.settings?.coverageSlots || []).map((slot) => slot.id === slotId ? { ...slot, minDrivers: n } : slot) } }), 'Upravena norma pokrytí provozu.')
-  }
   useEffect(() => {
     try { localStorage.setItem('rbshift-audit-open-sections', JSON.stringify(openSections)) }
     catch { }
@@ -487,7 +481,7 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
         <summary><span><b>Tento týden</b><small>{formatDate(weekStart)}–{formatDate(to)} · pokrytí a docházka</small></span><span className={weekIssues ? 'pill bad' : 'pill good'}>{weekIssues ? `${weekIssues} kontrol` : 'OK'}</span></summary>
         <div className="collapse-content stack">
           <div className="section-title"><h3>Pokrytí týdne</h3><span className={coverageRows.some((r) => r.missing) ? 'pill bad' : 'pill good'}>{coverageRows.filter((r) => r.missing).length}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-coverage-table"><table className="table"><thead><tr><th>Den</th><th>Pásmo</th><th>Čas</th><th>Plán</th><th>Min.</th><th>Stav</th></tr></thead><tbody>{coverageRows.map((row) => <tr key={`${row.day}-${row.slot.id}`}><td><b>{formatDate(row.day)}</b></td><td>{row.slot.name}</td><td>{row.slot.start}–{row.slot.end}</td><td>{row.planned}</td><td>{row.slot.minDrivers}</td><td>{row.missing ? <span className="pill bad">chybí {row.missing}</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-coverage-table"><table className="table"><thead><tr><th>Den</th><th>Pásmo</th><th>Čas</th><th>Plán</th><th>Potřeba</th><th>Stav</th></tr></thead><tbody>{coverageRows.map((row) => <tr key={`${row.day}-${row.slot.id}`}><td><b>{formatDate(row.day)}</b></td><td>{row.slot.name}</td><td>{row.slot.start}–{row.slot.end}</td><td>{row.planned}</td><td>{row.need}{row.override && <small> · na tento den</small>}</td><td>{row.missing ? <span className="pill bad">chybí {row.missing}</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
           <div className="section-title"><h3>Docházkový report</h3><span className="pill">{hoursLabel(actualTotal)}</span></div>
           <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-attendance-table"><table className="table"><thead><tr><th>Řidič</th><th>Směn</th><th>Hotovo</th><th>Plán</th><th>Reál</th><th>Rozdíl</th><th>Kontrola</th></tr></thead><tbody>{attendance.map((row) => <tr key={row.driver.id}><td><b>{row.driver.name}</b><br /><small>{row.driver.phone || row.driver.email || 'bez kontaktu'}</small></td><td>{row.shifts.length}</td><td>{row.completed}</td><td>{hoursLabel(row.plannedMinutes)}</td><td>{hoursLabel(row.actualMinutes)}</td><td>{hoursLabel(row.diffMinutes)}</td><td>{row.open ? <span className="pill warn">{row.open} běží</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
         </div>
@@ -495,8 +489,8 @@ function OperationalAudit({ data, helpers, commit, tabs = null }) {
       <details className="card collapse-card" {...sectionProps('month')}>
         <summary><span><b>Tento měsíc</b><small>{monthLogs.length} záznamů historie · dlouhodobé normy</small></span><span className="pill">{monthLogs.length}</span></summary>
         <div className="collapse-content stack">
-          <div className="section-title"><h3>Normy pokrytí</h3><span className="pill">{data.settings?.coverageSlots?.length || 0}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-standards-table"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Min. řidičů</th><th>Dny</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b><br /><small>{coverageDaysLabel(slot)}</small></td><td>{slot.start}–{slot.end}</td><td><input type="number" min="0" aria-label={`Minimum řidičů: ${slot.name}`} value={slot.minDrivers} onChange={(e) => updateMinDrivers(slot.id, e.target.value)} style={{ width: 90 }} /></td><td><div className="weekday-toggles" role="group" aria-label={`Dny pro pásmo ${slot.name}`}>{COVERAGE_WEEKDAYS.map(([day, label]) => { const active = coverageSlotAppliesOnWeekday(slot, day); return <button type="button" key={day} className={active ? 'active' : ''} aria-pressed={active} onClick={() => toggleSlotDay(slot.id, day)}>{label}</button> })}</div></td></tr>)}</tbody></table></div>
+          <div className="section-title"><h3>Normy pokrytí</h3>{onOpenNorms ? <button className="ghost" type="button" onClick={onOpenNorms}>Upravit normy</button> : <span className="pill">{data.settings?.coverageSlots?.length || 0}</span>}</div>
+          {(data.settings?.coverageSlots || []).length ? <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-standards-table"><table className="table"><thead><tr><th>Pásmo</th><th>Čas</th><th>Běžně řidičů</th><th>Dny</th></tr></thead><tbody>{(data.settings?.coverageSlots || []).map((slot) => <tr key={slot.id}><td><b>{slot.name}</b></td><td>{slot.start}–{slot.end}</td><td>{Number(slot.minDrivers) || 0}</td><td>{coverageDaysLabel(slot)}</td></tr>)}</tbody></table></div> : <div className="empty">Zatím žádné normy pokrytí.</div>}
           <div className="section-title"><h3>Historie za měsíc</h3><span className="pill">{monthLogs.length}</span></div>
           <div className="timeline stack audit-table-scroll">{monthLogs.slice(0, 50).map((log) => <div className="log" key={log.id}><b>{new Date(log.at).toLocaleString('cs-CZ')}</b><br /><span className="muted">{log.text}</span></div>)}{!monthLogs.length && <div className="empty">Za tento měsíc nejsou žádné záznamy.</div>}</div>
         </div>
