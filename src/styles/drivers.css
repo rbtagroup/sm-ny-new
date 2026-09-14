@@ -1,4 +1,4 @@
-/* Staff driver management: invites, removal and app status. */
+/* Staff driver management: invites, removal, app status and the weekly availability grid. */
 
 .pending-driver-row {
   border-color: rgba(255,207,90,.42);
@@ -58,4 +58,266 @@
   border-color: rgba(255,107,107,.36);
   background: rgba(255,107,107,.08);
   color: #ffd7d7;
+}
+
+/* Availability grid: drivers × days, a + in every cell; phones pick a day and list drivers. */
+.availability-week-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.availability-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.availability-legend-note {
+  font-size: 12px;
+}
+
+.availability-grid-card {
+  overflow: hidden;
+}
+
+.availability-grid {
+  display: grid;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.availability-grid-row {
+  display: grid;
+  grid-template-columns: minmax(120px,160px) repeat(7,minmax(104px,1fr));
+  gap: 6px;
+  min-width: 900px;
+}
+
+.availability-grid-head > div {
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.availability-grid-head > div.is-today {
+  color: var(--gold);
+}
+
+.availability-grid-driver {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+
+.availability-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.025);
+}
+
+.availability-cell.is-today {
+  border-color: rgba(245,199,106,.45);
+}
+
+.availability-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid rgba(72,213,151,.45);
+  border-radius: 9px;
+  background: rgba(72,213,151,.12);
+  color: #d8fff0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.availability-chip.kind-preferred {
+  border-color: rgba(255,207,90,.5);
+  background: rgba(255,207,90,.12);
+  color: #fff0c2;
+}
+
+.availability-chip.kind-unavailable,
+.availability-chip.kind-absent {
+  border-color: rgba(255,107,107,.5);
+  background: rgba(255,107,107,.12);
+  color: #ffdede;
+}
+
+.availability-chip.kind-absent {
+  border-style: dashed;
+}
+
+.availability-chip.is-legend {
+  cursor: default;
+}
+
+.availability-add {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.availability-add:hover {
+  border-color: rgba(245,199,106,.55);
+  color: var(--gold);
+}
+
+.availability-mobile {
+  display: none;
+}
+
+.availability-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.availability-choice button {
+  display: grid;
+  gap: 1px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  font-weight: 700;
+  text-align: left;
+}
+
+.availability-choice button small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.availability-choice button.active {
+  border-color: rgba(245,199,106,.6);
+  background: rgba(245,199,106,.16);
+}
+
+.availability-form .field > input + input,
+.availability-choice + input {
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .availability-grid {
+    display: none;
+  }
+
+  .availability-mobile {
+    display: grid;
+    gap: 12px;
+  }
+
+  .availability-day-tabs {
+    display: grid;
+    grid-template-columns: repeat(7,minmax(0,1fr));
+    gap: 4px;
+  }
+
+  .availability-day-tabs button {
+    display: grid;
+    place-items: center;
+    gap: 1px;
+    min-height: 50px;
+    padding: 6px 0;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255,255,255,.035);
+    color: var(--muted);
+  }
+
+  .availability-day-tabs button span {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .availability-day-tabs button b {
+    color: var(--text);
+    font-size: 16px;
+  }
+
+  .availability-day-tabs button.is-today b {
+    color: var(--gold);
+  }
+
+  .availability-day-tabs button.active {
+    border-color: rgba(245,199,106,.55);
+    background: rgba(245,199,106,.14);
+  }
+
+  .availability-day-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .availability-day-list li {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,.03);
+  }
+
+  .availability-day-driver {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .availability-day-items {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 1;
+    gap: 4px;
+  }
+
+  .availability-day-list .availability-add {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-with-topbar .topbar .actions > .availability-week-nav {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 46px minmax(0,1fr) 46px;
+  }
+
+  .app-with-topbar .topbar .actions > .availability-week-nav + .primary {
+    grid-column: 1 / -1;
+  }
 }

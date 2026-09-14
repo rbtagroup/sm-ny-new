@@ -361,6 +361,13 @@ async function runStaffChecks(page) {
   await clickByText(page, 'button', 'Dostupnost a nepřítomnost')
   await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Dostupnost řidičů")', 'Availability should open from the drivers page')
   await assertEval(page, 'document.querySelector(".sidebar-nav button.active")?.innerText.trim() === "Řidiči"', 'Availability should keep the drivers menu item highlighted')
+  await assertEval(page, 'document.querySelectorAll(".availability-grid-row").length > 1', 'Availability should show the week grid of drivers and days')
+  await evaluate(page, 'document.querySelector(".availability-cell .availability-add")?.click()')
+  await waitForEval(page, 'document.querySelector(".shift-drawer .availability-form")', 'The + in a grid cell should open the new entry panel')
+  await clickByText(page, '.availability-choice button', 'Nepřítomnost')
+  await clickByText(page, '.availability-choice button', 'Dovolená')
+  await clickByText(page, '.shift-drawer button', 'Uložit záznam')
+  await waitForEval(page, '!document.querySelector(".shift-drawer") && [...document.querySelectorAll(".availability-grid .availability-chip")].some((chip) => chip.innerText.includes("Dovolená"))', 'A new absence should show in the grid')
 
   await clickByText(page, '.sidebar-nav button', 'Plán směn')
   await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Plán směn")', 'Planner did not reopen')
@@ -398,6 +405,18 @@ async function runStaffChecks(page) {
 
   await clickByText(page, '.sidebar-nav button', 'Dashboard')
   await waitForEval(page, 'document.querySelector(".page-tabs button.active")?.innerText.trim() === "Dnes"', 'Dashboard should open on the Dnes tab')
+  await waitForEval(page, 'document.querySelectorAll(".dashboard-task").length > 0', 'Dashboard should list tasks with actions')
+  await assertEval(page, '[...document.querySelectorAll(".topbar .actions button")].every((button) => !/Záloha|Export/.test(button.innerText))', 'Backup and export belong to settings, not the dashboard')
+  await evaluate(page, '[...document.querySelectorAll(".dashboard-task-actions button")].find((button) => button.innerText.trim() === "Obsadit")?.click()')
+  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Plán směn") && document.querySelector(".cover-fill")', 'Obsadit on a dashboard task should open the planner with the cover panel')
+  await clickByText(page, '.shift-drawer-head button', 'Zavřít')
+  await clickByText(page, '.sidebar-nav button', 'Dashboard')
+  await waitForEval(page, 'document.querySelectorAll(".dashboard-task").length > 0', 'Dashboard did not reopen')
+  // demo shifts move with the calendar, so an unconfirmed shift within 48 hours is not there every day
+  if (await evaluate(page, '[...document.querySelectorAll(".dashboard-task-actions button")].some((button) => button.innerText.trim() === "Připomenout")')) {
+    await clickByText(page, '.dashboard-task-actions button', 'Připomenout')
+    await waitForEval(page, '[...document.querySelectorAll(".dashboard-task-actions .pill")].some((pill) => pill.innerText.includes("Připomenuto"))', 'A sent reminder should show instead of the button')
+  }
   await clickByText(page, '.page-tabs button', 'Audit týdne')
   await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Audit provozu")', 'Weekly audit tab did not open')
   await clickByText(page, '.page-tabs button', 'Historie změn')
@@ -415,32 +434,43 @@ async function runStaffChecks(page) {
   await assertEval(page, 'document.querySelector(".app-topbar-title")?.innerText.trim() === "Plán směn"', 'Mobile topbar title should only show the current page')
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile planner should not overflow horizontally')
 
-  await clickByText(page, '.sidebar-nav button', 'Výčetky')
-  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Výčetky")', 'Mobile settlements screen did not open')
+  await assertEval(page, 'getComputedStyle(document.querySelector(".staff-bottom-nav")).display !== "none" && getComputedStyle(document.querySelector(".sidebar")).display === "none"', 'Phones should use the bottom bar instead of the scrolling menu')
+  await clickByText(page, '.staff-bottom-nav button', 'Více')
+  await waitForEval(page, '[...document.querySelectorAll(".staff-more-list button")].some((button) => button.innerText.includes("Řidiči"))', 'Více should list the remaining pages')
+  await clickByText(page, '.staff-more-list button', 'Nastavení')
+  await waitForEval(page, 'document.querySelector(".app-topbar-title")?.innerText.trim() === "Nastavení" && !document.querySelector(".staff-more-sheet")', 'A page from Více should open and close the sheet')
+  await assertEval(page, '[...document.querySelectorAll(".settings-exports button")].length === 2', 'Settings should offer backup and export')
+
+  await clickByText(page, '.staff-bottom-nav button', 'Výčetky')
+  await waitForEval(page, 'document.querySelector(".app-topbar-title")?.innerText.includes("Výčetky")', 'Mobile settlements screen did not open')
   await assertEval(page, 'getComputedStyle(document.querySelector(".settlement-mobile-list")).display !== "none"', 'Mobile settlements list should replace the desktop table')
   await assertEval(page, 'getComputedStyle(document.querySelector(".settlement-table")).display === "none"', 'Desktop settlement table should be hidden on mobile')
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile settlements should not overflow horizontally')
 
-  await clickByText(page, '.sidebar-nav button', 'Notifikace')
+  await clickByText(page, '.staff-bottom-nav button', 'Notifikace')
   await waitForEval(page, 'document.querySelector(".notifications-card h3")?.textContent.includes("K vyřízení")', 'Mobile staff notifications did not open')
-  await assertEval(page, 'document.querySelector(".notifications-card") && document.querySelector(".staff-message-composer")', 'Staff notification workspace did not render')
+  await assertEval(page, 'document.querySelector(".notifications-card") && !document.querySelector(".staff-message-composer")', 'The message form should wait behind its button')
+  await clickByText(page, '.topbar .actions button', 'Nová zpráva řidičům')
+  await waitForEval(page, 'document.querySelector(".shift-drawer .staff-message-composer")', 'New message should open in a side panel')
   await assertEval(page, 'document.documentElement.scrollWidth <= window.innerWidth + 1', 'Staff mobile notifications should not overflow horizontally')
 
   await fillByPlaceholder(page, 'Např. Provozní zpráva', 'Smoke zpráva dispečera')
   await fillByPlaceholder(page, 'Text, který přijde řidiči do aplikace a jako push notifikace.', 'Ověření komunikace dispečer–řidič.')
   await clickByText(page, '.staff-message-composer button', 'Odeslat zprávu')
+  await clickByText(page, '.shift-drawer-head button', 'Zavřít')
+  await evaluate(page, 'document.querySelector(".notifications-history")?.setAttribute("open", "")')
   await waitForEval(page, 'document.body.innerText.includes("Smoke zpráva dispečera")', 'Sent staff message did not appear in history')
 
-  await clickByText(page, '.sidebar-nav button', 'Dashboard')
-  await waitForEval(page, 'document.querySelector("h2")?.innerText.includes("Provozní dashboard")', 'Dashboard did not open')
+  await clickByText(page, '.staff-bottom-nav button', 'Dashboard')
+  await waitForEval(page, 'document.querySelector(".app-topbar-title")?.innerText.includes("Dashboard") && document.querySelector(".dashboard-tasks-card")', 'Dashboard did not open')
   await assertEval(page, '!document.querySelector(".topbar p")?.innerText.endsWith("..")', 'Dashboard date subtitle contains duplicate punctuation')
   await assertEval(page, `
     (() => {
-      const title = [...document.querySelectorAll(".section-title h3")].find((item) => item.innerText.trim() === "Priorita k řešení");
+      const title = [...document.querySelectorAll(".section-title h3")].find((item) => item.innerText.trim() === "Úkoly k vyřešení");
       const card = title?.closest(".card");
       const badge = Number(card?.querySelector(".section-title .pill")?.innerText || 0);
-      const visibleIssues = card?.querySelectorAll(".alert").length || 0;
-      return visibleIssues === 0 || badge > 0;
+      const visibleIssues = card?.querySelectorAll(".dashboard-task").length || 0;
+      return Boolean(card) && (visibleIssues === 0 || badge >= visibleIssues);
     })()
   `, 'Dashboard priority badge is zero while issues are visible')
 }

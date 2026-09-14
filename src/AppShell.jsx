@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Bell, Clock, House, Settings as SettingsIcon } from 'lucide-react'
+import { Bell, CalendarDays, Car, Clock, House, LayoutDashboard, LayoutTemplate, LogOut, Menu, Receipt, Settings as SettingsIcon, Target, Users, X } from 'lucide-react'
+import { roleMap } from './lib/appConfig.js'
 import { appFriendlyError } from './lib/errors.js'
 import { driverInitials, staffDisplayName, staffInitials } from './lib/display.js'
+import { STAFF_BOTTOM_NAV, staffBottomNavKey, staffMoreItems } from './lib/navigation.js'
 import { showNotice } from './lib/notice.js'
 
 export const driverNavItems = [
@@ -77,7 +79,7 @@ export function DriverAppShell({ currentDriver, onlineMode, page, unreadCount, o
   </div>
 }
 
-export function StaffAppShell({ title, companyName, unreadCount, notifications, profile, currentDriver, role, canOpenSettings, signOut, setPage, activePage, sidebarSections, onlineMode, syncState, onRetrySync, updateToast, children }) {
+export function StaffAppShell({ title, companyName, unreadCount, notifications, profile, currentDriver, role, canOpenSettings, signOut, setPage, page = '', activePage, sidebarSections, onlineMode, syncState, onRetrySync, updateToast, children }) {
   return <div className="app app-with-topbar">
     <AppTopBar
       syncStatus={onlineMode ? <SyncStatus syncState={syncState} onRetry={onRetrySync} /> : null}
@@ -106,8 +108,58 @@ export function StaffAppShell({ title, companyName, unreadCount, notifications, 
       </div>
     </aside>
     <main className="main">{children}</main>
+    <StaffBottomNav page={page || activePage} role={role} unreadCount={unreadCount} setPage={setPage} profile={profile} currentDriver={currentDriver} signOut={signOut} />
     {updateToast}
   </div>
+}
+
+const staffNavIcons = { planner: CalendarDays, dashboard: LayoutDashboard, settlements: Receipt, notifications: Bell, drivers: Users, vehicles: Car, availability: Clock, coverageNorms: Target, shiftTemplates: LayoutTemplate, settings: SettingsIcon }
+
+// Phones: the daily pages in a bottom bar like the driver app, the rest and signing out in the "Více" sheet.
+function StaffBottomNav({ page, role, unreadCount, setPage, profile, currentDriver, signOut }) {
+  const [moreOpen, setMoreOpen] = useState(false)
+  const active = staffBottomNavKey(page)
+  const go = (key) => {
+    setMoreOpen(false)
+    setPage(key)
+  }
+  useEffect(() => {
+    if (!moreOpen) return undefined
+    const onKeyDown = (event) => { if (event.key === 'Escape') setMoreOpen(false) }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [moreOpen])
+  return <>
+    <nav className="staff-bottom-nav" aria-label="Navigace dispečinku">
+      {STAFF_BOTTOM_NAV.map(([key, label]) => {
+        const Icon = staffNavIcons[key]
+        return <button key={key} type="button" className={active === key && !moreOpen ? 'active' : ''} aria-current={active === key ? 'page' : undefined} onClick={() => go(key)}>
+          <span className="driver-nav-icon"><Icon size={22} strokeWidth={2} aria-hidden="true" />{key === 'notifications' && unreadCount > 0 && <em>{unreadCount}</em>}</span>
+          <b>{label}</b>
+        </button>
+      })}
+      <button type="button" className={active === 'more' || moreOpen ? 'active' : ''} aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => setMoreOpen((open) => !open)}>
+        <span className="driver-nav-icon"><Menu size={22} strokeWidth={2} aria-hidden="true" /></span>
+        <b>Více</b>
+      </button>
+    </nav>
+    {moreOpen && <div className="staff-more-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMoreOpen(false) }}>
+      <div className="staff-more-sheet" role="dialog" aria-modal="true" aria-label="Další stránky">
+        <div className="staff-more-head">
+          <span className="staff-more-avatar" aria-hidden="true">{staffInitials(profile, currentDriver, role)}</span>
+          <div><b>{staffDisplayName(profile, currentDriver, role)}</b><small>{roleMap[role] || 'Dispečink'}</small></div>
+          <button type="button" className="ghost staff-more-close" aria-label="Zavřít" onClick={() => setMoreOpen(false)}><X size={20} strokeWidth={2.2} aria-hidden="true" /></button>
+        </div>
+        <div className="staff-more-list">
+          {staffMoreItems(role).map(([key, label]) => {
+            const Icon = staffNavIcons[key]
+            return <button key={key} type="button" className={page === key ? 'active' : ''} onClick={() => go(key)}><Icon size={20} strokeWidth={2} aria-hidden="true" /><span>{label}</span></button>
+          })}
+        </div>
+        {signOut && <button type="button" className="ghost staff-more-signout" onClick={() => { setMoreOpen(false); signOut() }}><LogOut size={18} strokeWidth={2.2} aria-hidden="true" />Odhlásit</button>}
+      </div>
+    </div>}
+  </>
 }
 
 export function UpdateReadyToast({ applying, onRefresh, onDismiss }) {

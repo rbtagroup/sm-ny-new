@@ -57,6 +57,7 @@ export const statusAfterCheckIn = (status) => (AWAITING_DRIVER_STATUSES.has(stat
 // unstarted shift is usually marked done rather than checked in late.
 export function staffNextStep(shift, can, settlement = null) {
   if (!shift.driverId && shift.status === 'open') return 'assign'
+  if (shift.status === 'declined') return 'reassign'
   if (can.checkOut) return 'checkOut'
   if (can.checkIn && !can.ended) return 'checkIn'
   if (can.confirm) return 'confirm'
@@ -68,6 +69,7 @@ export function staffNextStep(shift, can, settlement = null) {
 
 const staffActionLabels = {
   assign: ['Přiřadit řidiče', 'Přiřadit'],
+  reassign: ['Najít náhradu', 'Náhrada'],
   confirm: ['Potvrdit směnu', 'Potvrdit'],
   checkIn: ['Zaznamenat nástup', 'Nástup'],
   checkOut: ['Zaznamenat konec', 'Konec'],
@@ -85,6 +87,7 @@ export function staffActionItems(shift, can, settlement = null, available = []) 
   const settlementLabel = settlement ? 'Otevřít výčetku' : 'Založit výčetku'
   const items = [
     !shift.driverId && shift.status === 'open' ? 'assign' : null,
+    shift.status === 'declined' ? 'reassign' : null,
     can.confirm ? 'confirm' : null,
     can.checkIn ? 'checkIn' : null,
     can.checkOut ? 'checkOut' : null,

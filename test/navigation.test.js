@@ -24,3 +24,14 @@ test('dashboard tabs show change history to admins only', () => {
   assert.deepEqual(overviewTabs('admin').map(([key]) => key), ['dashboard', 'audit', 'history'])
   assert.deepEqual(overviewTabs('dispatcher').map(([key]) => key), ['dashboard', 'audit'])
 })
+
+test('phone bottom bar keeps the daily pages and puts the rest behind "Více"', async () => {
+  const { STAFF_BOTTOM_NAV, staffBottomNavKey, staffMoreItems } = await import('../src/lib/navigation.js')
+  assert.deepEqual(STAFF_BOTTOM_NAV.map(([key]) => key), ['planner', 'dashboard', 'settlements', 'notifications'])
+  assert.deepEqual(staffMoreItems('admin').map(([key]) => key), ['drivers', 'vehicles', 'availability', 'coverageNorms', 'shiftTemplates', 'settings'])
+  assert.deepEqual(staffMoreItems('dispatcher').map(([key]) => key), ['coverageNorms'])
+  assert.equal(staffBottomNavKey('audit'), 'dashboard')
+  assert.equal(staffBottomNavKey('coverageNorms'), 'planner')
+  assert.equal(staffBottomNavKey('availability'), 'more')
+  assert.equal(staffBottomNavKey('settings'), 'more')
+})

@@ -36,8 +36,7 @@ import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
 import { WeekPlanDialog } from './WeekPlanDialog.jsx'
 import { showNotice } from './lib/notice.js'
-
-const swapStatusMap = { pending: 'Nabídnuto', accepted: 'Přijato kolegou', approved: 'Schváleno', rejected: 'Zamítnuto', cancelled: 'Zrušeno řidičem' }
+import { resolveSwapRequest, swapStatusMap } from './lib/swapRequests.js'
 
 const blankShift = (date = todayISO(), settings = {}) => {
   const firstTemplate = normalizeShiftTemplates(settings).find((tpl) => tpl.active)
@@ -169,9 +168,12 @@ function ShiftForm({ data, helpers, commit, initialDate, preset = null, editing,
   const saveShift = () => {
     const wasEditing = Boolean(editing)
     if (editing) {
+      const savedDriverId = data.shifts.find((item) => item.id === editing.id)?.driverId || ''
       const notice = normalizedForm.status === 'open'
         ? makeNotice({ title: 'Volná směna upravena', body: shiftNoticeBody(normalizedForm, helpers), targetRole: 'driver_all', type: 'open-shift-change', shiftId: editing.id })
-        : makeNotice({ title: 'Změna směny', body: shiftNoticeBody(normalizedForm, helpers), targetDriverId: normalizedForm.driverId, type: 'shift-change', shiftId: editing.id })
+        : normalizedForm.driverId !== savedDriverId
+          ? makeNotice({ title: 'Nová směna', body: shiftNoticeBody(normalizedForm, helpers), targetDriverId: normalizedForm.driverId, type: 'new-shift', shiftId: editing.id })
+          : makeNotice({ title: 'Změna směny', body: shiftNoticeBody(normalizedForm, helpers), targetDriverId: normalizedForm.driverId, type: 'shift-change', shiftId: editing.id })
       commit((prev) => addNotificationsToData({ ...prev, shifts: prev.shifts.map((item) => item.id === editing.id ? { ...item, ...normalizedForm } : item) }, notice), `Upravena směna ${normalizedForm.date} ${normalizedForm.start}–${normalizedForm.end}.`)
     } else {
       const items = buildRepeats().map((item) => ({ id: uid('sh'), ...normalizeShiftForm(item) }))
@@ -245,12 +247,19 @@ function ShiftForm({ data, helpers, commit, initialDate, preset = null, editing,
   </div>
 }
 
-export function Planner({ data, helpers, commit, today = todayISO(), ui, services, onOpenTemplates, onOpenNorms }) {
+// A task opened from the dashboard: { type: 'shift' | 'reassign', shiftId } or { type: 'cover', gap }.
+const intentShift = (intent, data) => (intent?.shiftId ? (data.shifts || []).find((item) => item.id === intent.shiftId) || null : null)
+
+export function Planner({ data, helpers, commit, today = todayISO(), ui, services, onOpenTemplates, onOpenNorms, intent = null }) {
   const { PageTitle, SideDrawer, ConfirmActionModal } = ui
   const { uid, copyText, weekText, shiftTableUi, shiftTableServices } = services
-  const [weekStart, setWeekStart] = useState(startOfWeek(today))
-  const [editing, setEditing] = useState(null)
-  const [selected, setSelected] = useState(null)
+  // The planner opens at the week of the task with its panel already open.
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(intent?.gap?.day || intentShift(intent, data)?.date || today))
+  const [editing, setEditing] = useState(() => {
+    const shift = intent?.type === 'reassign' ? intentShift(intent, data) : null
+    return shift ? { ...shift, driverId: '', status: 'assigned', declineReason: '' } : null
+  })
+  const [selected, setSelected] = useState(() => (intent?.type === 'shift' ? intentShift(intent, data) : null))
   const [driverFilter, setDriverFilter] = useState('all')
   const [vehicleFilter, setVehicleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('active')
@@ -260,14 +269,14 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
   })
   const [plannerView, setPlannerView] = useState('calendar')
   const [conflictsOnly, setConflictsOnly] = useState(false)
-  const [shiftDrawerOpen, setShiftDrawerOpen] = useState(false)
+  const [shiftDrawerOpen, setShiftDrawerOpen] = useState(() => intent?.type === 'reassign' && Boolean(intentShift(intent, data)))
   const [shiftPreset, setShiftPreset] = useState(null)
   const [shiftFormDirty, setShiftFormDirty] = useState(false)
   const [closeDirtyDialogOpen, setCloseDirtyDialogOpen] = useState(false)
   const [plannerToast, setPlannerToast] = useState('')
   const [weekPlanOpen, setWeekPlanOpen] = useState(false)
   // Side panel for coverage: { mode: 'fill', gap } fills a slot, { mode: 'need', date } sets the need of one day.
-  const [coverDrawer, setCoverDrawer] = useState(null)
+  const [coverDrawer, setCoverDrawer] = useState(() => (intent?.type === 'cover' && intent.gap ? { mode: 'fill', gap: intent.gap } : null))
   const [coverDirty, setCoverDirty] = useState(false)
   const [pendingCoverAction, setPendingCoverAction] = useState(null)
   const moreMenu = useDismissableMenu()
@@ -297,7 +306,11 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
     try { localStorage.setItem('rbshift-planner-gaps-open', String(gapsOpen)) }
     catch { }
   }, [gapsOpen])
+  // when the day changes (the app stays open past midnight) the plan follows it; the first render keeps the opened week
+  const shownTodayRef = useRef(today)
   useEffect(() => {
+    if (shownTodayRef.current === today) return
+    shownTodayRef.current = today
     setWeekStart((current) => today < current || today > addDays(current, 13) ? startOfWeek(today) : current)
   }, [today])
   useEffect(() => {
@@ -376,9 +389,9 @@ export function Planner({ data, helpers, commit, today = todayISO(), ui, service
   return <>
     <PageTitle title="Plán směn">
       <div className="planner-period-nav">
-        <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, -14))}>← Předchozí</button>
+        <button className="ghost" aria-label="Předchozí dva týdny" title="Předchozí dva týdny" onClick={() => setWeekStart(addDays(weekStart, -14))}>←<span className="planner-nav-label"> Předchozí</span></button>
         <button className="ghost" onClick={jumpToToday}>Dnes</button>
-        <button className="ghost" onClick={() => setWeekStart(addDays(weekStart, 14))}>Další →</button>
+        <button className="ghost" aria-label="Další dva týdny" title="Další dva týdny" onClick={() => setWeekStart(addDays(weekStart, 14))}><span className="planner-nav-label">Další </span>→</button>
       </div>
       <button className="primary planner-new-inline" onClick={() => openNewShiftDrawer()}>+ Nová směna</button>
       {/* the same menu on every screen; the header stays one row even on a 13" laptop */}
@@ -601,7 +614,7 @@ function ShiftMini({ shift, data, helpers, setSelected }) {
   </button>
 }
 
-const detailActions = ['assign', 'confirm', 'checkIn', 'checkOut', 'settlement', 'complete', 'edit', 'message', 'duplicate', 'decline', 'cancel', 'delete']
+const detailActions = ['assign', 'reassign', 'confirm', 'checkIn', 'checkOut', 'settlement', 'complete', 'edit', 'message', 'duplicate', 'decline', 'cancel', 'delete']
 const shortTime = (value) => (value ? new Date(value).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—')
 
 function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, onToast, ui, services }) {
@@ -616,7 +629,6 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, on
   } = ui
   const {
     makeNotice,
-    appendSwapHistory,
     statusNoticeForShift,
     hardDeleteShiftData,
     copyText,
@@ -699,26 +711,16 @@ function ShiftDetail({ shift, data, helpers, commit, setSelected, setEditing, on
     setSelected(null)
   }
   const resolveSwap = (id, status) => {
-    const request = swaps.find((item) => item.id === id)
-    if (!request) return
-    if (status === 'approved') {
-      const newDriverId = request.acceptedByDriverId || request.targetDriverId
-      if (!newDriverId) return showNotice('U nabídky všem musí nejdřív některý kolega kliknout „Chci převzít směnu“.')
-      const notices = request.targetMode === 'open'
-        ? [makeNotice({ title: 'Volná směna schválena a potvrzena', body: shiftNoticeBody(fresh, helpers, 'směna je rovnou potvrzená'), targetDriverId: newDriverId, type: 'open-shift-approved', shiftId: fresh.id })]
-        : [
-          makeNotice({ title: 'Výměna směny schválena', body: `${shiftNoticeBody(fresh, helpers)} · převedeno na ${helpers.driverName(newDriverId)}`, targetDriverId: request.driverId, type: 'swap-approved', shiftId: fresh.id }),
-          makeNotice({ title: 'Převzal jsi směnu – potvrzeno', body: shiftNoticeBody(fresh, helpers, 'směna je rovnou potvrzená'), targetDriverId: newDriverId, type: 'swap-approved', shiftId: fresh.id }),
-        ]
-      return commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((item) => item.id === id ? appendSwapHistory({ ...item, status, resolvedAt: new Date().toISOString(), approvedDriverId: newDriverId }, `Admin schválil převzetí pro ${helpers.driverName(newDriverId)}. Směna byla automaticky potvrzena.`) : item), shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, driverId: newDriverId, status: 'confirmed', declineReason: '', swapRequestStatus: 'approved' } : item) }, notices), `${request.targetMode === 'open' ? 'Volná směna byla přidělena a potvrzena' : 'Výměna schválena, směna převedena a potvrzena pro'} ${helpers.driverName(newDriverId)}.`)
-    }
-    const notices = [makeNotice({ title: 'Výměna směny zamítnuta', body: shiftNoticeBody(fresh, helpers), targetDriverId: request.driverId, type: 'swap-rejected', shiftId: fresh.id })]
-    if (request.acceptedByDriverId) notices.push(makeNotice({ title: 'Výměna nebyla schválena', body: shiftNoticeBody(fresh, helpers), targetDriverId: request.acceptedByDriverId, type: 'swap-rejected', shiftId: fresh.id }))
-    commit((prev) => addNotificationsToData({ ...prev, swapRequests: (prev.swapRequests || []).map((item) => item.id === id ? appendSwapHistory({ ...item, status, resolvedAt: new Date().toISOString(), rejectedReason: status === 'rejected' ? 'Zamítnuto adminem' : '' }, status === 'rejected' ? 'Admin zamítl výměnu.' : `Stav výměny změněn na ${swapStatusMap[status]}.`) : item), shifts: prev.shifts.map((item) => item.id === fresh.id ? { ...item, swapRequestStatus: status } : item) }, notices), `Žádost o výměnu směny: ${swapStatusMap[status]}.`)
+    const options = { requestId: id, status, helpers, makeNotice }
+    const preview = resolveSwapRequest(data, options)
+    if (preview.error) return showNotice(preview.error)
+    commit((prev) => resolveSwapRequest(prev, options).data, preview.message)
   }
 
   const runAction = {
     assign: requestEdit,
+    // a declined shift goes back to planning with the driver cleared, so dispatch picks the replacement
+    reassign: () => setEditing({ ...fresh, driverId: '', status: 'assigned', declineReason: '' }),
     confirm: () => requestStatus('confirmed'),
     checkIn,
     checkOut,

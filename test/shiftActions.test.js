@@ -107,3 +107,13 @@ test('shift progress marks finished steps and the current one', async () => {
   assert.deepEqual(states({ ...shift, status: 'completed' }, { status: 'approved' }), ['Obsazeno:done', 'Potvrzeno:done', 'Nástup:done', 'Konec:done', 'Výčetka:done'])
   assert.deepEqual(shiftProgress({ ...shift, status: 'declined' }), { closed: 'declined', steps: [] })
 })
+
+test('a declined shift offers finding a replacement as the next step', async () => {
+  const { staffActionItems, staffNextStep, staffShiftActions: actions } = await import('../src/lib/shiftActions.js')
+  const declined = { ...shift, status: 'declined', declineReason: 'nemoc' }
+  const can = actions(declined, { now: at('2026-09-14T08:00:00') })
+  assert.equal(staffNextStep(declined, can), 'reassign')
+  const items = staffActionItems(declined, can, null, ['assign', 'reassign', 'edit', 'delete'])
+  assert.deepEqual(items.map((item) => item.key), ['reassign', 'edit', 'delete'])
+  assert.equal(items[0].label, 'Najít náhradu')
+})

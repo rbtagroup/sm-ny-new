@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Check, Trash2 } from 'lucide-react'
+import { Check, MessageSquarePlus, Trash2 } from 'lucide-react'
 import { PushSetupCard } from './PushSetupCard.jsx'
 import { StaffMessageComposer } from './StaffMessageComposer.jsx'
 import { StaffMessageHistory } from './StaffMessageHistory.jsx'
 import { todayISO } from './lib/dateTime.js'
 import { splitStaffInbox } from './lib/staffNotifications.js'
+import { driverMessageHistory } from './lib/driverMessages.js'
 import {
   groupStaffNotificationsByCategory,
   isInboxNoticeRead,
@@ -17,7 +18,8 @@ import {
 } from './lib/notificationInbox.js'
 
 export function NotificationsView({ data, helpers, commit, currentDriver, isDriver, profile, session, ui, services }) {
-  const { PageTitle } = ui
+  const { PageTitle, SideDrawer } = ui
+  const [composerOpen, setComposerOpen] = useState(false)
   const inboxContext = { currentDriver, isDriver, profile, swapRequests: data.swapRequests }
   const { visible, unread, visibleIds, groups, hasRead } = notificationInboxState(data, inboxContext)
   // Dispatch sees what waits for it first; handled items and notices sent to drivers stay folded below.
@@ -56,6 +58,7 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
   // Read items that still wait for dispatch stay listed until they are handled.
   const clearRead = () => hideNotices(visible.filter((n) => isInboxNoticeRead(n, inboxContext) && !staffInbox?.open.includes(n)), 'Přečtené notifikace skryty.')
   const staffNotificationActions = !isDriver ? <>
+    <button className="primary notification-toolbar-button" type="button" onClick={() => setComposerOpen(true)}><MessageSquarePlus size={17} strokeWidth={2.3} aria-hidden="true" />Nová zpráva řidičům</button>
     <button className="ghost notification-toolbar-button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>
     <button className="danger notification-toolbar-button" onClick={clearRead}><Trash2 size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>
   </> : null
@@ -118,7 +121,14 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
         <button className="ghost danger-soft notification-archive-clear" type="button" onClick={() => hideNotices(items, hideMessage)}><Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />{hideLabel}</button>
       </details>)}
     </div></div>
-    {!isDriver && <div className="stack notifications-staff-tools"><StaffMessageComposer data={data} commit={commit} session={session} ui={ui} services={services} /><StaffMessageHistory data={data} helpers={helpers} ui={ui} /></div>}
-    {!isDriver && <div className="stack" style={{ marginTop: 16 }}><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={ui} services={services} /></div>}
+    {/* Dispatch sees what waits for it on top; sent messages and this device's notifications stay below. */}
+    {!isDriver && <details className="card collapse-card notifications-history">
+      <summary><span><b>Odeslané zprávy řidičům</b><small>{driverMessageHistory(data).length ? 'historie, doručení a přečtení' : 'zatím žádná zpráva'}</small></span><span className="pill">{driverMessageHistory(data).length}</span></summary>
+      <div className="collapse-content"><StaffMessageHistory data={data} helpers={helpers} ui={ui} embedded /></div>
+    </details>}
+    {!isDriver && <div className="stack notifications-device"><PushSetupCard data={data} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={ui} services={services} /></div>}
+    {!isDriver && SideDrawer && <SideDrawer title="Nová zpráva řidičům" open={composerOpen} onClose={() => setComposerOpen(false)}>
+      {composerOpen && <StaffMessageComposer data={data} commit={commit} session={session} ui={ui} services={services} variant="drawer" />}
+    </SideDrawer>}
   </>
 }

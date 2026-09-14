@@ -137,7 +137,7 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
       <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem{pendingCount ? ` · ${pendingCount} čeká na schválení` : ''}{inviteCount ? ` · ${inviteCount} k pozvání` : ''}</span></div>
       <div className="stack compact-list">{sortedDrivers.map((driver) => <div className={isPendingDriver(driver) ? 'log list-row pending-driver-row' : 'log list-row'} key={driver.id}>
         <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(driver)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(driver) } }}>
-          <div className="split"><div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}{driver.profileId ? ' · profil: ' + driver.profileId.slice(0, 8) + '…' : ''}</small>{onlineMode && appStatus(driver).known && <small className={appStatus(driver).needsInvite && driver.active !== false ? 'driver-app-status warn' : 'driver-app-status'}>{appStatus(driver).label} · {appStatus(driver).pushEnabled ? 'notifikace zapnuté' : 'notifikace vypnuté'}</small>}</div><span className={driver.active ? 'pill good' : isPendingDriver(driver) ? 'pill warn' : 'pill bad'}>{driver.active ? 'Aktivní' : isPendingDriver(driver) ? 'Čeká na schválení' : 'Neaktivní'}</span></div>
+          <div className="split"><div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}</small>{onlineMode && appStatus(driver).known && <small className={appStatus(driver).needsInvite && driver.active !== false ? 'driver-app-status warn' : 'driver-app-status'}>{appStatus(driver).label} · {appStatus(driver).pushEnabled ? 'notifikace zapnuté' : 'notifikace vypnuté'}</small>}</div><span className={driver.active ? 'pill good' : isPendingDriver(driver) ? 'pill warn' : 'pill bad'}>{driver.active ? 'Aktivní' : isPendingDriver(driver) ? 'Čeká na schválení' : 'Neaktivní'}</span></div>
           {driver.note && <p className="muted compact-note">{driver.note}</p>}
         </div>
         <div className="row-actions list-row-actions">
@@ -153,8 +153,12 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
         <Field label="Telefon"><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
         <Field label="Role"><input value="Řidič" readOnly /></Field>
         <Field label="Aktivní"><select value={String(form.active)} onChange={(event) => setForm({ ...form, active: event.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
-        <Field label="Profile/Auth ID" className="span2"><input value={form.profileId || ''} onChange={(event) => setForm({ ...form, profileId: event.target.value })} placeholder="volitelné" /></Field>
         <Field label="Poznámka" className="span2"><textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></Field>
+        {/* account linking is normally automatic (same e-mail at sign-up); the raw ID is only for fixing a broken link */}
+        <details className="field span2 drawer-advanced">
+          <summary>Propojení s účtem (pokročilé)</summary>
+          <Field label="ID uživatelského účtu"><input value={form.profileId || ''} onChange={(event) => setForm({ ...form, profileId: event.target.value })} placeholder="obvykle není potřeba, řidič se propojí přes stejný e-mail" /></Field>
+        </details>
         <div className="field span2 drawer-form-actions">
           <button className="primary" type="submit">{editing ? 'Uložit změny' : 'Vytvořit řidiče'}</button>
           <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>

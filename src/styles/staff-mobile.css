@@ -1,4 +1,9 @@
-/* Staff app on phones: calmer cards and compact notification screen. */
+/* Staff app on phones: bottom navigation, calmer cards and compact notification screen. */
+
+.staff-bottom-nav,
+.staff-more-backdrop {
+  display: none;
+}
 
 @media (max-width: 760px) {
   .app-with-topbar .kpis {
@@ -128,6 +133,10 @@
     border-radius: 12px;
   }
 
+  .app-with-topbar .topbar .actions > .notification-toolbar-button.primary {
+    grid-column: 1 / -1;
+  }
+
   .app-with-topbar .staff-message-composer,
   .app-with-topbar .staff-message-history {
     margin-bottom: 12px;
@@ -136,6 +145,184 @@
   .app-with-topbar .staff-message-history-list {
     max-height: none;
     overflow: visible;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-with-topbar {
+    --staff-nav-space: calc(70px + env(safe-area-inset-bottom,0px));
+  }
+
+  /* One title per page: the top bar names it and the bottom bar replaces the scrolling menu and the top bar menus. */
+  .app-with-topbar .sidebar,
+  .app-with-topbar .topbar h2,
+  .app-with-topbar .app-topbar-actions .topbar-menu-wrap:not(.sync-status),
+  .app-with-topbar .app-topbar-actions > .topbar-icon-button {
+    display: none;
+  }
+
+  .app-with-topbar .main {
+    padding-bottom: calc(var(--staff-nav-space) + 16px);
+  }
+
+  .staff-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 70;
+    display: grid;
+    grid-template-columns: repeat(5,minmax(0,1fr));
+    gap: 4px;
+    padding: 6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));
+    border-top: 1px solid var(--line);
+    background: rgba(8,17,31,.97);
+    backdrop-filter: blur(18px);
+  }
+
+  .staff-bottom-nav button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 56px;
+    padding: 6px 2px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .staff-bottom-nav button b {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .staff-bottom-nav button.active {
+    border-color: rgba(245,199,106,.32);
+    background: rgba(245,199,106,.12);
+    color: var(--text);
+  }
+
+  .app-with-topbar .planner-fab {
+    bottom: calc(var(--staff-nav-space) + 12px);
+  }
+
+  .app-with-topbar .planner-toast {
+    bottom: calc(var(--staff-nav-space) + 70px);
+  }
+
+  .app-with-topbar .update-toast {
+    bottom: calc(var(--staff-nav-space) + 12px);
+  }
+
+  /* the sheet stays above the bottom bar, so "Více" also closes it again */
+  .staff-more-backdrop {
+    position: fixed;
+    inset: 0 0 var(--staff-nav-space) 0;
+    z-index: 65;
+    display: flex;
+    align-items: flex-end;
+    background: rgba(2,6,12,.58);
+    backdrop-filter: blur(6px);
+  }
+
+  .staff-more-sheet {
+    display: grid;
+    gap: 14px;
+    width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    padding: 16px max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px));
+    border-top: 1px solid var(--line);
+    border-radius: 22px 22px 0 0;
+    background: #0b1423;
+    box-shadow: var(--shadow);
+  }
+
+  .staff-more-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .staff-more-head > div {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .staff-more-head small {
+    color: var(--muted);
+  }
+
+  .staff-more-avatar {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    background: rgba(245,199,106,.16);
+    color: var(--gold);
+    font-weight: 900;
+  }
+
+  .staff-more-close {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .staff-more-list {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 8px;
+  }
+
+  .staff-more-list button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,.04);
+    color: var(--text);
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .staff-more-list button span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .staff-more-list button.active {
+    border-color: rgba(245,199,106,.45);
+    background: rgba(245,199,106,.12);
+  }
+
+  .staff-more-list svg {
+    flex: 0 0 auto;
+    color: var(--gold);
+  }
+
+  .staff-more-signout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
   }
 }
 

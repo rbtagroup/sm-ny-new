@@ -1637,16 +1637,12 @@
     min-height: 42px;
   }
 
-  .planner-period-nav,
-  .planner-more-actions {
-    grid-column: 1/-1;
-  }
-
+  /* one row on phones: ‹ Dnes › on the left, the actions menu on the right */
   .planner-period-nav {
     display: grid;
-    grid-template-columns: repeat(3,minmax(0,1fr));
-    gap: 8px;
-    width: 100%;
+    grid-template-columns: 46px auto 46px;
+    gap: 6px;
+    width: auto;
   }
 
   .planner-period-nav button {
@@ -1656,37 +1652,23 @@
     padding: 10px 6px;
   }
 
+  .planner-nav-label {
+    display: none;
+  }
+
   .planner-new-inline {
     display: none !important;
   }
 
   .planner-more-actions {
-    display: block;
-    width: 100%;
+    justify-self: end;
   }
 
   .planner-more-actions summary {
     display: flex;
-    justify-content: center;
-    width: 100%;
-  }
-
-  .planner-more-panel {
-    position: static;
-    gap: 8px;
-    min-width: 0;
-    margin-top: 8px;
-    padding: 0;
-    border: 0;
-    background: none;
-    box-shadow: none;
-  }
-
-  .planner-more-panel button {
-    border-color: var(--line);
-    background: rgba(255,255,255,.045);
-    text-align: center;
-    white-space: normal;
+    align-items: center;
+    min-height: 44px;
+    white-space: nowrap;
   }
 
   .planner-fab {

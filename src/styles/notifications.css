@@ -1,4 +1,4 @@
-/* Notifications and staff messages; the notification rows are shared by the staff and driver inboxes. */
+/* Notifications, staff messages and the settings page; the notification rows are shared by the staff and driver inboxes. */
 
 .notification-row {
   overflow: hidden;
@@ -441,5 +441,151 @@
 
   .driver-notification-titleline b {
     white-space: normal;
+  }
+}
+
+.notifications-history,
+.notifications-device {
+  margin-top: 16px;
+}
+
+.staff-message-history.is-embedded {
+  display: grid;
+  gap: 12px;
+}
+
+.staff-message-composer.is-drawer {
+  display: grid;
+  gap: 12px;
+}
+
+.staff-message-composer.is-drawer > .section-title {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.staff-message-composer.is-drawer > .section-title .pill {
+  justify-self: start;
+}
+
+.push-diagnostics {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.push-diagnostics > summary,
+.drawer-advanced > summary {
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.push-diagnostics[open] > summary {
+  margin-bottom: 12px;
+}
+
+.drawer-advanced[open] > summary {
+  margin-bottom: 8px;
+}
+
+/* Settings: cards in a grid, one save bar and diagnostics folded away. */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 16px;
+}
+
+.settings-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-copy {
+  margin: 0 0 12px;
+}
+
+.settings-links {
+  flex-wrap: wrap;
+}
+
+.settings-exports {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-exports button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.settings-exports button span {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-exports button small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.settings-rules {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+}
+
+.settings-savebar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(8,17,31,.96);
+  box-shadow: var(--shadow);
+}
+
+.settings-savebar span {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.settings-savebar.is-dirty {
+  border-color: rgba(245,199,106,.5);
+}
+
+.settings-savebar.is-dirty span {
+  color: #ffe6a3;
+}
+
+.settings-diagnostics {
+  margin-top: 4px;
+}
+
+.settings-mono {
+  font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .settings-grid,
+  .settings-rules {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-with-topbar .settings-savebar {
+    bottom: calc(var(--staff-nav-space, 0px) + 8px);
   }
 }

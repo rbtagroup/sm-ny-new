@@ -44,7 +44,7 @@ export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, 
       const record = { id: uid('push'), profileId: profile?.id || '', driverId: isDriver ? currentDriver?.id || '' : '', role: isDriver ? 'driver' : (profile?.role || 'admin'), endpoint: sub.endpoint || '', subscription: sub, platform: navigator.userAgent, createdAt: new Date().toISOString(), active: true }
       commit((prev) => ({ ...prev, pushSubscriptions: [record, ...(prev.pushSubscriptions || []).filter((x) => x.endpoint !== record.endpoint)] }), 'Zařízení povolilo notifikace.')
       setPermission('granted')
-      setStatus(sub.endpoint ? 'Zařízení je přihlášené k push notifikacím.' : 'Notifikace jsou povolené. Pro ostré push zprávy doplň VAPID klíč a backend.')
+      setStatus(sub.endpoint ? 'Zařízení je přihlášené k push notifikacím.' : 'Notifikace jsou povolené, ale server je na toto zařízení zatím neumí posílat.')
       await showBrowserNotification('RBSHIFT notifikace aktivní', 'Test notifikace proběhl v pořádku.')
     } catch (err) {
       setPermission('Notification' in window ? Notification.permission : 'unsupported')
@@ -105,25 +105,18 @@ export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, 
 
   return <div className={isDriver ? 'driver-push-panel' : 'card'}>
     <div className={`section-title ${isDriver ? 'driver-push-title' : ''}`.trim()}>
-      <div><h3>{isDriver ? 'Upozornění na směny' : 'Push notifikace zařízení'}</h3>{isDriver && <p className="muted">Připomenutí směn, změn a nabídek kolegů na tomto zařízení.</p>}</div>
+      <div><h3>{isDriver ? 'Upozornění na směny' : 'Upozornění na tomto zařízení'}</h3>{isDriver && <p className="muted">Připomenutí směn, změn a nabídek kolegů na tomto zařízení.</p>}</div>
       <span className={isDriver ? `pill ${driverPushState[1]}` : (permission === 'granted' ? 'pill good' : 'pill warn')}>{isDriver ? driverPushState[0] : permissionLabel}</span>
     </div>
-    {!isDriver && <p className="muted">Android podporuje PWA notifikace přímo v Chrome. Na iPhonu musí být aplikace přidaná na plochu a musí běžet jako PWA, jinak iOS běžně nepovolí web push pro stránku otevřenou jen v Safari.</p>}
     {isDriver && <div className="driver-push-status-grid">
       <div><span>Prohlížeč</span><b>{supported && pushSupported ? 'Připravený' : 'Nepodporuje'}</b></div>
       <div><span>Zařízení</span><b>{activeDevices.length ? 'Připojené' : 'Nepřipojené'}</b></div>
       <div><span>Povolení</span><b>{permissionLabel}</b></div>
       <div><span>Poslední push</span><b>{lastPushAt ? formatDateTime(lastPushAt) : '—'}</b></div>
     </div>}
-    {!isDriver && <div className="grid three" style={{ margin: '12px 0' }}>
-      <Kpi label="Service Worker" value={supported ? 'OK' : 'Ne'} hint="základ PWA" kind={supported ? 'good' : 'bad'} />
-      <Kpi label="PushManager" value={pushSupported ? 'OK' : 'Ne'} hint="remote push" kind={pushSupported ? 'good' : 'warn'} />
-      <Kpi label="VAPID klíč" value={vapidPublicKey ? 'vyplněn' : 'chybí'} hint="browser subscription" kind={vapidPublicKey ? 'good' : 'warn'} />
-    </div>}
     <div className={isDriver ? 'driver-push-actions' : 'actions'} style={isDriver ? undefined : { justifyContent: 'flex-start' }}>
       <button className="primary" onClick={subscribe}>{isDriver && <Bell size={18} strokeWidth={2.3} aria-hidden="true" />}Povolit na tomto zařízení</button>
       <button className="ghost" onClick={test}>{isDriver && <Check size={18} strokeWidth={2.4} aria-hidden="true" />}Otestovat</button>
-      {!isDriver && <button className="ghost" onClick={serverTest}>Server push test</button>}
     </div>
     {status && <div className="alert warn" style={{ marginTop: 12 }}>{status}</div>}
     {isDriver && permission === 'denied' && <div className="driver-push-note">Notifikace jsou v prohlížeči blokované. Povol je v nastavení webu a vrať se sem znovu.</div>}
@@ -133,7 +126,16 @@ export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, 
       {myDevices.map((d) => <div className="device-row" key={d.id}><div><b>{deviceLabelFromUserAgent(d.platform)}</b><br /><small className="muted">{d.active === false ? 'Vypnuté zařízení' : (d.lastError ? `Chyba: ${d.lastError}` : 'Aktivní push zařízení')}</small>{d.lastDeliveryAt && <><br /><small className="muted">Poslední push: {formatDateTime(d.lastDeliveryAt)}</small></>}</div>{d.active !== false && (isDriver ? <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => setDeviceToRemove(d.id)} aria-label="Odebrat zařízení" title="Odebrat"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button> : <button className="danger" onClick={() => setDeviceToRemove(d.id)}>Odebrat</button>)}</div>)}
       {!myDevices.length && <div className={`empty ${isDriver ? 'driver-empty-inbox' : ''}`.trim()}>{isDriver ? 'Toto zařízení zatím není připojené.' : 'Na tomto účtu zatím není uložené žádné zařízení.'}</div>}
     </div>
-    <p className="hintline">{isDriver ? 'Upozornění chodí jen na zařízení, kde je aplikace povolená.' : 'Notifikace dostanete na všechna zařízení, kde je app aktivní.'}</p>
+    <p className="hintline">{isDriver ? 'Upozornění chodí jen na zařízení, kde je aplikace povolená.' : 'Upozornění dostanete na všechna zařízení, kde je aplikace povolená.'}</p>
+    {!isDriver && <details className="push-diagnostics">
+      <summary>Diagnostika</summary>
+      <div className="grid three">
+        <Kpi label="Service Worker" value={supported ? 'OK' : 'Ne'} hint="základ PWA" kind={supported ? 'good' : 'bad'} />
+        <Kpi label="PushManager" value={pushSupported ? 'OK' : 'Ne'} hint="remote push" kind={pushSupported ? 'good' : 'warn'} />
+        <Kpi label="VAPID klíč" value={vapidPublicKey ? 'vyplněn' : 'chybí'} hint="browser subscription" kind={vapidPublicKey ? 'good' : 'warn'} />
+      </div>
+      <div className="row-actions"><button className="ghost" type="button" onClick={serverTest}>Otestovat doručení přes server</button></div>
+    </details>}
     {deviceToRemove && <Modal title="Odebrat zařízení" onClose={() => setDeviceToRemove('')} className="driver-swap-modal driver-action-modal" backdropClassName="driver-swap-modal-backdrop">
       <div className="stack driver-swap-form">
         <p className="driver-action-copy">Toto zařízení přestane dostávat push notifikace pro tento účet.</p>

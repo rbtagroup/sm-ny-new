@@ -10,15 +10,19 @@ export const weekdayCronMap = {
   6: 'sobota',
 }
 
+// "Každou středu", "Každé pondělí", "Každý pátek": the adjective follows the gender of the day.
 const weekdayHumanMap = {
-  0: 'neděli',
-  1: 'pondělí',
-  2: 'úterý',
-  3: 'středu',
-  4: 'čtvrtek',
-  5: 'pátek',
-  6: 'sobotu',
+  0: 'Každou neděli',
+  1: 'Každé pondělí',
+  2: 'Každé úterý',
+  3: 'Každou středu',
+  4: 'Každý čtvrtek',
+  5: 'Každý pátek',
+  6: 'Každou sobotu',
 }
+
+// Days in the order people read a week, Monday first.
+export const weekdayCronOrder = ['1', '2', '3', '4', '5', '6', '0']
 
 export function parseDriverReminderCron(value = defaultDriverReminderCron) {
   const parts = String(value || defaultDriverReminderCron).trim().split(/\s+/)
@@ -52,5 +56,5 @@ export function isValidSimpleWeeklyCron(value = '') {
 export function humanDriverReminderCron(value = defaultDriverReminderCron) {
   if (!isValidSimpleWeeklyCron(value)) return 'Neplatný cron formát'
   const parsed = parseDriverReminderCron(value)
-  return `Každou ${weekdayHumanMap[Number(parsed.weekday)] || 'středu'} v ${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`
+  return `${weekdayHumanMap[Number(parsed.weekday)] || 'Každou středu'} v ${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`
 }

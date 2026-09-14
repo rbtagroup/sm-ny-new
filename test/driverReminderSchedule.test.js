@@ -28,5 +28,8 @@ test('isValidSimpleWeeklyCron rejects unsupported schedules', () => {
 
 test('humanDriverReminderCron formats Czech user-facing label', () => {
   assert.equal(humanDriverReminderCron('0 18 * * 3'), 'Každou středu v 18:00')
+  assert.equal(humanDriverReminderCron('35 15 * * 6'), 'Každou sobotu v 15:35')
+  assert.equal(humanDriverReminderCron('0 7 * * 1'), 'Každé pondělí v 07:00')
+  assert.equal(humanDriverReminderCron('30 9 * * 5'), 'Každý pátek v 09:30')
   assert.equal(humanDriverReminderCron('bad value'), 'Neplatný cron formát')
 })

@@ -36,6 +36,7 @@ import { SettlementFormModal } from './SettlementFormModal.jsx'
 import { ShiftTable } from './StaffShiftTable.jsx'
 import { ShiftTemplates } from './ShiftTemplatesView.jsx'
 import { CoverageNorms } from './CoverageNormsView.jsx'
+import { StaffAvailability } from './StaffAvailabilityView.jsx'
 import { Vehicles } from './VehiclesView.jsx'
 import { useCurrentDate } from './useCurrentDate.js'
 import { createAppDataSync } from './lib/appDataSync.js'
@@ -229,6 +230,13 @@ function App({ session = null, profile = null, signOut = null }) {
   const demoRole = ['admin', 'dispatcher', 'driver'].includes(demoParams.role) ? demoParams.role : ''
   const demoDriverId = resolveDemoDriverId(demoParams.driver, data.drivers)
   const [page, setPage] = useState(() => demoRole === 'driver' ? 'driver' : 'planner')
+  // a dashboard task opens the planner once at its shift or missing coverage
+  const [plannerIntent, setPlannerIntent] = useState(null)
+  const openPlannerFor = (intent) => {
+    setPlannerIntent(intent)
+    setPage('planner')
+  }
+  useEffect(() => { if (page !== 'planner') setPlannerIntent(null) }, [page])
   const [role, setRole] = useState(() => profile?.role || demoRole || 'admin')
   const ownDriver = onlineMode ? data.drivers.find((d) => d.profileId === session.user.id || (d.email && d.email.toLowerCase() === session.user.email?.toLowerCase())) : null
   const [currentDriverId, setCurrentDriverId] = useState(demoDriverId || ownDriver?.id || data.drivers[0]?.id || '')
@@ -325,6 +333,7 @@ function App({ session = null, profile = null, signOut = null }) {
       canOpenSettings={canOpenSettings}
       signOut={signOut}
       setPage={setPage}
+      page={page}
       activePage={navPageFor(page)}
       sidebarSections={sidebarSections}
       onlineMode={onlineMode}
@@ -332,19 +341,19 @@ function App({ session = null, profile = null, signOut = null }) {
       onRetrySync={() => reloadOnline()}
       updateToast={updateToast}
     >
-      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} onOpenTemplates={role === 'admin' ? () => setPage('shiftTemplates') : undefined} onOpenNorms={() => setPage('coverageNorms')} />}
-      {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} today={currentDate} ui={dashboardUi} services={dashboardServices} tabs={overviewPageTabs} />}
+      {page === 'planner' && <Planner data={data} helpers={helpers} commit={commit} today={currentDate} ui={plannerUi} services={plannerServices} onOpenTemplates={role === 'admin' ? () => setPage('shiftTemplates') : undefined} onOpenNorms={() => setPage('coverageNorms')} intent={plannerIntent} />}
+      {page === 'dashboard' && <Dashboard data={data} helpers={helpers} commit={commit} today={currentDate} ui={dashboardUi} services={dashboardServices} tabs={overviewPageTabs} onOpenPlanner={openPlannerFor} />}
       {page === 'settlements' && <Settlements data={data} helpers={helpers} commit={commit} />}
       {page === 'audit' && <OperationalAudit data={data} helpers={helpers} tabs={overviewPageTabs} onOpenNorms={() => setPage('coverageNorms')} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'shifts' && <ShiftsList data={data} helpers={helpers} commit={commit} />}
       {page === 'drivers' && <Drivers data={data} commit={commit} ui={driversUi} services={driversServices} onlineMode={onlineMode} reloadOnline={reloadOnline} canRemoveDrivers={role === 'admin'} onOpenAvailability={() => setPage('availability')} />}
       {page === 'vehicles' && <Vehicles data={data} commit={commit} ui={vehiclesUi} services={vehiclesServices} />}
-      {page === 'availability' && <Availability data={data} commit={commit} currentDriver={null} ui={availabilityUi} />}
+      {page === 'availability' && <StaffAvailability data={data} commit={commit} today={currentDate} ui={staffAvailabilityUi} />}
       {page === 'shiftTemplates' && <ShiftTemplates data={data} commit={commit} ui={shiftTemplatesUi} />}
       {page === 'coverageNorms' && <CoverageNorms data={data} commit={commit} today={currentDate} ui={coverageNormsUi} />}
       {page === 'history' && <History data={data} ui={historyUi} services={historyServices} tabs={overviewPageTabs} />}
-      {page === 'settings' && <SettingsView data={data} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} version={VERSION} ui={settingsUi} />}
+      {page === 'settings' && <SettingsView data={data} helpers={helpers} commit={commit} supabase={supabase} onlineMode={onlineMode} reloadOnline={reloadOnline} profile={profile} version={VERSION} ui={settingsUi} onOpenTemplates={() => setPage('shiftTemplates')} onOpenNorms={() => setPage('coverageNorms')} />}
   </StaffAppShell>
 }
 const settlementFormUi = { Field, Modal, ReasonActionModal, SettlementStatusPill, ShiftActionSummary }
@@ -354,12 +363,13 @@ const shiftTableServices = { uid, isPastLocked, statusNoticeForShift, cancelShif
 const plannerUi = { PageTitle, Kpi, Field, Select, ConflictBox, ConfirmActionModal, ReasonActionModal, ShiftActionSummary, SettlementStatusPill, SettlementSummary, SideDrawer, StatusPill }
 const plannerServices = { uid, buildHelpers, makeNotice, adminNotice, appendSwapHistory, isPastLocked, statusNoticeForShift, cancelShiftData, hardDeleteShiftData, copyText, weekText, driverText, settlementFormUi, settlementFormServices, shiftTableUi, shiftTableServices }
 const dashboardUi = { PageTitle, Kpi, StatusPill }
-const dashboardServices = { copyText, shiftTableUi, shiftTableServices }
+const dashboardServices = { copyText, makeNotice, shiftTableUi, shiftTableServices }
 const driverHomeUi = { ConflictBox, Field, Kpi, Modal, ReasonActionModal, SettlementFormModal, SettlementStatusPill, SettlementSummary, ShiftActionSummary, StatusPill }
 const availabilityUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle }
+const staffAvailabilityUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer }
 const driversUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
 const driversServices = { uid, supabase, copyText }
-const notificationUi = { Field, Kpi, Modal, PageTitle }
+const notificationUi = { Field, Kpi, Modal, PageTitle, SideDrawer }
 const driverSettingsUi = { PageTitle }
 const historyUi = { Field, PageTitle }
 const historyServices = { download }

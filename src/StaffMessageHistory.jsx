@@ -26,7 +26,7 @@ const rangeLabel = {
   all: 'Vše',
 }
 
-export function StaffMessageHistory({ data, helpers, ui }) {
+export function StaffMessageHistory({ data, helpers, ui, embedded = false }) {
   const { Field } = ui
   const [filters, setFilters] = useState({ target: 'all', status: 'all', range: '30' })
   const allMessages = driverMessageHistory(data)
@@ -34,11 +34,11 @@ export function StaffMessageHistory({ data, helpers, ui }) {
   const activeDrivers = (data.drivers || []).filter((driver) => driver.active !== false)
   const update = (patch) => setFilters((current) => ({ ...current, ...patch }))
 
-  return <div className="card staff-message-history">
-    <div className="section-title">
+  return <div className={embedded ? 'staff-message-history is-embedded' : 'card staff-message-history'}>
+    {!embedded && <div className="section-title">
       <h3>Historie zpráv řidičům</h3>
       <span className={messages.length ? 'pill good' : 'pill warn'}>{messages.length}/{allMessages.length} zobrazeno</span>
-    </div>
+    </div>}
     <div className="form staff-message-filters">
       <Field label="Příjemce">
         <select value={filters.target} onChange={(event) => update({ target: event.target.value })}>
@@ -87,6 +87,5 @@ export function StaffMessageHistory({ data, helpers, ui }) {
         </div>
       })}
     </div> : <div className="empty">Pro vybrané filtry tu nejsou žádné zprávy.</div>}
-    <p className="hintline">Historie používá uložený delivery log, pokud už existuje. Starší zprávy bez logu se zobrazí jako bez výsledku nebo podle aktuálních zařízení.</p>
   </div>
 }

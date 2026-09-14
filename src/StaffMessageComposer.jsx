@@ -5,7 +5,7 @@ import { appFriendlyError } from './lib/errors.js'
 import { addNotificationsToData } from './lib/notifications.js'
 import { pushResultLabel } from './lib/pushResultLabel.js'
 
-export function StaffMessageComposer({ data, commit, session, ui, services }) {
+export function StaffMessageComposer({ data, commit, session, ui, services, variant = 'card' }) {
   const { Field } = ui
   const { makeNotice } = services
   const activeDrivers = (data.drivers || []).filter((driver) => driver.active !== false)
@@ -56,9 +56,9 @@ export function StaffMessageComposer({ data, commit, session, ui, services }) {
     }
   }
 
-  return <div className="card staff-message-composer">
+  return <div className={variant === 'drawer' ? 'staff-message-composer is-drawer' : 'card staff-message-composer'}>
     <div className="section-title">
-      <h3>Poslat zprávu řidičům</h3>
+      {variant === 'drawer' ? <span className="muted">Dorazí do aplikace a jako upozornění na telefon.</span> : <h3>Poslat zprávu řidičům</h3>}
       <span className={targetDevices ? 'pill good' : 'pill warn'}>{targetLabel}</span>
     </div>
     <form className="form two-col" onSubmit={submit}>
