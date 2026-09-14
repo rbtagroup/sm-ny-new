@@ -77,6 +77,7 @@ Edge funkce `scheduler` a `driver-reminder` jsou v `supabase/functions` a nasazu
 ## Poznámky
 
 - Produkce posílá bezpečnostní hlavičky z `vercel.json` včetně Content-Security-Policy. Nový externí zdroj (API, obrázky, fonty) je potřeba do CSP doplnit, jinak ho prohlížeč zablokuje.
+- Styly: `src/main.css` jen importuje soubory ze `src/styles/` v pořadí kaskády (pozdější soubor může přepsat dřívější), nové styly patří do souboru dané části aplikace. Po úpravě, která nemá měnit vzhled (úklid, přesun pravidel), spusť `pnpm run check:styles`: porovná vypočtené styly všech obrazovek v několika šířkách proti poslední verzi v gitu (`QUICK=1` pro rychlou kontrolu, `BASE_REF=<commit>` pro jiný základ).
 
 - `package-lock.json` v projektu není potřeba; zdrojem pravdy je `pnpm-lock.yaml`.
 - Service worker a `index.html` zůstávají bez cache, hashované assety se cachují dlouhodobě.

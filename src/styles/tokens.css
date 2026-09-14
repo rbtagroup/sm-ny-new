@@ -1,0 +1,17 @@
+/* Design tokens shared by the whole app. */
+
+:root {
+  --bg: #07101d;
+  --panel: #0d1828;
+  --panel2: #111f33;
+  --muted: #91a4bd;
+  --text: #eef5ff;
+  --line: rgba(255,255,255,.11);
+  --gold: #f5c76a;
+  --gold2: #b88936;
+  --good: #48d597;
+  --warn: #ffcf5a;
+  --bad: #ff6b6b;
+  --blue: #80c7ff;
+  --shadow: 0 24px 80px rgba(0,0,0,.42);
+}

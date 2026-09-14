@@ -1,0 +1,1129 @@
+/* Shift planner: calendar and week grid, shift cards, KPI bar, filters, new-shift drawer, week planning, mobile shift cards and missing coverage. */
+
+.week-grid {
+  display: grid;
+  padding-bottom: 6px;
+  grid-template-columns: repeat(7,minmax(0,1fr));
+  gap: 10px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.day {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255,255,255,.045);
+  min-height: 210px;
+  padding: 10px;
+}
+
+.day.today {
+  border-color: rgba(245,199,106,.65);
+  box-shadow: 0 0 0 3px rgba(245,199,106,.08);
+}
+
+.day h4 {
+  margin: 0 0 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  position: relative;
+}
+
+.shift-card {
+  display: grid;
+  gap: 6px;
+  border-left: 3px solid var(--gold);
+  background: rgba(0,0,0,.18);
+  border-radius: 14px;
+  padding: 10px;
+  margin-bottom: 9px;
+  font-size: 13px;
+}
+
+.sticky-card {
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+}
+
+.mobile-day-head {
+  display: none;
+}
+
+.planner-filter {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.shift-card.status-draft,
+.shift-card.status-assigned {
+  background: linear-gradient(135deg,rgba(255,207,90,.13),rgba(0,0,0,.14));
+}
+
+.shift-card.status-confirmed,
+.shift-card.status-completed {
+  background: linear-gradient(135deg,rgba(72,213,151,.12),rgba(0,0,0,.15));
+}
+
+.shift-card.status-declined,
+.shift-card.status-cancelled {
+  background: linear-gradient(135deg,rgba(255,107,107,.13),rgba(0,0,0,.15));
+}
+
+.compact-shift {
+  gap: 8px;
+}
+
+.shift-summary-main b {
+  font-size: 14px;
+}
+
+.shift-summary-main span {
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shift-summary-side {
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.shift-summary-side small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.calendar-card {
+  overflow: hidden;
+}
+
+.two-week-calendar {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.week-block {
+  display: grid;
+  gap: 10px;
+}
+
+.week-block-title {
+  position: sticky;
+  top: 86px;
+  z-index: 18;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(8,17,31,.94);
+  backdrop-filter: blur(14px);
+}
+
+.day-menu {
+  position: relative;
+}
+
+.day-menu > summary {
+  list-style: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.045);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.day-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.day-menu-panel {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 22;
+  min-width: 150px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #0b1423;
+  box-shadow: var(--shadow);
+  padding: 6px;
+}
+
+.day-menu-panel button {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.day-menu-panel button:hover {
+  background: rgba(245,199,106,.12);
+}
+
+.calendar-empty {
+  padding: 7px 9px !important;
+  border-radius: 12px;
+  font-size: 12px;
+  min-height: 0;
+}
+
+.shift-summary {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.shift-summary-main b,
+.shift-summary-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shift-summary-side .pill {
+  max-width: 110px;
+  justify-content: center;
+}
+
+.shift-summary-main,
+.shift-summary-side {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.calendar-shift-card {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  text-align: left;
+  color: var(--text);
+  gap: 3px;
+  line-height: 1.25;
+  overflow: visible;
+  background: rgba(0,0,0,.18);
+  padding: 8px 9px;
+  margin-bottom: 7px;
+}
+
+.calendar-shift-card:hover {
+  border-color: rgba(245,199,106,.45);
+  transform: translateY(-1px);
+}
+
+.calendar-shift-card.line-good {
+  border-left-color: var(--good);
+}
+
+.calendar-shift-card.line-open {
+  border-left-color: var(--warn);
+}
+
+.calendar-shift-card.line-waiting {
+  border-left-color: #ff9f43;
+}
+
+.calendar-shift-card.line-swap {
+  border-left-color: var(--blue);
+  background: rgba(128,199,255,.10);
+}
+
+.calendar-shift-card.line-bad {
+  border-left-color: var(--bad);
+}
+
+.calendar-shift-time,
+.calendar-shift-driver,
+.calendar-shift-conflict,
+.calendar-shift-swap {
+  display: block;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  max-width: none;
+}
+
+.calendar-shift-time {
+  font-weight: 950;
+  font-size: 13px;
+  letter-spacing: -.01em;
+}
+
+.calendar-shift-driver {
+  font-weight: 850;
+  color: #f3f7ff;
+}
+
+.calendar-shift-conflict {
+  font-size: 12px;
+  color: #ffdede;
+  font-weight: 850;
+}
+
+.calendar-shift-swap {
+  font-size: 12px;
+  color: #cfeaff;
+  font-weight: 900;
+}
+
+.planner-main-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.shift-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(2,6,12,.58);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.shift-drawer {
+  width: 400px;
+  max-width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  background: linear-gradient(180deg,rgba(11,20,35,.98),rgba(8,17,31,.98));
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+/* The head must not be position: sticky. Safari resolves sticky against .main (overflow: hidden) and pushes it over the form, so only .shift-drawer-body scrolls. */
+.shift-drawer-head {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: calc(16px + env(safe-area-inset-top,0px)) 18px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(8,17,31,.96);
+}
+
+.shift-drawer-head h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.shift-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 18px 18px calc(18px + env(safe-area-inset-bottom,0px));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.shift-form-panel {
+  display: grid;
+  gap: 0;
+}
+
+.drawer-form-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+}
+
+.drawer-form-actions button {
+  flex: 1;
+}
+
+.planner-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 110;
+  border: 1px solid rgba(72,213,151,.45);
+  border-radius: 16px;
+  background: rgba(8,17,31,.96);
+  box-shadow: var(--shadow);
+  color: #d8fff0;
+  padding: 12px 14px;
+  font-weight: 850;
+}
+
+.planner-main-grid .calendar-card {
+  min-width: 0;
+  overflow: visible;
+}
+
+.planner-kpi-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  max-height: 60px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035));
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+
+.planner-kpi-context,
+.planner-kpi-item,
+.planner-kpi-reset {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 11px;
+  background: rgba(255,255,255,.045);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.planner-kpi-context {
+  color: #f7dfac;
+  background: rgba(245,199,106,.09);
+  border-color: rgba(245,199,106,.28);
+}
+
+.planner-kpi-item {
+  transition: .18s ease;
+}
+
+.planner-kpi-item b {
+  font-weight: 950;
+}
+
+.planner-kpi-item span,
+.planner-kpi-reset {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.planner-kpi-item:not(.passive):hover,
+.planner-kpi-reset:hover {
+  border-color: rgba(245,199,106,.55);
+  transform: translateY(-1px);
+}
+
+.planner-kpi-item.passive {
+  cursor: default;
+}
+
+.planner-kpi-item.danger {
+  color: #ffdede;
+  border-color: rgba(255,107,107,.45);
+  background: rgba(255,107,107,.10);
+}
+
+.planner-kpi-item.danger span {
+  color: #ffdede;
+}
+
+.planner-kpi-item.danger.active {
+  box-shadow: 0 0 0 3px rgba(255,107,107,.14);
+}
+
+.planner-kpi-item.missing {
+  color: #fff3c7;
+  border-color: rgba(255,207,90,.42);
+  background: rgba(255,207,90,.10);
+}
+
+.planner-kpi-item.missing span {
+  color: #fff3c7;
+}
+
+.planner-kpi-item.missing button {
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  font-weight: 950;
+  padding: 0 0 0 5px;
+}
+
+.planner-kpi-reset {
+  background: rgba(245,199,106,.08);
+  color: #f7dfac;
+}
+
+.planner-kpi-detail {
+  margin: -2px 0 16px;
+}
+
+.missing-coverage-table {
+  max-height: 50vh;
+}
+
+.missing-coverage-table .table {
+  min-width: 720px;
+}
+
+.staff-shift-mobile-list {
+  display: none;
+}
+
+.missing-coverage-mobile-list {
+  display: none;
+}
+
+.planner-period-nav {
+  display: contents;
+}
+
+.planner-more-actions,
+.planner-fab,
+.day-empty-label {
+  display: none;
+}
+
+.planner-more-actions summary,
+.planner-filters-summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.planner-more-actions summary::-webkit-details-marker,
+.planner-filters-summary::-webkit-details-marker {
+  display: none;
+}
+
+.planner-filters-summary {
+  margin: 0;
+}
+
+.planner-filters-card[open] .planner-filters-summary {
+  margin-bottom: 12px;
+}
+
+.planner-filters-card .planner-filter {
+  margin-bottom: 0;
+}
+
+.day-empty-label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.week-plan-weeks {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+}
+
+.week-plan-weeks button {
+  display: grid;
+  gap: 2px;
+  min-height: 52px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  font-weight: 850;
+  text-align: left;
+}
+
+.week-plan-weeks button small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.week-plan-weeks button.active {
+  border-color: rgba(245,199,106,.65);
+  background: rgba(245,199,106,.14);
+  box-shadow: 0 0 0 3px rgba(245,199,106,.08);
+}
+
+.week-plan-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+  cursor: pointer;
+}
+
+.week-plan-option input {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--gold);
+}
+
+.week-plan-option span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.week-plan-option small,
+.week-plan-list small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.week-plan-summary {
+  font-weight: 850;
+}
+
+.week-plan-list {
+  display: grid;
+  gap: 6px;
+  max-height: 34vh;
+  margin: 0;
+  padding: 0 2px 0 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.week-plan-list li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+  border-radius: 12px;
+  background: rgba(0,0,0,.16);
+}
+
+.week-plan-list li.open {
+  border-left-color: var(--warn);
+}
+
+.week-plan-list span {
+  color: #dbeafe;
+  font-size: 13px;
+}
+
+.week-plan-skipped summary {
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.week-plan-skipped ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.week-plan-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1350px) {
+  .shift-summary-side {
+    align-items: flex-start;
+  }
+
+  .sticky-card {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+
+  .week-grid {
+    grid-template-columns: repeat(7,minmax(96px,1fr));
+    overflow: hidden;
+  }
+
+  .day {
+    min-height: 170px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .shift-drawer-backdrop {
+    justify-content: center;
+  }
+
+  .shift-drawer {
+    width: 100%;
+    border-left: 0;
+  }
+
+  .shift-drawer-head {
+    padding: calc(14px + env(safe-area-inset-top,0px)) 14px 14px;
+  }
+
+  .shift-drawer-body {
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom,0px));
+  }
+
+  .drawer-form-actions {
+    flex-direction: column;
+  }
+
+  .drawer-form-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .week-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-kpi-bar {
+    max-height: none;
+    flex-wrap: wrap;
+  }
+
+  .planner-kpi-context,
+  .planner-kpi-item,
+  .planner-kpi-reset {
+    height: 32px;
+  }
+
+  .week-block-title {
+    top: 0;
+  }
+
+  .week-grid .day.day-empty {
+    min-height: 0;
+    padding: 8px 12px;
+  }
+
+  .week-grid .day.day-empty h4 {
+    margin: 0;
+  }
+
+  .week-grid .day.day-empty .calendar-empty,
+  .week-grid .day.day-empty .mobile-day-head {
+    display: none;
+  }
+
+  .week-grid .day.day-empty .day-empty-label {
+    display: inline;
+  }
+}
+
+@media (max-width: 760px) {
+  .week-block-title {
+    display: grid;
+  }
+
+  .planner-filter {
+    grid-template-columns: 1fr;
+  }
+
+  .shift-table-desktop {
+    display: none;
+  }
+
+  .staff-shift-mobile-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .staff-shift-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-left: 3px solid rgba(245,199,106,.55);
+    border-radius: 14px;
+    background: rgba(255,255,255,.035);
+  }
+
+  .staff-shift-card.status-confirmed,
+  .staff-shift-card.status-completed {
+    border-left-color: var(--good);
+  }
+
+  .staff-shift-card.status-declined,
+  .staff-shift-card.status-cancelled {
+    border-left-color: var(--bad);
+  }
+
+  .staff-shift-card.status-open {
+    border-left-color: var(--warn);
+  }
+
+  .staff-shift-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .staff-shift-card-head div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .staff-shift-card-head b {
+    font-size: 17px;
+    line-height: 1.12;
+    letter-spacing: 0;
+  }
+
+  .staff-shift-card-head div > span {
+    color: #fff3c7;
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1.25;
+  }
+
+  .staff-shift-card-head .pill {
+    flex: 0 0 auto;
+  }
+
+  .staff-shift-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 8px;
+  }
+
+  .staff-shift-card-grid > span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 12px;
+    background: rgba(0,0,0,.10);
+  }
+
+  .staff-shift-card-grid small {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .staff-shift-card-grid b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+  }
+
+  .staff-shift-card-grid em {
+    color: var(--muted);
+    font-style: normal;
+    font-size: 11px;
+  }
+
+  .staff-shift-card-notes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+
+  .staff-shift-card-actions {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 8px;
+  }
+
+  .staff-shift-card-actions button {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    line-height: 1.15;
+  }
+
+  .staff-shift-card-actions .staff-shift-complete {
+    grid-column: 1/-1;
+  }
+
+  .staff-shift-more-actions {
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 12px;
+    background: rgba(255,255,255,.025);
+    overflow: hidden;
+  }
+
+  .staff-shift-more-actions > summary {
+    list-style: none;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .staff-shift-more-actions > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .staff-shift-more-actions > summary::after {
+    content: "▾";
+    margin-left: 7px;
+    color: #fff3c7;
+  }
+
+  .staff-shift-more-actions[open] > summary {
+    border-bottom: 1px solid rgba(255,255,255,.10);
+    color: var(--text);
+  }
+
+  .staff-shift-more-actions[open] > summary::after {
+    content: "▴";
+  }
+
+  .staff-shift-more-actions-panel {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .staff-shift-more-actions-panel button {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    line-height: 1.15;
+  }
+
+  .staff-shift-more-actions-panel .icon-only {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .staff-shift-card-actions .icon-only {
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+
+  .missing-coverage-table {
+    display: none;
+  }
+
+  .missing-coverage-mobile-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .missing-coverage-card {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid rgba(255,207,90,.30);
+    border-radius: 14px;
+    background: rgba(255,207,90,.08);
+  }
+
+  .missing-coverage-card div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .missing-coverage-card b {
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  .missing-coverage-card span:not(.pill),
+  .missing-coverage-card small {
+    color: var(--muted);
+  }
+
+  .missing-coverage-card .pill {
+    justify-self: start;
+  }
+
+  .missing-coverage-card button {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .planner-period-nav,
+  .planner-more-actions {
+    grid-column: 1/-1;
+  }
+
+  .planner-period-nav {
+    display: grid;
+    grid-template-columns: repeat(3,minmax(0,1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .planner-period-nav button {
+    min-height: 44px;
+    white-space: nowrap;
+    width: 100%;
+    padding: 10px 6px;
+  }
+
+  .planner-new-inline,
+  .planner-secondary-inline {
+    display: none !important;
+  }
+
+  .planner-more-actions {
+    display: block;
+    width: 100%;
+  }
+
+  .planner-more-actions summary {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .planner-more-panel {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .planner-fab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    right: max(16px,env(safe-area-inset-right,0px));
+    bottom: calc(16px + env(safe-area-inset-bottom,0px));
+    z-index: 60;
+    width: auto !important;
+    min-height: 52px;
+    padding: 14px 20px;
+    border-radius: 999px;
+    box-shadow: 0 14px 34px rgba(0,0,0,.45);
+  }
+
+  .planner-fab-spacer {
+    height: calc(84px + env(safe-area-inset-bottom,0px));
+  }
+
+  .planner-toast {
+    left: 16px;
+    right: 16px;
+    bottom: calc(84px + env(safe-area-inset-bottom,0px));
+  }
+
+  .shift-drawer-head h3 {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .shift-drawer-head .ghost {
+    width: auto !important;
+    flex: 0 0 auto;
+  }
+
+  .shift-form-panel .form.two-col {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+
+  .shift-form-panel .field.span2 {
+    grid-column: 1/-1;
+  }
+
+  .shift-form-panel .drawer-form-actions {
+    position: sticky;
+    bottom: calc(-14px - env(safe-area-inset-bottom,0px));
+    z-index: 2;
+    flex-direction: row;
+    margin: 0 -14px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom,0px));
+    border-top: 1px solid var(--line);
+    background: rgba(8,17,31,.97);
+  }
+
+  .shift-form-panel .drawer-form-actions button {
+    flex: 1;
+    width: auto !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .mobile-day-head {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .week-block-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .day {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 420px) {
+  .staff-shift-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-shift-card-head {
+    display: grid;
+  }
+
+  .staff-shift-card-head .pill {
+    justify-self: start;
+  }
+
+  .staff-shift-more-actions-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 340px) {
+  .shift-form-panel .form.two-col {
+    grid-template-columns: 1fr;
+  }
+}

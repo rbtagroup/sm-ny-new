@@ -2,7 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const css = readFileSync(new URL('../src/main.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+// src/main.css only imports the component files in cascade order; inline them like the bundler does.
+function bundle(url) {
+  return readFileSync(url, 'utf8').replace(/^@import\s+['"]([^'"]+)['"];\s*$/gm, (_, path) => bundle(new URL(path, url)))
+}
+
+const css = bundle(new URL('../src/main.css', import.meta.url)).replace(/\/\*[\s\S]*?\*\//g, '')
 
 // Declaration blocks of every rule whose selector list contains `selector`, in source order (media rules included).
 function blocksFor(selector) {

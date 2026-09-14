@@ -1,0 +1,162 @@
+/* Element defaults, overflow guards and small utility classes. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top left,rgba(245,199,106,.16),transparent 32%),radial-gradient(circle at bottom right,rgba(128,199,255,.08),transparent 28%),linear-gradient(135deg,#06101d,#0b1320 48%,#101a2c);
+  color: var(--text);
+  font-family: Inter,Roboto,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+.brand small,
+.muted {
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.two {
+  grid-template-columns: 1.15fr .85fr;
+}
+
+.three {
+  grid-template-columns: repeat(3,minmax(0,1fr));
+}
+
+.four {
+  grid-template-columns: repeat(4,minmax(0,1fr));
+}
+
+.split {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.empty {
+  border: 1px dashed rgba(255,255,255,.18);
+  border-radius: 18px;
+  padding: 22px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.hintline {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.swap-history {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.035);
+}
+
+.copybox {
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(0,0,0,.20);
+  padding: 12px;
+  color: #dbeafe;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.danger-mini-text {
+  color: #ffd7d7;
+}
+
+.card-soft {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,.04);
+  padding: 14px;
+  margin-top: 12px;
+}
+
+code {
+  background: rgba(0,0,0,.25);
+  padding: 2px 5px;
+  border-radius: 6px;
+}
+
+.minzero {
+  min-width: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.main,
+.card,
+.calendar-card,
+.week-block,
+.week-grid,
+.day,
+.shift-card,
+.table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 1000;
+  height: env(safe-area-inset-top,0px);
+  background: #08111f;
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .good-text {
+    color: #d8fff0;
+  }
+
+  .bad-text {
+    color: #ffdede;
+  }
+}

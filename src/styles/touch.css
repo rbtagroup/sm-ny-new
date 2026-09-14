@@ -1,0 +1,41 @@
+/* Larger touch targets on coarse pointers. */
+
+@media (pointer: coarse) {
+  .topbar-icon-button,
+  .topbar-user-button,
+  .app-with-topbar .topbar-icon-button,
+  .app-with-topbar .topbar-user-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .app-topbar-logo,
+  .app-with-topbar .app-topbar-logo {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-with-topbar .sidebar .nav button {
+    min-height: 44px;
+  }
+
+  .auth-card .row-actions button {
+    min-height: 44px;
+  }
+
+  .planner-kpi-item,
+  .planner-kpi-reset {
+    height: auto;
+    min-height: 40px;
+  }
+
+  .planner-kpi-item button {
+    min-height: 36px;
+    padding: 0 6px;
+  }
+
+  button.pill {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+}

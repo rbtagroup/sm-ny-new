@@ -1,0 +1,61 @@
+/* Staff driver management: invites, removal and app status. */
+
+.pending-driver-row {
+  border-color: rgba(255,207,90,.42);
+  background: rgba(255,207,90,.06);
+}
+
+.driver-removal,
+.driver-invite {
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.drawer-section-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.driver-removal small,
+.driver-invite small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.driver-invite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.driver-invite-actions > * {
+  flex: 1 1 150px;
+  justify-content: center;
+  text-align: center;
+}
+
+.driver-app-status {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.driver-app-status.warn {
+  color: #ffd98a;
+}
+
+.driver-removal small + button {
+  margin-top: 6px;
+}
+
+.driver-removal .danger-soft {
+  border-color: rgba(255,107,107,.36);
+  background: rgba(255,107,107,.08);
+  color: #ffd7d7;
+}

@@ -1,0 +1,445 @@
+/* Notifications and staff messages; the notification rows are shared by the staff and driver inboxes. */
+
+.notification-row {
+  overflow: hidden;
+}
+
+.driver-notification-settings-card {
+  padding: 16px;
+}
+
+.notifications-card {
+  padding-top: 16px;
+}
+
+.notifications-staff-tools {
+  margin-top: 16px;
+  gap: 16px;
+}
+
+.notification-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.notification-group {
+  display: grid;
+  gap: 8px;
+}
+
+.notification-group-title {
+  padding: 0 2px;
+  color: #b9c6d8;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.notification-archive {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.025);
+}
+
+.notification-archive > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 14px;
+  color: #b9c6d8;
+  font-weight: 900;
+  list-style: none;
+  cursor: pointer;
+}
+
+.notification-archive > summary::-webkit-details-marker {
+  display: none;
+}
+
+.notification-archive > summary::after {
+  content: '▾';
+  color: var(--muted);
+}
+
+.notification-archive[open] > summary::after {
+  content: '▴';
+}
+
+.notification-archive > summary .pill {
+  margin-left: auto;
+}
+
+.notification-archive > .stack {
+  padding: 0 12px 12px;
+}
+
+.notification-archive-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 12px;
+  border-color: rgba(255,107,107,.36);
+  background: rgba(255,107,107,.08);
+  color: #ffd7d7;
+}
+
+.notification-row.notification-read {
+  opacity: .58;
+}
+
+.notification-row.notification-read:hover {
+  opacity: .82;
+}
+
+.notification-row.notification-unread {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.notification-row p {
+  margin: 8px 0 0;
+  line-height: 1.42;
+}
+
+.driver-notifications-card {
+  padding: 16px;
+}
+
+.driver-notifications-card .section-title {
+  align-items: flex-start;
+}
+
+.driver-notifications-card .section-title h3 {
+  font-size: 20px;
+}
+
+.driver-notifications-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+}
+
+.driver-notifications-toolbar button {
+  width: auto !important;
+  min-height: 40px;
+  padding: 9px 11px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  line-height: 1.15;
+}
+
+.driver-notifications-toolbar .danger-soft {
+  border-color: rgba(255,107,107,.36);
+  background: rgba(255,107,107,.08);
+  color: #ffd7d7;
+}
+
+.driver-notification-row {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.045);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.driver-notification-row.is-unread {
+  border-color: rgba(245,199,106,.34);
+  background: linear-gradient(180deg,rgba(245,199,106,.11),rgba(255,255,255,.04));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.driver-notification-row.is-read {
+  opacity: .84;
+}
+
+.driver-notification-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.driver-notification-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.driver-notification-titleline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.driver-notification-titleline b {
+  font-size: 15px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.driver-notification-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--gold);
+  box-shadow: 0 0 0 4px rgba(245,199,106,.12);
+  flex: 0 0 auto;
+}
+
+.driver-notification-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.driver-notification-row p {
+  margin: 0;
+  color: #dbeafe;
+  line-height: 1.42;
+}
+
+.driver-notification-row-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.driver-notification-icon-button {
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.055);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.driver-notification-icon-button.good {
+  border-color: rgba(72,213,151,.38);
+  color: #d8fff0;
+  background: rgba(72,213,151,.10);
+}
+
+.driver-notification-icon-button.danger-icon {
+  border-color: rgba(255,107,107,.34);
+  color: #ffd7d7;
+  background: rgba(255,107,107,.08);
+}
+
+.driver-empty-inbox {
+  display: block;
+  padding: 24px 16px;
+}
+
+.driver-shell-v2 .driver-notification-row {
+  border-radius: 14px;
+  background: rgba(255,255,255,.035);
+}
+
+.driver-shell-v2 .driver-notification-row.is-unread {
+  border-color: rgba(245,199,106,.28);
+  background: rgba(245,199,106,.075);
+  box-shadow: none;
+}
+
+.driver-shell-v2 .driver-notification-row.is-read {
+  opacity: .72;
+}
+
+.driver-shell-v2 .driver-notification-dot {
+  width: 7px;
+  height: 7px;
+  box-shadow: none;
+}
+
+.notification-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.staff-message-composer {
+  margin-bottom: 16px;
+}
+
+.staff-message-composer textarea {
+  min-height: 96px;
+}
+
+.staff-message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.staff-message-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.staff-message-status {
+  margin-top: 12px;
+}
+
+.staff-message-history {
+  margin-bottom: 16px;
+}
+
+.staff-message-filters {
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  margin-bottom: 12px;
+}
+
+.staff-message-history-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.staff-message-history-row {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.045);
+  padding: 12px;
+}
+
+.staff-message-history-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.staff-message-history-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.staff-message-history-title b {
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-message-history-title small {
+  color: var(--muted);
+}
+
+.staff-message-history-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.staff-message-history-row p {
+  margin: 0;
+  color: #dbeafe;
+  line-height: 1.42;
+  white-space: pre-wrap;
+}
+
+.staff-message-delivery-error {
+  color: #ffd7d7;
+  line-height: 1.35;
+}
+
+.staff-notification-row {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.045);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.staff-notification-row.notification-unread {
+  border-color: rgba(245,199,106,.30);
+  background: rgba(245,199,106,.08);
+  box-shadow: none;
+}
+
+.staff-notification-row.notification-read {
+  opacity: .74;
+}
+
+.staff-notification-row p {
+  margin: 0;
+  color: #dbeafe;
+}
+
+@media (max-width: 560px) {
+  .staff-message-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-message-history-head {
+    display: grid;
+  }
+
+  .staff-message-history-badges {
+    justify-content: flex-start;
+  }
+
+  .staff-notification-row .driver-notification-row-head {
+    gap: 8px;
+  }
+
+  .staff-notification-row .driver-notification-titleline b {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .driver-notifications-card .section-title {
+    display: grid;
+    gap: 8px;
+  }
+
+  .driver-notifications-card .section-title .pill {
+    justify-self: start;
+  }
+
+  .driver-notifications-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .driver-notifications-toolbar button {
+    width: 100% !important;
+  }
+
+  .driver-notification-row-head {
+    gap: 8px;
+  }
+
+  .driver-notification-icon-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .driver-notification-titleline b {
+    white-space: normal;
+  }
+}

@@ -1,0 +1,126 @@
+/* Dashboard audit tables. */
+
+.audit-table-scroll {
+  max-height: 50vh;
+  overflow: auto;
+}
+
+@media (max-width: 760px) {
+  .audit-card-table {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .audit-card-table .table {
+    display: block;
+    min-width: 0;
+  }
+
+  .audit-card-table thead {
+    display: none;
+  }
+
+  .audit-card-table tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  .audit-card-table tr {
+    display: grid;
+    gap: 7px;
+    padding: 11px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,.035);
+  }
+
+  .audit-card-table td {
+    display: grid;
+    grid-template-columns: 86px minmax(0,1fr);
+    gap: 8px;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+
+  .audit-card-table td::before {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .audit-card-table td > * {
+    min-width: 0;
+  }
+
+  .audit-card-table input {
+    max-width: 110px;
+  }
+
+  .audit-coverage-table td:nth-child(1)::before {
+    content: "Den";
+  }
+
+  .audit-coverage-table td:nth-child(2)::before {
+    content: "Pásmo";
+  }
+
+  .audit-coverage-table td:nth-child(3)::before {
+    content: "Čas";
+  }
+
+  .audit-coverage-table td:nth-child(4)::before {
+    content: "Plán";
+  }
+
+  .audit-coverage-table td:nth-child(5)::before {
+    content: "Min.";
+  }
+
+  .audit-coverage-table td:nth-child(6)::before {
+    content: "Stav";
+  }
+
+  .audit-attendance-table td:nth-child(1)::before {
+    content: "Řidič";
+  }
+
+  .audit-attendance-table td:nth-child(2)::before {
+    content: "Směn";
+  }
+
+  .audit-attendance-table td:nth-child(3)::before {
+    content: "Hotovo";
+  }
+
+  .audit-attendance-table td:nth-child(4)::before {
+    content: "Plán";
+  }
+
+  .audit-attendance-table td:nth-child(5)::before {
+    content: "Reál";
+  }
+
+  .audit-attendance-table td:nth-child(6)::before {
+    content: "Rozdíl";
+  }
+
+  .audit-attendance-table td:nth-child(7)::before {
+    content: "Kontrola";
+  }
+
+  .audit-standards-table td:nth-child(1)::before {
+    content: "Pásmo";
+  }
+
+  .audit-standards-table td:nth-child(2)::before {
+    content: "Čas";
+  }
+
+  .audit-standards-table td:nth-child(3)::before {
+    content: "Min.";
+  }
+}
