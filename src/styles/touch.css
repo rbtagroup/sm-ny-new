@@ -39,3 +39,53 @@
     padding: 8px 14px;
   }
 }
+
+/* Phones: labels, pills and hints read at 13px, short uppercase labels and tight navigation at no less than 12px. */
+@media (max-width: 760px) {
+  .pill,
+  .field label,
+  .kpi .hint,
+  .hintline,
+  .quick-chip,
+  .calendar-gap,
+  .calendar-shift-conflict,
+  .calendar-shift-swap,
+  .day-gap-label,
+  .availability-chip,
+  .driver-calendar-legend,
+  .status-legend,
+  .driver-notification-row small,
+  .settlement-summary span,
+  .action-summary span,
+  .driver-swap-summary span,
+  .shift-detail-facts dt,
+  .shift-progress li,
+  .coverage-field-hint,
+  .cover-driver-pick small,
+  .cover-open-row small,
+  .week-plan-list small,
+  .week-plan-hint,
+  .driver-app-status,
+  .driver-push-status-grid span,
+  .planner-kpi-item span,
+  .planner-kpi-reset,
+  .mobile-day-head,
+  .update-toast-copy span,
+  .settlement-list-amount em,
+  .settlement-bar-total span {
+    font-size: 13px;
+  }
+
+  .driver-ok-mini,
+  .shift-summary-side small,
+  .staff-shift-card-grid small,
+  .staff-shift-card-grid em,
+  .notification-group-title,
+  .audit-card-table td::before,
+  .availability-day-tabs button span,
+  .staff-bottom-nav button b,
+  .app-with-topbar .staff-notification-row .driver-notification-copy small,
+  .driver-cal-more {
+    font-size: 12px;
+  }
+}

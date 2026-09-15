@@ -33,10 +33,12 @@ function fakeSyncSupabase(updatedRows = [{ id: 'sh_1' }]) {
   const updates = []
   const upserts = []
   const rpcs = []
+  const deletes = []
   return {
     updates,
     upserts,
     rpcs,
+    deletes,
     from(table) {
       return {
         update(patch) {
@@ -58,7 +60,12 @@ function fakeSyncSupabase(updatedRows = [{ id: 'sh_1' }]) {
           return Promise.resolve({ error: null })
         },
         delete() {
-          return { in: () => Promise.resolve({ error: null }) }
+          return {
+            in: (column, values) => {
+              deletes.push({ table, column, values })
+              return Promise.resolve({ error: null })
+            },
+          }
         },
       }
     },
@@ -141,6 +148,29 @@ test('syncChangedRows persists an own driver shift confirmation', async () => {
   assert.equal(supabase.updates[0].table, 'shifts')
   assert.equal(supabase.updates[0].filters[0].value, 'sh_1')
   assert.equal(supabase.updates[0].patch.status, 'confirmed')
+})
+
+test('syncChangedRows deletes availability a driver removed, but only the driver\'s own', async () => {
+  const supabase = fakeSyncSupabase()
+  const { syncChangedRows } = createAppDataSync({
+    supabase,
+    isConfiguredSupabase: true,
+    timePart: () => '',
+    sendPushForNotifications: async () => ({ skipped: true }),
+  })
+  const prev = {
+    drivers: [{ id: 'drv_1', profileId: 'profile_1', email: 'driver@example.test' }],
+    availability: [{ id: 'av_own', driverId: 'drv_1' }, { id: 'av_other', driverId: 'drv_2' }, { id: 'av_kept', driverId: 'drv_1' }],
+    absences: [{ id: 'abs_own', driverId: 'drv_1', from: '2026-09-20', to: '2026-09-21' }],
+  }
+  const next = { ...prev, availability: [{ id: 'av_kept', driverId: 'drv_1' }], absences: [] }
+
+  await syncChangedRows(prev, next, { id: 'profile_1', email: 'driver@example.test', role: 'driver' })
+
+  assert.deepEqual(supabase.deletes, [
+    { table: 'absences', column: 'id', values: ['abs_own'] },
+    { table: 'availability', column: 'id', values: ['av_own'] },
+  ])
 })
 
 test('syncChangedRows rejects driver shift changes when the profile is not linked to that shift', async () => {

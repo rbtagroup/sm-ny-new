@@ -166,7 +166,7 @@ export function SettingsView({ title = 'Nastavení', data, helpers, commit, supa
         </div>
         <div className="grid four">
           <Kpi label="Push zařízení" value={pushDiagnostics.active} hint={`${pushDiagnostics.total} celkem`} kind={pushDiagnostics.active ? 'good' : 'warn'} />
-          <Kpi label="Odpojená" value={pushDiagnostics.inactive} hint="neaktivní" kind={pushDiagnostics.inactive ? 'warn' : 'good'} />
+          <Kpi label="Odpojená" value={pushDiagnostics.inactive} hint="vypnutá" kind={pushDiagnostics.inactive ? 'warn' : 'good'} />
           <Kpi label="S chybou" value={pushDiagnostics.failed} hint="aktivní zařízení" kind={pushDiagnostics.failed ? 'bad' : 'good'} />
           <Kpi label="Poslední push" value={pushDiagnostics.lastDeliveryAt ? formatDateTime(pushDiagnostics.lastDeliveryAt) : '—'} hint={pushDiagnostics.lastSeenAt ? `zařízení viděno ${formatDateTime(pushDiagnostics.lastSeenAt)}` : 'bez záznamu'} />
         </div>

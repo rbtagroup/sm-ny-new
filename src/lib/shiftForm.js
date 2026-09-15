@@ -43,7 +43,7 @@ const choiceOrder = { available: 0, free: 1, outside: 2, busy: 3, unavailable: 4
 export function driverChoices(data = {}, shift = {}, selectedId = '') {
   const hasTime = Boolean(shift.date && shift.start && shift.end)
   const choice = (driver) => {
-    if (driver.active === false) return { state: 'inactive', note: 'neaktivní' }
+    if (driver.active === false) return { state: 'inactive', note: 'vyřazený' }
     if (!hasTime) return { state: 'free', note: '' }
     const candidate = { ...shift, driverId: driver.id }
     const absence = (data.absences || []).find((item) => item.driverId === driver.id && dateInRange(shift.date, item.from, item.to))
@@ -54,7 +54,7 @@ export function driverChoices(data = {}, shift = {}, selectedId = '') {
     if (availability === 'unavailable') return { state: 'unavailable', note: 'hlásí, že nemůže' }
     if (availability === 'outside') return { state: 'outside', note: 'mimo zadanou dostupnost' }
     if (availability === 'available') return { state: 'available', note: 'hlásí dostupnost' }
-    return { state: 'free', note: 'bez kolize' }
+    return { state: 'free', note: 'volný' }
   }
   return selectableRecords(data.drivers || [], selectedId)
     .map((driver) => ({ driver, ...choice(driver) }))

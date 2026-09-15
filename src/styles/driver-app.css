@@ -129,6 +129,24 @@
   padding: 10px;
 }
 
+.device-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.device-name svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.device-row .device-remove {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
 .ios-guide {
   margin-top: 12px;
   border: 1px solid rgba(128,199,255,.32);
@@ -281,10 +299,13 @@
   display: none;
 }
 
-.quick-chip.warn {
-  color: #fff3c7;
-  border-color: rgba(255,207,90,.45);
-  background: rgba(255,207,90,.12);
+.quick-chip[class*="tone-"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(var(--tone));
+  border-color: rgba(var(--tone),.45);
+  background: rgba(var(--tone),.11);
 }
 
 .driver-open-shifts {
@@ -605,20 +626,14 @@
   flex: 0 0 auto;
 }
 
-.driver-cal-dot.confirmed {
-  background: var(--good);
+.driver-cal-dot[class*="tone-"] {
+  background: rgb(var(--tone));
 }
 
-.driver-cal-dot.open {
-  background: var(--gold);
-}
-
-.driver-cal-dot.waiting {
-  background: #d85a30;
-}
-
-.driver-cal-dot.conflict {
-  background: var(--bad);
+/* a draft dot is a ring, like the dashed draft pill */
+.driver-cal-dot.tone-draft {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgb(var(--tone));
 }
 
 .driver-cal-more {
@@ -720,26 +735,28 @@
   line-height: 1.35;
 }
 
+/* the device state reads as a short list of label and value, not four boxes */
 .driver-push-status-grid {
   display: grid;
-  grid-template-columns: repeat(2,minmax(0,1fr));
-  gap: 8px;
+  gap: 0;
 }
 
 .driver-push-status-grid div {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255,255,255,.04);
-  padding: 10px;
-  display: grid;
-  gap: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.driver-push-status-grid div:last-child {
+  border-bottom: 0;
 }
 
 .driver-push-status-grid span {
   color: var(--muted);
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  font-weight: 700;
 }
 
 .driver-push-status-grid b {
@@ -891,19 +908,9 @@
   display: none;
 }
 
-.driver-more-actions > summary::after {
-  content: "▾";
-  margin-left: 7px;
-  color: #fff3c7;
-}
-
 .driver-more-actions[open] > summary {
   border-bottom: 1px solid rgba(255,255,255,.10);
   color: var(--text);
-}
-
-.driver-more-actions[open] > summary::after {
-  content: "▴";
 }
 
 .driver-more-actions > div {
@@ -913,7 +920,6 @@
   padding: 8px;
 }
 
-.driver-shell-v2 .driver-push-status-grid div,
 .driver-shell-v2 .device-row {
   border-radius: 12px;
   background: rgba(255,255,255,.035);
@@ -1306,9 +1312,14 @@
   gap: 10px;
 }
 
-.driver-day-detail li .driver-cal-dot {
-  width: 10px;
-  height: 10px;
+.driver-day-detail-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(var(--tone),.13);
+  color: rgb(var(--tone));
 }
 
 .driver-day-detail li div {
@@ -1385,7 +1396,7 @@
 
 .driver-availability-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1396,10 +1407,21 @@
   grid-template-columns: auto minmax(0,1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 10px 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255,255,255,.03);
+  width: 100%;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 56px;
+  padding: 10px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+}
+
+.driver-availability-list li:last-child .driver-availability-row {
+  border-bottom: 0;
 }
 
 .driver-availability-copy {
@@ -1433,4 +1455,23 @@
     grid-column: 1 / -1;
     justify-self: start;
   }
+}
+
+.driver-availability-row > svg {
+  color: var(--muted);
+}
+
+.driver-availability-row:hover {
+  background: rgba(255,255,255,.035);
+}
+
+.driver-availability-detail .driver-availability-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.driver-account {
+  display: grid;
+  gap: 2px;
 }

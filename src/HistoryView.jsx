@@ -19,7 +19,7 @@ const logText = (log) => String(log.text || log.action || '')
 const logActor = (log) => log.actor || log.user || log.userName || log.payload?.user || log.payload?.actor || ''
 const logType = (log) => {
   const text = logText(log).toLocaleLowerCase('cs-CZ')
-  if (/směn|smen|shift|výměn|vymen|koliz/.test(text)) return 'shifts'
+  if (/směn|smen|shift|výměn|vymen|koliz|problém/.test(text)) return 'shifts'
   if (/řidič|ridic|driver/.test(text)) return 'drivers'
   if (/vozidl|vozidlo|vůz|vuz|auto|car|spz/.test(text)) return 'vehicles'
   if (/dostupnost|nepřítomnost|nepritomnost|absence/.test(text)) return 'availability'

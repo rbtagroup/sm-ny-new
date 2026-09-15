@@ -8,6 +8,7 @@ import {
   todayISO,
 } from './dateTime.js'
 import { sortByDateTime } from './display.js'
+import { czechCount } from './drivers.js'
 import { coverageDayRows } from './coverage.js'
 
 export function weekShifts(data, weekStart) {
@@ -29,9 +30,9 @@ export function readinessChecks(data, helpers, weekStart = startOfWeek(todayISO(
     { key: 'vehicles', label: 'Auta vyplněná', ok: data.vehicles.some((v) => v.active), detail: `${data.vehicles.filter((v) => v.active).length} aktivních aut` },
     { key: 'availability', label: 'Dostupnost zadaná', ok: (data.availability || []).length > 0, detail: `${(data.availability || []).length} pravidel dostupnosti` },
     { key: 'planned', label: 'Směny na týden naplánované', ok: week.length > 0, detail: `${week.length} směn v týdnu` },
-    { key: 'conflicts', label: 'Žádné kolize', ok: conflicts.length === 0, detail: conflicts.length ? `${conflicts.length} kolizí` : 'Bez kolizí' },
-    { key: 'coverage', label: 'Neobsazené směny vyřešené', ok: gaps.length === 0, detail: gaps.length ? `${gaps.length} děr v pokrytí` : 'Pokrytí OK' },
-    { key: 'confirmed', label: 'Všichni řidiči potvrzeni', ok: waiting.length === 0, detail: waiting.length ? `${waiting.length} čeká na reakci` : 'Vše potvrzeno / hotovo' },
+    { key: 'conflicts', label: 'Směny bez problémů', ok: conflicts.length === 0, detail: conflicts.length ? czechCount(conflicts.length, 'problém', 'problémy', 'problémů') : 'Bez problémů' },
+    { key: 'coverage', label: 'Neobsazené směny vyřešené', ok: gaps.length === 0, detail: gaps.length ? `chybí obsadit: ${czechCount(gaps.length, 'pásmo', 'pásma', 'pásem')}` : 'Všechno obsazeno' },
+    { key: 'confirmed', label: 'Všichni řidiči potvrzeni', ok: waiting.length === 0, detail: waiting.length ? `${waiting.length} čeká na reakci` : 'Vše potvrzeno nebo dokončeno' },
     { key: 'declined', label: 'Odmítnuté směny vyřešené', ok: declined.length === 0, detail: declined.length ? `${declined.length} odmítnuto` : 'Bez odmítnutí' },
     { key: 'swaps', label: 'Žádné čekající výměny', ok: pendingSwaps.length === 0, detail: pendingSwaps.length ? `${pendingSwaps.length} žádostí` : 'Bez žádostí' },
     { key: 'attendance', label: 'Docházka uzavřená', ok: runningOld.length === 0, detail: runningOld.length ? `${runningOld.length} starších běžících směn` : 'Docházka OK' },
@@ -64,7 +65,7 @@ export function readinessText(data, helpers, weekStart) {
     r.gaps.slice(0, 20).forEach((g) => lines.push(`${formatDate(g.day)} ${g.name} ${g.start}–${g.end}: chybí ${g.missing}`))
   }
   if (r.conflicts.length) {
-    lines.push('', 'Kolize:')
+    lines.push('', 'Problémy ve směnách:')
     r.conflicts.slice(0, 20).forEach((c) => lines.push(`${formatDate(c.shift.date)} ${c.shift.start}–${c.shift.end}: ${c.message}`))
   }
   return lines.join('\n')

@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, Plus, Repeat } from 'lucide-react'
 import { todayISO } from './lib/dateTime.js'
 import { availabilityKind, availabilityNoteText } from './lib/availability.js'
 import { absenceFromForm, availabilityEntryFromForm, availabilityEntryLabel, upcomingAvailability } from './lib/availabilityGrid.js'
 import { dateRangeLabel } from './lib/display.js'
 import { uid } from './lib/ids.js'
 import { showNotice } from './lib/notice.js'
+import { takeBackChange } from './lib/undo.js'
 import { AvailabilityEntryForm, blankAvailabilityForm, driverEntryTypes } from './AvailabilityEntryForm.jsx'
 
 const kindLabels = { available: 'Můžu jet', preferred: 'Raději ano', unavailable: 'Nemůžu', absent: 'Nepřítomnost' }
@@ -21,10 +22,10 @@ const quickStarts = [
 
 // The driver's own availability: a list of what is coming up, "+ Přidat" and quick starts for the usual cases.
 export function Availability({ data, commit, currentDriver, ui }) {
-  const { ActionSummary, ConfirmActionModal, Modal, PageTitle } = ui
+  const { ActionSummary, Modal, PageTitle } = ui
   const today = todayISO()
   const [form, setForm] = useState(null)
-  const [toRemove, setToRemove] = useState(null)
+  const [opened, setOpened] = useState(null)
   const driverId = currentDriver?.id || ''
   const { weekly, dated, absences } = upcomingAvailability(data, driverId, today)
   const empty = !weekly.length && !dated.length && !absences.length
@@ -48,20 +49,29 @@ export function Availability({ data, commit, currentDriver, ui }) {
     }
     setForm(null)
   }
-  const confirmRemove = () => {
-    if (toRemove.type === 'absence') commit((prev) => ({ ...prev, absences: (prev.absences || []).filter((item) => item.id !== toRemove.entry.id) }), `${currentDriver?.name || 'Řidič'} odstranil nepřítomnost.`)
-    else commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((item) => item.id !== toRemove.entry.id) }), `${currentDriver?.name || 'Řidič'} odstranil dostupnost.`)
-    setToRemove(null)
+  // A record is removed from its detail; the notice after it can still bring it back.
+  const remove = () => {
+    const { type, entry, label } = opened
+    const key = type === 'absence' ? 'absences' : 'availability'
+    commit((prev) => ({ ...prev, [key]: (prev[key] || []).filter((item) => item.id !== entry.id) }), `${currentDriver?.name || 'Řidič'} odstranil ${type === 'absence' ? 'nepřítomnost' : 'dostupnost'}: ${label}.`)
+    setOpened(null)
+    showNotice('Záznam je odstraněný.', {
+      tone: 'good',
+      undo: () => commit((prev) => takeBackChange(prev, [{ key, before: [entry] }]), `${currentDriver?.name || 'Řidič'} vrátil zpět ${type === 'absence' ? 'nepřítomnost' : 'dostupnost'}: ${label}.`),
+    })
   }
 
   const row = (type, entry) => {
     const kind = type === 'absence' ? 'absent' : availabilityKind(entry)
     const label = type === 'absence' ? dateRangeLabel(entry.from, entry.to) : availabilityEntryLabel(entry)
     const note = type === 'absence' ? entry.reason : availabilityNoteText(entry)
-    return <li className="driver-availability-row" key={entry.id}>
-      <span className={`availability-chip kind-${kind}`}>{kindLabels[kind]}</span>
-      <div className="driver-availability-copy"><b>{label}</b>{note && <small>{note}</small>}</div>
-      <button type="button" className="driver-notification-icon-button danger-icon" aria-label={`Odstranit: ${label}`} title="Odstranit" onClick={() => setToRemove({ type, entry, kind, label, note, weekly: type !== 'absence' && !entry.fromAt && !entry.date })}><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button>
+    const weekly = type !== 'absence' && !entry.fromAt && !entry.date
+    return <li key={entry.id}>
+      <button type="button" className="driver-availability-row" aria-label={`${kindLabels[kind]}: ${label}`} onClick={() => setOpened({ type, entry, kind, label, note, weekly })}>
+        <span className={`availability-chip kind-${kind}`}>{kindLabels[kind]}</span>
+        <span className="driver-availability-copy"><b>{label}</b>{note && <small>{note}</small>}</span>
+        <ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" />
+      </button>
     </li>
   }
   const section = (title, items, type, hint) => items.length > 0 && <section className="card driver-availability-section">
@@ -85,15 +95,16 @@ export function Availability({ data, commit, currentDriver, ui }) {
     {form && <Modal title="Přidat dostupnost" onClose={() => setForm(null)} className="driver-swap-modal driver-availability-modal" backdropClassName="driver-swap-modal-backdrop">
       <AvailabilityEntryForm form={form} onChange={setForm} onSubmit={submit} onCancel={() => setForm(null)} types={driverEntryTypes} ui={ui} />
     </Modal>}
-    {toRemove && <ConfirmActionModal
-      title="Odstranit záznam?"
-      message={toRemove.weekly ? 'Záznam platí každý týden, odstraní se ze všech týdnů.' : 'Dispečink ho při plánování přestane vidět.'}
-      confirmLabel="Odstranit"
-      confirmClass="danger"
-      onClose={() => setToRemove(null)}
-      onConfirm={confirmRemove}
-    >
-      <ActionSummary eyebrow={kindLabels[toRemove.kind]} title={toRemove.label} meta={toRemove.note || ''} />
-    </ConfirmActionModal>}
+    {opened && <Modal title={opened.type === 'absence' ? 'Nepřítomnost' : 'Dostupnost'} onClose={() => setOpened(null)} className="driver-swap-modal driver-availability-modal" backdropClassName="driver-swap-modal-backdrop">
+      <div className="stack driver-availability-detail">
+        <ActionSummary eyebrow={kindLabels[opened.kind]} title={opened.label} meta={opened.note || ''} />
+        {opened.weekly && <p className="muted driver-availability-hint"><Repeat size={15} strokeWidth={2.3} aria-hidden="true" />Platí každý týden. Odstranění platí pro všechny týdny.</p>}
+        <p className="muted">Po odstranění ho dispečink při plánování přestane vidět.</p>
+        <div className="row-actions driver-swap-actions">
+          <button type="button" className="danger" onClick={remove}>Odstranit záznam</button>
+          <button type="button" className="ghost" onClick={() => setOpened(null)}>Zpět</button>
+        </div>
+      </div>
+    </Modal>}
   </div>
 }

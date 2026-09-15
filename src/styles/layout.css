@@ -294,6 +294,7 @@
 }
 
 .topbar-user-button em {
+  display: inline-flex;
   font-style: normal;
   color: var(--muted);
 }

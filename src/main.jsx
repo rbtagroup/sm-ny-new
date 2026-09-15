@@ -2,12 +2,12 @@ import './main.css'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
+import { Check, TriangleAlert } from 'lucide-react'
 import { DriverAppShell, StaffAppShell, UpdateReadyToast } from './AppShell.jsx'
 import {
   ActionSummary,
   ConfirmActionModal,
   ConflictBox,
-  DeleteIconButton,
   Field,
   Kpi,
   Modal,
@@ -21,6 +21,7 @@ import {
   ShiftActionSummary,
   SideDrawer,
   StatusPill,
+  TonePill,
 } from './AppUi.jsx'
 import { AuthGate, MissingProfile, PasswordRecovery } from './AuthViews.jsx'
 import { Availability } from './AvailabilityView.jsx'
@@ -191,9 +192,9 @@ async function copyText(text) {
     } else {
       execCopy()
     }
-    showNotice('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.', { tone: 'good' })
+    showNotice('Text je zkopírovaný, vlož ho do zprávy.', { tone: 'good' })
   } catch {
-    try { execCopy(); showNotice('Text je zkopírovaný. Můžeš ho vložit třeba do WhatsAppu.', { tone: 'good' }) }
+    try { execCopy(); showNotice('Text je zkopírovaný, vlož ho do zprávy.', { tone: 'good' }) }
     catch { showNotice('Kopírování se nepodařilo. Označ text ručně a zkopíruj ho přes Ctrl/Cmd+C.', { tone: 'bad' }) }
   }
 }
@@ -367,7 +368,7 @@ const dashboardServices = { copyText, makeNotice, shiftTableUi, shiftTableServic
 const driverHomeUi = { ConflictBox, Field, Kpi, Modal, ReasonActionModal, SettlementFormModal, SettlementStatusPill, SettlementSummary, ShiftActionSummary, StatusPill }
 const availabilityUi = { ActionSummary, ConfirmActionModal, Field, Modal, PageTitle }
 const staffAvailabilityUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer }
-const driversUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
+const driversUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer }
 const driversServices = { uid, supabase, copyText }
 const notificationUi = { Field, Kpi, Modal, PageTitle, SideDrawer }
 const driverSettingsUi = { PageTitle }
@@ -376,7 +377,7 @@ const historyServices = { download }
 const settingsUi = { Field, Kpi, PageTitle }
 const shiftTemplatesUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, Select, SideDrawer }
 const coverageNormsUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer }
-const vehiclesUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
+const vehiclesUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer }
 const vehiclesServices = { todayISO, uid }
 
 function Settlements({ data, helpers, commit }) {
@@ -391,9 +392,9 @@ function Settlements({ data, helpers, commit }) {
   const selectedShift = (data.shifts || []).find((s) => s.id === selectedShiftId)
   return <>
     <PageTitle title="Výčetky směn" subtitle="Kontrola tržeb a výčetek po ukončených směnách.">
-      <span className="pill waiting">{waiting} čeká</span>
-      <span className="pill warn">{missing} chybí</span>
-      <span className="pill good">{approved} schváleno</span>
+      <TonePill tone="pending">{waiting} čeká na schválení</TonePill>
+      <span className="pill">{missing} bez výčetky</span>
+      <TonePill tone="confirmed">{approved} schváleno</TonePill>
     </PageTitle>
     <div className="card">
       <div className="section-title"><h3>Přehled výčetek</h3><span className="pill">{rows.length}</span></div>
@@ -476,7 +477,7 @@ function OperationalAudit({ data, helpers, tabs = null, onOpenNorms }) {
     <div className="grid kpis compact-kpis">
       <Kpi label="Připravenost" value={`${readinessPct} %`} hint={`${passed}/${audit.checks.length} kontrol OK`} kind={readinessPct === 100 ? 'good' : readinessPct >= 75 ? 'warn' : 'bad'} />
       <Kpi label="Týden" value={`${formatDate(weekStart)}–${formatDate(to)}`} hint="auditované období" />
-      <Kpi label="Problémy" value={audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length} hint="kolize + pokrytí + výměny" kind={(audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length) ? 'bad' : 'good'} />
+      <Kpi label="Problémy" value={audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length} hint="ve směnách, obsazení, výměny a odmítnutí" kind={(audit.conflicts.length + audit.gaps.length + audit.pendingSwaps.length + audit.declined.length) ? 'bad' : 'good'} />
       <Kpi label="Docházka" value={hoursLabel(actualTotal)} hint={`proběhlé směny: plán ${hoursLabel(plannedTotal)} · rozdíl ${hoursLabel(actualTotal - plannedTotal)}`} />
     </div>
     <div className="stack" style={{ marginTop: 16 }}>
@@ -484,16 +485,16 @@ function OperationalAudit({ data, helpers, tabs = null, onOpenNorms }) {
         <summary><span><b>Dnes</b><small>{passed}/{audit.checks.length} kontrol OK · {todayIssues ? `${todayIssues} problémů` : 'bez kritických problémů'}</small></span><span className={todayIssues ? 'pill warn' : 'pill good'}>{todayIssues || 'OK'}</span></summary>
         <div className="stack collapse-content">
           <div className="section-title"><h3>Připravenost provozu</h3><span className={readinessPct === 100 ? 'pill good' : 'pill warn'}>{readinessPct === 100 ? 'OK' : 'doplnit'}</span></div>
-          {audit.checks.map((check) => <div className={`alert ${check.ok ? 'good' : 'warn'}`} key={check.key}><b>{check.ok ? '✓' : '!'} {check.label}</b><br /><span>{check.detail}</span></div>)}
+          <div className="audit-check-list">{audit.checks.map((check) => <div className={`alert audit-check ${check.ok ? 'good' : 'warn'}`} key={check.key}><b>{check.ok ? <Check size={16} strokeWidth={2.8} aria-hidden="true" /> : <TriangleAlert size={16} strokeWidth={2.4} aria-hidden="true" />}{check.label}</b><span>{check.detail}</span></div>)}</div>
         </div>
       </details>
       <details className="card collapse-card" {...sectionProps('week')}>
         <summary><span><b>Tento týden</b><small>{formatDate(weekStart)}–{formatDate(to)} · pokrytí a docházka</small></span><span className={weekIssues ? 'pill bad' : 'pill good'}>{weekIssues ? `${weekIssues} kontrol` : 'OK'}</span></summary>
         <div className="collapse-content stack">
           <div className="section-title"><h3>Pokrytí týdne</h3><span className={coverageRows.some((r) => r.missing) ? 'pill bad' : 'pill good'}>{coverageRows.filter((r) => r.missing).length}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-coverage-table"><table className="table"><thead><tr><th>Den</th><th>Pásmo</th><th>Čas</th><th>Plán</th><th>Potřeba</th><th>Stav</th></tr></thead><tbody>{coverageRows.map((row) => <tr key={`${row.day}-${row.slot.id}`}><td><b>{formatDate(row.day)}</b></td><td>{row.slot.name}</td><td>{row.slot.start}–{row.slot.end}</td><td>{row.planned}</td><td>{row.need}{row.override && <small> · na tento den</small>}</td><td>{row.missing ? <span className="pill bad">chybí {row.missing}</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-coverage-table"><table className="table"><thead><tr><th>Den</th><th>Pásmo</th><th>Čas</th><th>Plán</th><th>Potřeba</th><th>Stav</th></tr></thead><tbody>{coverageRows.map((row) => <tr key={`${row.day}-${row.slot.id}`}><td><b>{formatDate(row.day)}</b></td><td>{row.slot.name}</td><td>{row.slot.start}–{row.slot.end}</td><td>{row.planned}</td><td>{row.need}{row.override && <small> · na tento den</small>}</td><td>{row.missing ? <TonePill tone="open">chybí {row.missing}</TonePill> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
           <div className="section-title"><h3>Docházkový report</h3><span className="pill">{hoursLabel(actualTotal)}</span></div>
-          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-attendance-table"><table className="table"><thead><tr><th>Řidič</th><th>Směn</th><th>Hotovo</th><th>Plán</th><th>Reál</th><th>Rozdíl</th><th>Kontrola</th></tr></thead><tbody>{attendance.map((row) => <tr key={row.driver.id}><td><b>{row.driver.name}</b><br /><small>{row.driver.phone || row.driver.email || 'bez kontaktu'}</small></td><td>{row.shifts.length}</td><td>{row.completed}</td><td>{hoursLabel(row.plannedMinutes)}</td><td>{hoursLabel(row.actualMinutes)}</td><td>{hoursLabel(row.diffMinutes)}</td><td>{row.open ? <span className="pill warn">{row.open} běží</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap compact-table audit-table-scroll audit-card-table audit-attendance-table"><table className="table"><thead><tr><th>Řidič</th><th>Směn</th><th>Dokončeno</th><th>Plán</th><th>Reál</th><th>Rozdíl</th><th>Kontrola</th></tr></thead><tbody>{attendance.map((row) => <tr key={row.driver.id}><td><b>{row.driver.name}</b><br /><small>{row.driver.phone || row.driver.email || 'bez kontaktu'}</small></td><td>{row.shifts.length}</td><td>{row.completed}</td><td>{hoursLabel(row.plannedMinutes)}</td><td>{hoursLabel(row.actualMinutes)}</td><td>{hoursLabel(row.diffMinutes)}</td><td>{row.open ? <span className="pill warn">{row.open} běží</span> : <span className="pill good">OK</span>}</td></tr>)}</tbody></table></div>
         </div>
       </details>
       <details className="card collapse-card" {...sectionProps('month')}>

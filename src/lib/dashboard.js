@@ -54,21 +54,21 @@ export function dashboardOperationalIssues(data = {}, helpers = {}, today = '', 
 
   // Everything dispatch should act on, soonest first, each with what it needs for its action.
   const tasks = [
-    ...[...conflictsByShift.values()].map(({ shift, messages }) => ({ key: `conflict-${shift.id}`, kind: 'conflict', tone: 'bad', sortAt: `${shift.date} ${shift.start}`, title: 'Kolize ve směně', when: shiftWhen(shift), detail: messages.join(' '), shift })),
-    ...declined.map((shift) => ({ key: `declined-${shift.id}`, kind: 'declined', tone: 'bad', sortAt: `${shift.date} ${shift.start}`, title: 'Řidič směnu odmítl', when: shiftWhen(shift), detail: `${name(shift.driverId)} · ${shift.declineReason || 'bez důvodu'}`, shift })),
+    ...[...conflictsByShift.values()].map(({ shift, messages }) => ({ key: `conflict-${shift.id}`, kind: 'conflict', tone: 'problem', sortAt: `${shift.date} ${shift.start}`, title: 'Problém ve směně', when: shiftWhen(shift), detail: messages.join(' '), shift })),
+    ...declined.map((shift) => ({ key: `declined-${shift.id}`, kind: 'declined', tone: 'declined', sortAt: `${shift.date} ${shift.start}`, title: 'Řidič směnu odmítl', when: shiftWhen(shift), detail: `${name(shift.driverId)} · ${shift.declineReason || 'bez důvodu'}`, shift })),
     ...pendingSwaps.map((request) => {
       const shift = shiftById.get(request.shiftId)
       const newDriverId = swapApprovalDriverId(request)
       const detail = request.targetMode === 'open'
         ? `${name(newDriverId)} se hlásí na volnou směnu`
         : newDriverId ? `${name(request.driverId)} předává směnu: ${name(newDriverId)}` : `${name(request.driverId)} nabízí směnu, zatím ji nikdo nepřevzal`
-      return { key: `swap-${request.id}`, kind: 'swap', tone: 'warn', sortAt: shift ? `${shift.date} ${shift.start}` : '', title: request.targetMode === 'open' ? 'Zájem o volnou směnu' : 'Žádost o výměnu', when: shift ? shiftWhen(shift) : 'směna už neexistuje', detail, request, shift, approvable: Boolean(shift && newDriverId) }
+      return { key: `swap-${request.id}`, kind: 'swap', tone: 'swap', sortAt: shift ? `${shift.date} ${shift.start}` : '', title: request.targetMode === 'open' ? 'Zájem o volnou směnu' : 'Žádost o výměnu', when: shift ? shiftWhen(shift) : 'směna už neexistuje', detail, request, shift, approvable: Boolean(shift && newDriverId) }
     }),
-    ...gaps.map((gap) => ({ key: `gap-${gap.day}-${gap.id}`, kind: 'gap', tone: 'warn', sortAt: `${gap.day} ${gap.start}`, title: `Chybí obsazení · ${gap.name}`, when: `${formatDate(gap.day)} ${gap.start}–${gap.end}`, detail: gap.need > 1 ? `chybí ${gap.missing} z ${gap.need}` : `chybí ${gap.missing}`, gap })),
+    ...gaps.map((gap) => ({ key: `gap-${gap.day}-${gap.id}`, kind: 'gap', tone: 'open', sortAt: `${gap.day} ${gap.start}`, title: `Chybí obsazení · ${gap.name}`, when: `${formatDate(gap.day)} ${gap.start}–${gap.end}`, detail: gap.need > 1 ? `chybí ${gap.missing} z ${gap.need}` : `chybí ${gap.missing}`, gap })),
     ...awaitingSoon.map((shift) => {
       const remindedAt = lastConfirmReminderAt(data, shift.id)
       const remindedRecently = Boolean(remindedAt) && now - new Date(remindedAt).getTime() < REMINDER_PAUSE_MS
-      return { key: `confirm-${shift.id}`, kind: 'confirm', tone: 'warn', sortAt: `${shift.date} ${shift.start}`, title: 'Nepotvrzená směna', when: shiftWhen(shift), detail: `${name(shift.driverId)} · čeká na potvrzení`, shift, remindedAt, remindedRecently }
+      return { key: `confirm-${shift.id}`, kind: 'confirm', tone: 'pending', sortAt: `${shift.date} ${shift.start}`, title: 'Nepotvrzená směna', when: shiftWhen(shift), detail: `${name(shift.driverId)} · čeká na potvrzení`, shift, remindedAt, remindedRecently }
     }),
   ].sort((a, b) => a.sortAt.localeCompare(b.sortAt) || taskOrder[a.kind] - taskOrder[b.kind])
 

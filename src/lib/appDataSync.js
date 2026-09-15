@@ -261,12 +261,13 @@ export function createAppDataSync({ supabase, isConfiguredSupabase = false, time
             if (critical.has(key)) throw new Error(errors.join('\n'))
           }
         }
-      } else if (!isStaff && key === 'absences' && currentDriverId) {
-        const nextAbsIds = new Set((next.absences || []).map((x) => x.id))
-        const rmAbsences = (prev.absences || []).filter((x) => x.id && !nextAbsIds.has(x.id) && x.driverId === currentDriverId).map((x) => x.id)
-        if (rmAbsences.length) {
-          const { error: absErr } = await supabase.from('absences').delete().in('id', rmAbsences)
-          if (absErr) errors.push('absences delete: ' + absErr.message)
+      } else if (!isStaff && ['absences', 'availability'].includes(key) && currentDriverId) {
+        // a driver removes only own absences and availability (the database policy allows the same)
+        const nextOwnIds = new Set((next[key] || []).map((x) => x.id))
+        const removedOwn = (prev[key] || []).filter((x) => x.id && !nextOwnIds.has(x.id) && x.driverId === currentDriverId).map((x) => x.id)
+        if (removedOwn.length) {
+          const { error: removeError } = await supabase.from(tableName(key)).delete().in('id', removedOwn)
+          if (removeError) errors.push(`${tableName(key)} delete: ${removeError.message}`)
         }
       }
     }

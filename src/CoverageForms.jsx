@@ -68,7 +68,7 @@ export function DayNeedForm({ data, commit, date: initialDate, today, chooseDate
     </ul>
     <div className="drawer-form-actions">
       <button className="primary" type="submit" disabled={!changed}>Uložit potřebu</button>
-      <button className="ghost" type="button" onClick={onCancel}>Zrušit</button>
+      <button className="ghost" type="button" onClick={onCancel}>Zavřít</button>
     </div>
   </form>
 }
@@ -115,7 +115,7 @@ export function CoverFillForm({ data, commit, gap, onSaved, onCancel, onChangeNe
   const carHolder = (vehicleId, driverId) => picks.find((pick) => pick.vehicleId === vehicleId && pick.driverId !== driverId)
   const save = () => {
     if (!picks.length && !openCount) return
-    if (problems.length && !override) return showNotice('Některé směny mají kolizi nebo nemají vůz. Opravte to, nebo zaškrtněte uložení i tak.')
+    if (problems.length && !override) return showNotice('Některé směny mají problém (třeba nemají vůz). Opravte ho, nebo zaškrtněte „Uložit i přes problém“.')
     const shifts = coverShifts({ gap: row, picks, openCount, confirmed, settings: data.settings, uid })
     const driverShifts = shifts.filter((shift) => shift.driverId)
     const openShifts = shifts.filter((shift) => !shift.driverId)
@@ -188,11 +188,11 @@ export function CoverFillForm({ data, commit, gap, onSaved, onCancel, onChangeNe
     {picks.length > 0 && <label className="shift-form-check"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />Řidiči směnu už potvrdili</label>}
     {problems.length > 0 && <>
       <ConflictBox messages={problems} />
-      <label className="shift-form-check"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} />Uložit i s kolizí / bez vozu</label>
+      <label className="shift-form-check"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} />Uložit i přes problém</label>
     </>}
     <div className="drawer-form-actions">
       <button type="button" className="primary" disabled={!picks.length && !openCount} onClick={save}>{saveLabel(picks.length, openCount)}</button>
-      <button type="button" className="ghost" onClick={onCancel}>Zrušit</button>
+      <button type="button" className="ghost" onClick={onCancel}>Zavřít</button>
     </div>
   </div>
 }

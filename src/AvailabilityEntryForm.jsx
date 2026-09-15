@@ -45,7 +45,7 @@ export function AvailabilityEntryForm({ form, onChange, onSubmit, onCancel, driv
     </>}
     <div className="field span2 drawer-form-actions">
       <button className="primary" type="submit">Uložit záznam</button>
-      <button className="ghost" type="button" onClick={onCancel}>Zrušit</button>
+      <button className="ghost" type="button" onClick={onCancel}>Zavřít</button>
     </div>
   </form>
 }

@@ -86,9 +86,9 @@ test('driver removal summary counts the history the database function deletes', 
   assert.deepEqual(summary, { shifts: 2, upcomingShifts: 1, settlements: 2, swapRequests: 1, notifications: 2, availability: 2 })
   assert.equal(
     driverRemovalSummaryText(summary, { hasLogin: true }),
-    'Smaže se: 2 směny (z toho 1 budoucí), 2 výčetky, 1 výměna, 2 notifikace, dostupnost a absence, přihlašovací účet.',
+    'Odstraní se: 2 směny (z toho 1 budoucí), 2 výčetky, 1 výměna, 2 notifikace, dostupnost a absence, přihlašovací účet.',
   )
-  assert.equal(driverRemovalSummaryText({ shifts: 5, settlements: 0, swapRequests: 7, notifications: 12 }), 'Smaže se: 5 směn, 0 výčetek, 7 výměn, 12 notifikací.')
+  assert.equal(driverRemovalSummaryText({ shifts: 5, settlements: 0, swapRequests: 7, notifications: 12 }), 'Odstraní se: 5 směn, 0 výčetek, 7 výměn, 12 notifikací.')
 })
 
 test('withoutDriver removes the driver with history and cancels colleague swaps waiting on them', () => {

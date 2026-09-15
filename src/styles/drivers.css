@@ -1,8 +1,9 @@
 /* Staff driver management: invites, removal, app status and the weekly availability grid. */
 
-.pending-driver-row {
-  border-color: rgba(255,207,90,.42);
-  background: rgba(255,207,90,.06);
+.pending-driver-row,
+.card .log.list-row.pending-driver-row {
+  border-radius: 12px;
+  background: rgba(255,207,90,.07);
 }
 
 .driver-removal,
@@ -52,12 +53,6 @@
 
 .driver-removal small + button {
   margin-top: 6px;
-}
-
-.driver-removal .danger-soft {
-  border-color: rgba(255,107,107,.36);
-  background: rgba(255,107,107,.08);
-  color: #ffd7d7;
 }
 
 /* Availability grid: drivers × days, a + in every cell; phones pick a day and list drivers. */
@@ -133,6 +128,7 @@
 .availability-chip {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   min-height: 26px;
   padding: 3px 8px;
   border: 1px solid rgba(72,213,151,.45);
@@ -320,4 +316,50 @@
   .app-with-topbar .topbar .actions > .availability-week-nav + .primary {
     grid-column: 1 / -1;
   }
+}
+
+/* Service blocks of vehicles: each row opens its detail, where the block can be removed. */
+.service-block-list {
+  display: grid;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.service-block-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-block-list li:last-child .service-block-row {
+  border-bottom: 0;
+}
+
+.service-block-row:hover {
+  background: rgba(255,255,255,.035);
+}
+
+.service-block-row span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.service-block-row small {
+  color: var(--muted);
+}
+
+.service-block-row svg {
+  flex: 0 0 auto;
+  color: var(--muted);
 }

@@ -4,7 +4,7 @@
   --bg: #07101d;
   --panel: #0d1828;
   --panel2: #111f33;
-  --muted: #91a4bd;
+  --muted: #9fb0c6;
   --text: #eef5ff;
   --line: rgba(255,255,255,.11);
   --gold: #f5c76a;
@@ -14,4 +14,16 @@
   --bad: #ff6b6b;
   --blue: #80c7ff;
   --shadow: 0 24px 80px rgba(0,0,0,.42);
+
+  /* Status tones as r,g,b so every use can pick its own alpha: rgb(var(--tone-open)), rgba(var(--tone-open),.12).
+     One tone per shift status, the same in pills, calendar cards, dots and legends. */
+  --tone-draft: 176,190,212;     /* návrh: slate, drawn dashed */
+  --tone-pending: 255,197,85;    /* čeká na potvrzení / schválení: amber */
+  --tone-open: 110,190,255;      /* volná směna, chybí řidič: sky blue */
+  --tone-confirmed: 72,213,151;  /* potvrzeno, schváleno: green */
+  --tone-done: 150,200,176;      /* dokončeno: calm sage */
+  --tone-declined: 255,120,120;  /* odmítnuto, vráceno k opravě: red */
+  --tone-cancelled: 128,142,162; /* zrušeno: grey */
+  --tone-swap: 190,160,255;      /* výměna čeká: violet */
+  --tone-problem: 255,107,107;   /* problém ve směně: red */
 }

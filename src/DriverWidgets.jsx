@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import {
   actualDurationMinutes,
   addDays,
@@ -11,7 +12,8 @@ import {
 import { settlementForShift } from './lib/settlements.js'
 import { driverShiftActions } from './lib/shiftActions.js'
 import { formatNoticeDate, shiftTypeName } from './lib/display.js'
-import { statusMap, weekdayMap } from './lib/appConfig.js'
+import { statusMap, statusToneMap, weekdayMap } from './lib/appConfig.js'
+import { ToneIcon } from './AppUi.jsx'
 
 const shortTime = (timestamp) => new Date(timestamp).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
 
@@ -34,7 +36,7 @@ export function DriverActions({ shift, compact = false, data, actions }) {
     can.confirm && !['confirm', 'checkin'].includes(primaryKind) ? <button className="ghost" onClick={() => actions.setStatus(shift.id, 'confirmed')} key="confirm">Potvrdit směnu</button> : null,
     can.settlement && primaryKind !== 'settlement' ? <button className="ghost" onClick={() => actions.setSettlementShiftId(shift.id)} key="settlement">{settlement ? 'Výčetka' : 'Vyplnit výčetku'}</button> : null,
     can.swap ? <button className="ghost" onClick={() => actions.requestSwap(shift)} key="swap">Nabídnout výměnu</button> : null,
-    can.cancelSwap ? <button className="danger" onClick={() => actions.cancelSwap(shift)} key="cancelSwap">Zrušit výměnu</button> : null,
+    can.cancelSwap ? <button className="ghost" onClick={() => actions.cancelSwap(shift)} key="cancelSwap">Zrušit výměnu</button> : null,
     can.decline ? <button className="danger" onClick={() => actions.decline(shift)} key="decline">Odmítnout směnu</button> : null,
   ].filter(Boolean)
   const checkInHint = can.checkInOpensAt && can.checkInOpensAt - Date.now() < 24 * 60 * 60 * 1000
@@ -72,16 +74,16 @@ export function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedS
           <span className="driver-compact-title">{formatDate(s.date)} · {shiftTypeName(s)}</span>
           <p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p>
         </div>
-        <div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} /><span className="driver-card-toggle" aria-hidden="true">▾</span></div>
+        <div className="driver-shift-status-row"><StatusPill status={s.status} /><span className="driver-card-toggle" aria-hidden="true"><ChevronDown size={18} strokeWidth={2.4} /></span></div>
       </div>
     </button>
   }
   const canCollapse = !shouldDefaultFull
   return <div className={focusCard ? 'card driver-hero' : 'card driver-shift-card'}>
-    <div className="driver-shift-head" style={canCollapse ? { cursor: 'pointer' } : undefined} onClick={canCollapse ? () => onExpand('') : undefined} role={canCollapse ? 'button' : undefined} aria-label={canCollapse ? 'Sbalit směnu' : undefined}><div><span className="driver-date">{formatDate(s.date)}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} />{canCollapse && <span className="driver-card-toggle" aria-hidden="true">▴</span>}</div></div>
+    <div className="driver-shift-head" style={canCollapse ? { cursor: 'pointer' } : undefined} onClick={canCollapse ? () => onExpand('') : undefined} role={canCollapse ? 'button' : undefined} aria-label={canCollapse ? 'Sbalit směnu' : undefined}><div><span className="driver-date">{formatDate(s.date)}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><div className="driver-shift-status-row"><StatusPill status={s.status} />{canCollapse && <span className="driver-card-toggle" aria-hidden="true"><ChevronUp size={18} strokeWidth={2.4} /></span>}</div></div>
     {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
     {s.note && <p className="muted driver-note">{s.note}</p>}
-    {(s.actualStartAt || s.actualEndAt) && <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div>}
+    {(s.actualStartAt || s.actualEndAt) && <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div>}
     {showStartPrompt && <div className="driver-info-line">Až budeš na místě, klepni na „Nastoupil jsem“.</div>}
     {settlement && <div className="settlement-driver-strip"><SettlementStatusPill settlement={settlement} /><SettlementSummary settlement={settlement} /></div>}
     {conflictMessages.length > 0 && <ConflictBox messages={conflictMessages} />}
@@ -104,11 +106,11 @@ export function DriverActionModal({ dialog, shift, request, helpers, onClose, on
       <form className="stack driver-swap-form" onSubmit={onSubmitDecline}>
         {summary}
         <Field label="Důvod odmítnutí">
-          <textarea value={dialog.reason || ''} onChange={(event) => onDeclineReasonChange(event.target.value)} placeholder="Např. kolize, nemoc nebo osobní důvod." />
+          <textarea value={dialog.reason || ''} onChange={(event) => onDeclineReasonChange(event.target.value)} placeholder="Např. nemoc, jiná směna nebo osobní důvod." />
         </Field>
         <div className="row-actions driver-swap-actions">
           <button className="danger" type="submit">Odmítnout směnu</button>
-          <button className="ghost" type="button" onClick={onClose}>Zrušit</button>
+          <button className="ghost" type="button" onClick={onClose}>Zpět</button>
         </div>
       </form>
     </Modal>
@@ -123,9 +125,9 @@ export function DriverActionModal({ dialog, shift, request, helpers, onClose, on
     },
     cancelSwap: {
       title: 'Zrušit výměnu',
-      body: 'Žádost o výměnu se označí jako zrušená a dispečink dostane upozornění.',
+      body: 'Žádost o výměnu se označí jako zrušená a dispečink dostane upozornění. Směnu můžeš nabídnout znovu.',
       confirmLabel: 'Zrušit výměnu',
-      confirmClass: 'danger',
+      confirmClass: 'primary',
       onConfirm: onConfirmCancelSwap,
     },
     acceptSwap: {
@@ -156,7 +158,7 @@ export function DriverActionModal({ dialog, shift, request, helpers, onClose, on
     <div className="stack driver-swap-form">
       {summary}
       <p className="driver-action-copy">{config.body}</p>
-      {dialog.conflictMessages?.length > 0 && <div className="alert warn"><b>Pozor na kolizi</b><br />{dialog.conflictMessages.map((message, index) => <span key={index}>{message}<br /></span>)}</div>}
+      {dialog.conflictMessages?.length > 0 && <div className="alert warn"><b>Pozor, směna má problém</b><br />{dialog.conflictMessages.map((message, index) => <span key={index}>{message}<br /></span>)}</div>}
       <div className="row-actions driver-swap-actions">
         <button className={config.confirmClass} type="button" onClick={config.onConfirm}>{config.confirmLabel}</button>
         <button className="ghost" type="button" onClick={onClose}>Zpět</button>
@@ -178,33 +180,37 @@ export function DriverTwoWeekCalendar({ shifts, openShifts, helpers, myOpenInter
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [calendarOpen])
-  const dotPriority = { conflict: 0, waiting: 1, open: 2, confirmed: 3 }
-  const isWaitingShift = (status) => ['assigned', 'draft', 'pending'].includes(status)
+  // Dots carry the same tones as the status pills; the most urgent comes first.
+  const dotPriority = { problem: 0, pending: 1, draft: 2, open: 3, confirmed: 4, done: 5 }
+  const legendLabels = { problem: 'Problém', pending: 'Čeká na potvrzení', draft: 'Návrh', open: 'Volná směna', confirmed: 'Potvrzeno', done: 'Dokončeno' }
   const shiftHasConflict = (shift) => Boolean(shift.has_conflict || shift.hasConflict || helpers.conflictMessages(shift).length)
   const dotTypeForShift = (shift) => {
-    if (shiftHasConflict(shift)) return 'conflict'
-    if (isWaitingShift(shift.status)) return 'waiting'
-    if (['confirmed', 'in_progress', 'completed'].includes(shift.status)) return 'confirmed'
-    return null
+    if (shiftHasConflict(shift)) return 'problem'
+    const tone = statusToneMap[shift.status]
+    return tone in dotPriority ? tone : null
   }
   const dayItems = (day) => [
     ...shifts.filter((s) => s.date === day).map((s) => {
       const type = dotTypeForShift(s)
       return type ? { type, shift: s, status: statusMap[s.status] || s.status } : null
     }).filter(Boolean),
-    ...openShifts.filter((s) => s.date === day).map((s) => ({ type: 'open', shift: s, status: 'volná směna' })),
+    ...openShifts.filter((s) => s.date === day).map((s) => ({ type: 'open', shift: s, status: statusMap.open })),
   ].sort((a, b) => dotPriority[a.type] - dotPriority[b.type] || a.shift.start.localeCompare(b.shift.start))
   const weekLabel = (index) => index === 0 ? 'Tento týden' : (index === 1 ? 'Příští týden' : `Týden ${index + 1}`)
   // plain render helpers, not components: day buttons keep focus when a day is picked
   const dots = (items) => {
     const visible = items.slice(0, 3)
     const extra = items.length - visible.length
-    return <small>{visible.map((item, index) => <span key={`${item.type}-${index}`} className={`driver-cal-dot ${item.type}`} aria-hidden="true"></span>)}{extra > 0 && <span className="driver-cal-more">+{extra}</span>}</small>
+    return <small>{visible.map((item, index) => <span key={`${item.type}-${index}`} className={`driver-cal-dot tone-${item.type}`} aria-hidden="true"></span>)}{extra > 0 && <span className="driver-cal-more">+{extra}</span>}</small>
   }
-  const viewHasConflict = (rows) => rows.some((days) => days.some((day) => dayItems(day).some((item) => item.type === 'conflict')))
-  const legend = (showConflict) => <div className="driver-calendar-legend">
-    <span><span className="driver-cal-dot confirmed" aria-hidden="true"></span>potvrzená</span><span><span className="driver-cal-dot open" aria-hidden="true"></span>volná</span><span><span className="driver-cal-dot waiting" aria-hidden="true"></span>čeká</span>{showConflict && <span><span className="driver-cal-dot conflict" aria-hidden="true"></span>kolize</span>}
-  </div>
+  // the legend explains only the marks the shown weeks actually use
+  const legend = (rows) => {
+    const tones = new Set(rows.flat().flatMap((day) => dayItems(day).map((item) => item.type)))
+    if (!tones.size) return null
+    return <div className="driver-calendar-legend">
+      {Object.keys(dotPriority).filter((tone) => tones.has(tone)).map((tone) => <span key={tone}><span className={`driver-cal-dot tone-${tone}`} aria-hidden="true"></span>{legendLabels[tone]}</span>)}
+    </div>
+  }
   const weekRow = (days, index) => <div className="driver-week-block" key={days[0]}>
     <div className="driver-week-title">{weekLabel(index)} <span>{formatDate(days[0])} – {formatDate(days[6])}</span></div>
     <div className="driver-week-grid">{days.map((day) => {
@@ -223,7 +229,7 @@ export function DriverTwoWeekCalendar({ shifts, openShifts, helpers, myOpenInter
       {items.length ? <ul>{items.map((item) => {
         const interested = myOpenInterests.some((request) => request.shiftId === item.shift.id)
         return <li key={item.shift.id}>
-          <span className={`driver-cal-dot ${item.type}`} aria-hidden="true"></span>
+          <span className={`driver-day-detail-icon tone-${item.type}`}><ToneIcon tone={item.type} size={17} /></span>
           <div><b>{item.shift.start}–{item.shift.end} · {shiftTypeName(item.shift)}</b><small>{helpers.vehicleName(item.shift.vehicleId)} · {item.status}</small></div>
           {item.type === 'open' && onApplyForOpenShift && (interested ? <span className="pill good">Zájem odeslán</span> : <button type="button" className="ghost" onClick={() => onApplyForOpenShift(item.shift)}>Mám zájem</button>)}
         </li>
@@ -233,14 +239,14 @@ export function DriverTwoWeekCalendar({ shifts, openShifts, helpers, myOpenInter
   return <div className="card driver-calendar-card">
     <div className="section-title"><h3>Kalendář</h3><button type="button" className="pill" onClick={() => setCalendarOpen(true)}>4 týdny</button></div>
     {dayRows.map((days, rowIndex) => weekRow(days, rowIndex))}
-    {legend(viewHasConflict(dayRows))}
+    {legend(dayRows)}
     {selectedDay && !calendarOpen && dayDetail(selectedDay)}
     {calendarOpen && <div className="modal-backdrop driver-calendar-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCalendarOpen(false) }}>
       <div className="modal-card card driver-calendar-modal" role="dialog" aria-modal="true" aria-label="Kalendář na 4 týdny">
-        <div className="section-title"><h3>Kalendář na 4 týdny</h3><button className="ghost driver-calendar-modal-close" onClick={() => setCalendarOpen(false)} aria-label="Zavřít kalendář">✕</button></div>
+        <div className="section-title"><h3>Kalendář na 4 týdny</h3><button className="ghost driver-calendar-modal-close" onClick={() => setCalendarOpen(false)} aria-label="Zavřít kalendář"><X size={20} strokeWidth={2.4} aria-hidden="true" /></button></div>
         <div className="driver-calendar-modal-body">
           {modalRows.map((days, rowIndex) => weekRow(days, rowIndex))}
-          {legend(viewHasConflict(modalRows))}
+          {legend(modalRows)}
           {selectedDay ? dayDetail(selectedDay) : <p className="muted driver-calendar-tip">Klepni na den a uvidíš jeho směny.</p>}
         </div>
       </div>

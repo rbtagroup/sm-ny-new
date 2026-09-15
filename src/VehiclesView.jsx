@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { EARLIEST_PLAN_DATE, isPlausiblePlanDate, LATEST_PLAN_DATE } from './lib/dateTime.js'
 import { showNotice } from './lib/notice.js'
 import { dateRangeLabel } from './lib/display.js'
+import { takeBackChange } from './lib/undo.js'
 
 const emptyVehicleForm = Object.freeze({ name: '', plate: '', year: '', active: true, note: '' })
 const freshVehicleForm = () => ({ ...emptyVehicleForm })
@@ -36,16 +38,15 @@ const formFromVehicle = (vehicle = {}) => ({
 
 export function Vehicles({ data, commit, services, ui }) {
   const { todayISO, uid } = services
-  const { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer } = ui
+  const { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer } = ui
   const [form, setForm] = useState(freshVehicleForm)
   const [editing, setEditing] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [vehicleToDelete, setVehicleToDelete] = useState('')
-  const [serviceBlockToDelete, setServiceBlockToDelete] = useState('')
+  const [openBlockId, setOpenBlockId] = useState('')
   const [block, setBlock] = useState(() => freshServiceBlock(todayISO))
   const editingVehicle = editing ? data.vehicles.find((vehicle) => vehicle.id === editing) : null
-  const deleteVehicle = vehicleToDelete ? data.vehicles.find((vehicle) => vehicle.id === vehicleToDelete) : null
-  const deleteServiceBlock = serviceBlockToDelete ? data.serviceBlocks.find((item) => item.id === serviceBlockToDelete) : null
+  const openBlock = openBlockId ? data.serviceBlocks.find((item) => item.id === openBlockId) : null
+  const vehicleLabel = (vehicleId) => data.vehicles.find((vehicle) => vehicle.id === vehicleId)?.name || 'Vůz'
   const activeCount = data.vehicles.filter((vehicle) => vehicle.active !== false).length
   const closeDrawer = () => { setDrawerOpen(false); setEditing(null); setForm(freshVehicleForm()) }
   const openCreate = () => { setForm(freshVehicleForm()); setEditing(null); setDrawerOpen(true) }
@@ -74,24 +75,30 @@ export function Vehicles({ data, commit, services, ui }) {
     commit((prev) => ({ ...prev, serviceBlocks: [{ id: uid('srv'), ...block }, ...prev.serviceBlocks] }), 'Přidána servisní blokace vozidla.')
     setBlock(freshServiceBlock(todayISO))
   }
-  const removeBlock = (id) => setServiceBlockToDelete(id)
-  const confirmRemoveBlock = () => {
-    if (!deleteServiceBlock) return
-    commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((item) => item.id !== deleteServiceBlock.id) }), 'Servisní blokace odstraněna.')
-    setServiceBlockToDelete('')
+  // A block is removed from its detail; the notice after it can still take the removal back.
+  const removeBlock = () => {
+    if (!openBlock) return
+    const removed = openBlock
+    const label = `${vehicleLabel(removed.vehicleId)} ${dateRangeLabel(removed.from, removed.to)}`
+    commit((prev) => ({ ...prev, serviceBlocks: prev.serviceBlocks.filter((item) => item.id !== removed.id) }), `Servisní blokace odstraněna: ${label}.`)
+    setOpenBlockId('')
+    showNotice('Servisní blokace je odstraněná.', {
+      tone: 'good',
+      undo: () => commit((prev) => takeBackChange(prev, [{ key: 'serviceBlocks', before: [removed] }]), `Odstranění servisní blokace vráceno zpět: ${label}.`),
+    })
   }
-  const softDelete = (vehicle = editingVehicle) => {
+  // Taking a vehicle out of service keeps its history and can be taken back, so it asks nothing and offers "Vrátit zpět".
+  const retire = (vehicle = editingVehicle) => {
     if (!vehicle) return
-    setVehicleToDelete(vehicle.id)
+    const label = `${vehicle.name || 'Bez modelu'} · ${vehicle.plate || 'Bez SPZ'}`
+    commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((item) => item.id === vehicle.id ? { ...item, active: false } : item) }), `Vozidlo ${label} vyřazeno.`)
+    if (editing === vehicle.id) closeDrawer()
+    showNotice(`Vozidlo ${label} je vyřazené. Nenabízí se do směn, historie zůstává.`, {
+      tone: 'good',
+      undo: () => commit((prev) => takeBackChange(prev, [{ key: 'vehicles', before: [vehicle] }]), `Vyřazení vozidla ${label} vráceno zpět.`),
+    })
   }
-  const confirmSoftDelete = () => {
-    if (!deleteVehicle) return
-    commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((vehicle) => vehicle.id === deleteVehicle.id ? { ...vehicle, active: false } : vehicle) }), 'Vozidlo deaktivováno.')
-    const wasEditing = editing === deleteVehicle.id
-    setVehicleToDelete('')
-    if (wasEditing) closeDrawer()
-  }
-  const restoreVehicle = (vehicle) => commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((item) => item.id === vehicle.id ? { ...item, active: true } : item) }), 'Vozidlo znovu aktivováno.')
+  const restoreVehicle = (vehicle) => commit((prev) => ({ ...prev, vehicles: prev.vehicles.map((item) => item.id === vehicle.id ? { ...item, active: true } : item) }), 'Vozidlo obnoveno.')
 
   return <>
     <PageTitle title="Vozidla"><button className="primary" onClick={openCreate}>+ Přidat vozidlo</button></PageTitle>
@@ -102,53 +109,45 @@ export function Vehicles({ data, commit, services, ui }) {
           const year = extractVehicleYear(vehicle.note)
           const note = vehicleNoteBody(vehicle.note)
           return <div className="log list-row" key={vehicle.id}>
-            <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(vehicle)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(vehicle) } }}>
-              <div className="split"><div><b>{vehicle.name || 'Bez modelu'}</b><br /><small className="muted">{vehicle.plate || 'Bez SPZ'}{year ? ` · ${year}` : ''}{note ? ' · ' + note : ''}</small></div><span className={vehicle.active ? 'pill good' : 'pill bad'}>{vehicle.active ? 'Aktivní' : 'Neaktivní'}</span></div>
+            <div className="list-row-main" role="button" tabIndex={0} aria-label={`Detail vozidla ${vehicle.name || 'Bez modelu'}`} onClick={() => openEdit(vehicle)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(vehicle) } }}>
+              <div className="split"><div><b>{vehicle.name || 'Bez modelu'}</b><br /><small className="muted">{vehicle.plate || 'Bez SPZ'}{year ? ` · ${year}` : ''}{note ? ' · ' + note : ''}</small></div><span className="list-row-end">{vehicle.active === false && <span className="pill">Vyřazené</span>}<ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" /></span></div>
             </div>
-            <div className="row-actions list-row-actions">
-              <button onClick={() => openEdit(vehicle)}>Upravit</button>
-              {vehicle.active === false ? <button onClick={() => restoreVehicle(vehicle)}>Obnovit</button> : <DeleteIconButton label="Deaktivovat vozidlo" onClick={() => softDelete(vehicle)} />}
-            </div>
+            {vehicle.active === false && <div className="row-actions list-row-actions">
+              <button type="button" onClick={() => restoreVehicle(vehicle)}>Obnovit</button>
+            </div>}
           </div>
         })}</div>
       </div>
-      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill warn">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(event) => setBlock({ ...block, vehicleId: event.target.value })}><option value="">Vyber vůz</option>{data.vehicles.filter((vehicle) => vehicle.active !== false).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(event) => setBlock({ ...block, reason: event.target.value })} /></Field><Field label="Od"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={block.from} onChange={(event) => setBlock({ ...block, from: event.target.value })} /></Field><Field label="Do"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={block.to} onChange={(event) => setBlock({ ...block, to: event.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><div className="stack" style={{ marginTop: 12 }}>{data.serviceBlocks.map((item) => <div className="alert warn" key={item.id}>{data.vehicles.find((vehicle) => vehicle.id === item.vehicleId)?.name || 'Vůz'} · {dateRangeLabel(item.from, item.to)}<br /><small>{item.reason}</small><div className="row-actions" style={{ marginTop: 8 }}><DeleteIconButton label="Odstranit servisní blokaci" onClick={() => removeBlock(item.id)} /></div></div>)}{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Servisní blokace</h3><span className="pill">{data.serviceBlocks.length}</span></div><form className="form two-col" onSubmit={addBlock}><Field label="Vozidlo"><select value={block.vehicleId} onChange={(event) => setBlock({ ...block, vehicleId: event.target.value })}><option value="">Vyber vůz</option>{data.vehicles.filter((vehicle) => vehicle.active !== false).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select></Field><Field label="Důvod"><input value={block.reason} onChange={(event) => setBlock({ ...block, reason: event.target.value })} /></Field><Field label="Od"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={block.from} onChange={(event) => setBlock({ ...block, from: event.target.value })} /></Field><Field label="Do"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={block.to} onChange={(event) => setBlock({ ...block, to: event.target.value })} /></Field><div className="field span2"><button className="primary" type="submit">Přidat blokaci</button></div></form><ul className="service-block-list">{data.serviceBlocks.map((item) => <li key={item.id}><button type="button" className="service-block-row" onClick={() => setOpenBlockId(item.id)}><span><b>{vehicleLabel(item.vehicleId)} · {dateRangeLabel(item.from, item.to)}</b><small>{item.reason || 'Bez důvodu'}</small></span><ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" /></button></li>)}</ul>{!data.serviceBlocks.length && <div className="empty">Žádné servisní blokace.</div>}</div>
     </div>
     <SideDrawer title={editing ? 'Detail vozidla' : 'Přidat vozidlo'} open={drawerOpen} onClose={closeDrawer}>
       <form className="form two-col" onSubmit={submit}>
         <Field label="Model"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} autoFocus required placeholder="Např. Tesla Model 3" /></Field>
         <Field label="SPZ"><input value={form.plate} onChange={(event) => setForm({ ...form, plate: normalizePlate(event.target.value) })} placeholder="např. 1AB 2345" required /></Field>
         <Field label="Rok výroby"><input inputMode="numeric" value={form.year} onChange={(event) => setForm({ ...form, year: event.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="volitelné" /></Field>
-        <Field label="Aktivní"><select value={String(form.active)} onChange={(event) => setForm({ ...form, active: event.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
+        <Field label="Stav"><select value={String(form.active)} onChange={(event) => setForm({ ...form, active: event.target.value === 'true' })}><option value="true">Aktivní</option><option value="false">Vyřazené</option></select></Field>
         <Field label="Poznámka" className="span2"><input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></Field>
         <div className="field span2 drawer-form-actions">
           <button className="primary" type="submit">{editing ? 'Uložit změny' : 'Vytvořit vozidlo'}</button>
-          <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>
+          <button className="ghost" type="button" onClick={closeDrawer}>Zavřít</button>
         </div>
-        {editing && <div className="field span2">
-          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingVehicle?.active === false}>Deaktivovat vozidlo</button>
+        {editing && editingVehicle && <div className="field span2 drawer-retire">
+          {editingVehicle.active === false
+            ? <button className="ghost" type="button" onClick={() => restoreVehicle(editingVehicle)}>Obnovit vozidlo</button>
+            : <button className="ghost" type="button" onClick={() => retire()}>Vyřadit vozidlo</button>}
+          <small className="muted">{editingVehicle.active === false ? 'Vozidlo se znovu nabídne při plánování.' : 'Vyřazené vozidlo se nenabízí do směn. Historie zůstane a jde ho kdykoli obnovit.'}</small>
         </div>}
       </form>
     </SideDrawer>
-    {deleteVehicle && <ConfirmActionModal
-      title="Deaktivovat vozidlo"
-      message="Vozidlo se skryje jako neaktivní, ale historické směny a záznamy zůstanou zachované."
-      confirmLabel="Deaktivovat vozidlo"
-      confirmClass="danger"
-      onClose={() => setVehicleToDelete('')}
-      onConfirm={confirmSoftDelete}
-    >
-      <ActionSummary eyebrow="Vozidlo" title={`${deleteVehicle.name || 'Bez modelu'} · ${deleteVehicle.plate || 'Bez SPZ'}`} meta={vehicleNoteBody(deleteVehicle.note) || 'Bez poznámky'} />
-    </ConfirmActionModal>}
-    {deleteServiceBlock && <ConfirmActionModal
-      title="Odstranit servisní blokaci"
-      message="Servisní blokace se odstraní z plánování dostupnosti vozidla."
+    {openBlock && <ConfirmActionModal
+      title="Servisní blokace"
+      message="Po odstranění se vozidlo v těchto dnech znovu nabízí do směn."
       confirmLabel="Odstranit blokaci"
       confirmClass="danger"
-      onClose={() => setServiceBlockToDelete('')}
-      onConfirm={confirmRemoveBlock}
+      onClose={() => setOpenBlockId('')}
+      onConfirm={removeBlock}
     >
-      <ActionSummary eyebrow="Blokace" title={dateRangeLabel(deleteServiceBlock.from, deleteServiceBlock.to)} meta={deleteServiceBlock.reason || 'Bez důvodu'} />
+      <ActionSummary eyebrow={vehicleLabel(openBlock.vehicleId)} title={dateRangeLabel(openBlock.from, openBlock.to)} meta={openBlock.reason || 'Bez důvodu'} />
     </ConfirmActionModal>}
   </>
 }

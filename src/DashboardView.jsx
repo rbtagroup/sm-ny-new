@@ -8,6 +8,7 @@ import { showNotice } from './lib/notice.js'
 import { dayText } from './lib/shiftExports.js'
 import { resolveSwapRequest } from './lib/swapRequests.js'
 import { ShiftTable } from './StaffShiftTable.jsx'
+import { ToneIcon } from './AppUi.jsx'
 
 const TASKS_SHOWN = 8
 const clockTime = (value) => new Date(value).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
@@ -57,19 +58,19 @@ export function Dashboard({ data, helpers, commit, today = todayISO(), ui, servi
     </PageTitle>
     {tabs}
     <div className="grid kpis dashboard-kpis">
-      <Kpi label="Dnešní směny" value={todayShifts.length} hint={`${todayShifts.filter((shift) => shift.status === 'confirmed').length} potvrzeno · ${todayShifts.filter((shift) => shift.status === 'completed').length} hotovo`} />
+      <Kpi label="Dnešní směny" value={todayShifts.length} hint={`${todayShifts.filter((shift) => shift.status === 'confirmed').length} potvrzeno · ${todayShifts.filter((shift) => shift.status === 'completed').length} dokončeno`} />
       <Kpi label="Čeká na reakci" value={waiting.length} hint="Budoucí návrh / čeká na potvrzení" />
       <Kpi label="Běží směny" value={running.length} hint="Nástup bez ukončení" kind={running.length ? 'warn' : ''} />
-      <Kpi label="Kolize" value={conflicts.length} hint={conflicts.length ? 'Nutná kontrola' : 'Bez zásahu'} kind={conflicts.length ? 'bad' : 'good'} />
-      <Kpi label="Výměny / obsazení" value={pendingSwaps.length + gaps.length} hint={`${czechCount(pendingSwaps.length, 'výměna', 'výměny', 'výměn')} · ${czechCount(gaps.length, 'díra', 'díry', 'děr')}`} kind={pendingSwaps.length + gaps.length ? 'bad' : 'good'} />
+      <Kpi label="Problémy ve směnách" value={conflicts.length} hint={conflicts.length ? 'Nutná kontrola' : 'Bez zásahu'} kind={conflicts.length ? 'bad' : 'good'} />
+      <Kpi label="Výměny / obsazení" value={pendingSwaps.length + gaps.length} hint={`${czechCount(pendingSwaps.length, 'výměna', 'výměny', 'výměn')} · chybí obsadit ${gaps.length}`} kind={pendingSwaps.length + gaps.length ? 'bad' : 'good'} />
     </div>
     <div className="grid" style={{ marginTop: 16 }}>
       <div className="card dashboard-tasks-card">
-        <div className="section-title"><h3>Úkoly k vyřešení</h3><span className={tasks.length ? 'pill bad' : 'pill good'}>{tasks.length}</span></div>
+        <div className="section-title"><h3>Úkoly k vyřešení</h3><span className={tasks.length ? 'pill warn' : 'pill good'}>{tasks.length}</span></div>
         {tasks.length > 0 && <ul className="dashboard-tasks">
           {shownTasks.map((task) => <li className={`dashboard-task tone-${task.tone}`} key={task.key}>
             <div className="dashboard-task-copy">
-              <span className="dashboard-task-title">{task.title}</span>
+              <span className="dashboard-task-title"><ToneIcon tone={task.tone} size={14} />{task.title}</span>
               <b>{task.when}</b>
               <small>{task.detail}</small>
             </div>
@@ -77,14 +78,14 @@ export function Dashboard({ data, helpers, commit, today = todayISO(), ui, servi
           </li>)}
         </ul>}
         {tasks.length > TASKS_SHOWN && <button type="button" className="ghost dashboard-tasks-more" onClick={() => setAllTasksShown((shown) => !shown)}>{allTasksShown ? 'Zobrazit méně' : `Zobrazit všech ${tasks.length}`}</button>}
-        {!tasks.length && <div className="empty">Nic nečeká: bez kolizí, odmítnutých směn, výměn a chybějícího obsazení.</div>}
+        {!tasks.length && <div className="empty">Nic nečeká: žádné problémy ve směnách, odmítnuté směny, výměny ani chybějící obsazení.</div>}
       </div>
       <div className="card"><div className="section-title"><h3>Dnešní provoz</h3><span className="pill">{formatDate(today)}</span></div><ShiftTable shifts={todayShifts} data={data} helpers={helpers} commit={commit} compact ui={shiftTableUi} services={shiftTableServices} /></div>
     </div>
     <div className="grid three" style={{ marginTop: 16 }}>
       <div className="card"><div className="section-title"><h3>Čeká na potvrzení</h3><span className="pill warn">{waiting.length}</span></div><div className="quick-list">{waiting.slice(0, 8).map((shift) => <QuickShift key={shift.id} shift={shift} helpers={helpers} StatusPill={StatusPill} />)}{!waiting.length && <div className="empty">Nic nečeká.</div>}</div></div>
-      <div className="card"><div className="section-title"><h3>Volná auta dnes</h3><span className="pill good">{freeCars.length}</span></div><div className="quick-list">{freeCars.map((vehicle) => <div className="quick-item" key={vehicle.id}><div><strong>{vehicle.name}</strong><small>{vehicle.plate}</small></div><span className="pill good">volné</span></div>)}{!freeCars.length && <div className="empty">Všechna aktivní auta jsou dnes v plánu.</div>}</div></div>
-      <div className="card"><div className="section-title"><h3>Volní řidiči dnes</h3><span className="pill good">{freeDrivers.length}</span></div><div className="quick-list">{freeDrivers.map((driver) => <div className="quick-item" key={driver.id}><div><strong>{driver.name}</strong><small>{driver.phone || driver.email || 'bez kontaktu'}</small></div><span className="pill good">volný</span></div>)}{!freeDrivers.length && <div className="empty">Všichni aktivní řidiči jsou dnes v plánu.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Volná auta dnes</h3><span className="pill good">{freeCars.length}</span></div><div className="quick-list">{freeCars.map((vehicle) => <div className="quick-item" key={vehicle.id}><div><strong>{vehicle.name}</strong><small>{vehicle.plate}</small></div></div>)}{!freeCars.length && <div className="empty">Všechna aktivní auta jsou dnes v plánu.</div>}</div></div>
+      <div className="card"><div className="section-title"><h3>Volní řidiči dnes</h3><span className="pill good">{freeDrivers.length}</span></div><div className="quick-list">{freeDrivers.map((driver) => <div className="quick-item" key={driver.id}><div><strong>{driver.name}</strong><small>{driver.phone || driver.email || 'bez kontaktu'}</small></div></div>)}{!freeDrivers.length && <div className="empty">Všichni aktivní řidiči jsou dnes v plánu.</div>}</div></div>
     </div>
     <div className="grid two" style={{ marginTop: 16 }}>
       <div className="card"><div className="section-title"><h3>Zítra</h3><span className="pill">{czechCount(tomorrowShifts.length, 'směna', 'směny', 'směn')}</span></div><pre className="copybox">{dayText(data, helpers, tomorrow)}</pre></div>
@@ -98,5 +99,5 @@ export function Dashboard({ data, helpers, commit, today = todayISO(), ui, servi
 }
 
 function QuickShift({ shift, helpers, StatusPill }) {
-  return <div className="quick-item"><div><strong>{formatDate(shift.date)} {shift.start}–{shift.end}</strong><small>{helpers.driverName(shift.driverId)} · {helpers.vehicleName(shift.vehicleId)}</small></div><StatusPill status={shift.status} helpers={helpers} /></div>
+  return <div className="quick-item"><div><strong>{formatDate(shift.date)} {shift.start}–{shift.end}</strong><small>{helpers.driverName(shift.driverId)} · {helpers.vehicleName(shift.vehicleId)}</small></div><StatusPill status={shift.status} /></div>
 }

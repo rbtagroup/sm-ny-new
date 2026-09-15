@@ -1,5 +1,5 @@
 import { formatDate, todayISO } from './dateTime.js'
-import { roleMap, shiftTypeMap } from './appConfig.js'
+import { roleMap, shiftTypeMap, statusToneMap } from './appConfig.js'
 
 export const money = (n) => `${Math.round(Number(n || 0)).toLocaleString('cs-CZ')} Kč`
 export const time = (v) => v || '—'
@@ -25,16 +25,19 @@ export function shiftNoticeBody(shift, helpers, suffix = '') {
 
 export function deviceLabelFromUserAgent(value = '') {
   const ua = String(value || '')
-  if (/iPhone/i.test(ua)) return '📱 iPhone (Safari)'
-  if (/iPad/i.test(ua)) return '📱 iPad (Safari)'
-  if (/Android/i.test(ua) && /Firefox/i.test(ua)) return '📱 Android (Firefox)'
-  if (/Android/i.test(ua) && /Chrome/i.test(ua)) return '📱 Android (Chrome)'
-  if (/Macintosh/i.test(ua) && /Chrome/i.test(ua)) return '💻 Mac (Chrome)'
-  if (/Macintosh/i.test(ua) && /Safari/i.test(ua)) return '💻 Mac (Safari)'
-  if (/Windows/i.test(ua) && /Edg/i.test(ua)) return '💻 Windows (Edge)'
-  if (/Windows/i.test(ua) && /Chrome/i.test(ua)) return '💻 Windows (Chrome)'
-  return '📱 Neznámé zařízení'
+  if (/iPhone/i.test(ua)) return 'iPhone (Safari)'
+  if (/iPad/i.test(ua)) return 'iPad (Safari)'
+  if (/Android/i.test(ua) && /Firefox/i.test(ua)) return 'Android (Firefox)'
+  if (/Android/i.test(ua) && /Chrome/i.test(ua)) return 'Android (Chrome)'
+  if (/Macintosh/i.test(ua) && /Chrome/i.test(ua)) return 'Mac (Chrome)'
+  if (/Macintosh/i.test(ua) && /Safari/i.test(ua)) return 'Mac (Safari)'
+  if (/Windows/i.test(ua) && /Edg/i.test(ua)) return 'Windows (Edge)'
+  if (/Windows/i.test(ua) && /Chrome/i.test(ua)) return 'Windows (Chrome)'
+  return 'Neznámé zařízení'
 }
+
+// Computers get a laptop icon next to the device name, everything else a phone.
+export const isDesktopDevice = (value = '') => /Macintosh|Windows/i.test(String(value || '')) && !/iPhone|iPad|Android/i.test(String(value || ''))
 
 export function driverInitials(name = '') {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
@@ -87,10 +90,10 @@ export function activeSwapForShift(shift, data = {}) {
   return (data.swapRequests || []).find((r) => r.shiftId === shift.id && ['pending','accepted'].includes(r.status))
 }
 
-export function calendarShiftLineClass(shift, conflicts = [], activeSwap = null) {
-  if (conflicts.length || ['declined', 'cancelled'].includes(shift.status)) return 'line-bad'
-  if (activeSwap || ['pending','accepted'].includes(shift.swapRequestStatus)) return 'line-swap'
-  if (['confirmed', 'completed'].includes(shift.status)) return 'line-good'
-  if (shift.status === 'open') return 'line-open'
-  return 'line-waiting'
+// The tone of a calendar card: its status, unless a problem or a waiting swap needs attention first.
+export function calendarShiftTone(shift, conflicts = [], activeSwap = null) {
+  if (['declined', 'cancelled'].includes(shift.status)) return statusToneMap[shift.status]
+  if (conflicts.length) return 'problem'
+  if (activeSwap || ['pending','accepted'].includes(shift.swapRequestStatus)) return 'swap'
+  return statusToneMap[shift.status] || 'pending'
 }

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { activatedDriverPatch, czechCount, driverRemovalSummary, driverRemovalSummaryText, driverWithDuplicateEmail, isPendingDriver, withoutDriver } from './lib/drivers.js'
 import { todayISO } from './lib/dateTime.js'
 import { driverAppStatus, driverInviteText, emailInviteUrl, whatsappInviteUrl } from './lib/driverInvite.js'
 import { appFriendlyError } from './lib/errors.js'
 import { showNotice } from './lib/notice.js'
+import { takeBackChange } from './lib/undo.js'
 
 const emptyDriverForm = Object.freeze({ name: '', phone: '', email: '', profileId: '', active: true, note: '' })
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -28,17 +30,15 @@ const formFromDriver = (driver = {}) => ({
 // TODO: mimo scope - avatar upload a samostatné role řidičů vyžadují Storage/sloupce v Supabase schématu.
 export function Drivers({ data, commit, services, ui, onlineMode = false, reloadOnline, canRemoveDrivers = false, onOpenAvailability }) {
   const { uid, supabase, copyText } = services
-  const { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer } = ui
+  const { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer } = ui
   const [form, setForm] = useState(freshDriverForm)
   const [editing, setEditing] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [driverToDelete, setDriverToDelete] = useState('')
   const [removal, setRemoval] = useState(null)
   const [removalConfirmation, setRemovalConfirmation] = useState('')
   const [removing, setRemoving] = useState(false)
   const [activity, setActivity] = useState({})
   const editingDriver = editing ? data.drivers.find((d) => d.id === editing) : null
-  const deleteDriver = driverToDelete ? data.drivers.find((d) => d.id === driverToDelete) : null
   const removalDriver = removal ? data.drivers.find((d) => d.id === removal.driverId) : null
   const activeCount = data.drivers.filter((d) => d.active !== false).length
   const driverCount = data.drivers.length
@@ -76,18 +76,18 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
     else commit((prev) => ({ ...prev, drivers: [{ id: uid('drv'), ...payload }, ...prev.drivers] }), 'Řidič vytvořen.')
     closeDrawer()
   }
-  const softDelete = (driver = editingDriver) => {
+  // Taking a driver out of service keeps the history and can be taken back, so it asks nothing and offers "Vrátit zpět".
+  const retire = (driver = editingDriver) => {
     if (!driver) return
-    setDriverToDelete(driver.id)
+    const label = driver.name || 'Bez jména'
+    commit((prev) => ({ ...prev, drivers: prev.drivers.map((item) => item.id === driver.id ? { ...item, active: false } : item) }), `Řidič ${label} vyřazen.`)
+    if (editing === driver.id) closeDrawer()
+    showNotice(`Řidič ${label} je vyřazený. Nenabízí se do směn, historie zůstává.`, {
+      tone: 'good',
+      undo: () => commit((prev) => takeBackChange(prev, [{ key: 'drivers', before: [driver] }]), `Vyřazení řidiče ${label} vráceno zpět.`),
+    })
   }
-  const confirmSoftDelete = () => {
-    if (!deleteDriver) return
-    commit((prev) => ({ ...prev, drivers: prev.drivers.map((driver) => driver.id === deleteDriver.id ? { ...driver, active: false } : driver) }), 'Řidič deaktivován.')
-    const wasEditing = editing === deleteDriver.id
-    setDriverToDelete('')
-    if (wasEditing) closeDrawer()
-  }
-  const restore = (driver) => commit((prev) => ({ ...prev, drivers: prev.drivers.map((item) => item.id === driver.id ? activatedDriverPatch(item, { active: true }) : item) }), isPendingDriver(driver) ? 'Řidič schválen.' : 'Řidič znovu aktivován.')
+  const restore = (driver) => commit((prev) => ({ ...prev, drivers: prev.drivers.map((item) => item.id === driver.id ? activatedDriverPatch(item, { active: true }) : item) }), isPendingDriver(driver) ? 'Řidič schválen.' : 'Řidič obnoven.')
   const openRemoval = (kind) => {
     if (!editingDriver) return
     setRemovalConfirmation('')
@@ -95,7 +95,7 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
   }
   const closeRemoval = () => { if (!removing) setRemoval(null) }
   const removalLabel = removalDriver?.name?.trim() || 'Bez jména'
-  const removalConfirmWord = removalDriver?.name?.trim() || 'SMAZAT'
+  const removalConfirmWord = removalDriver?.name?.trim() || 'ODSTRANIT'
   const removalConfirmed = confirmationText(removalConfirmation) === confirmationText(removalConfirmWord)
   const confirmRemoval = async () => {
     const driver = removalDriver
@@ -104,7 +104,7 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
     const complete = removal.kind === 'complete'
     if (!onlineMode || !supabase) {
       if (!complete) return
-      commit((prev) => withoutDriver(prev, driver.id), `Řidič ${label} byl trvale smazán i s historií.`)
+      commit((prev) => withoutDriver(prev, driver.id), `Řidič ${label} byl trvale odstraněn i s historií.`)
       setRemoval(null)
       closeDrawer()
       return
@@ -121,11 +121,11 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
     setRemoval(null)
     if (complete) {
       closeDrawer()
-      showNotice(`Řidič ${label} byl trvale smazán i s historií (${czechCount(Number(result?.shifts || 0), 'směna', 'směny', 'směn')}, ${czechCount(Number(result?.settlements || 0), 'výčetka', 'výčetky', 'výčetek')}).`, { tone: 'good' })
+      showNotice(`Řidič ${label} byl trvale odstraněn i s historií (${czechCount(Number(result?.shifts || 0), 'směna', 'směny', 'směn')}, ${czechCount(Number(result?.settlements || 0), 'výčetka', 'výčetky', 'výčetek')}).`, { tone: 'good' })
     } else {
       // The saved form must not write the removed login back.
       setForm((current) => ({ ...current, profileId: '' }))
-      showNotice(`Přihlašovací účet řidiče ${label} byl zrušen. Ať si v aplikaci vytvoří nový účet s e-mailem ${driver.email}.`, { tone: 'good' })
+      showNotice(`Přihlašovací účet řidiče ${label} je odstraněný. Ať si v aplikaci vytvoří nový účet s e-mailem ${driver.email}.`, { tone: 'good' })
     }
   }
   const pendingCount = data.drivers.filter(isPendingDriver).length
@@ -135,16 +135,22 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
     <PageTitle title="Řidiči">{onOpenAvailability && <button className="ghost" onClick={onOpenAvailability}>Dostupnost a nepřítomnost</button>}<button className="primary" onClick={openCreate}>+ Přidat řidiče</button></PageTitle>
     <div className="card">
       <div className="section-title"><h3>Seznam řidičů</h3><span className="pill">{activeCount} aktivní / {data.drivers.length} celkem{pendingCount ? ` · ${pendingCount} čeká na schválení` : ''}{inviteCount ? ` · ${inviteCount} k pozvání` : ''}</span></div>
-      <div className="stack compact-list">{sortedDrivers.map((driver) => <div className={isPendingDriver(driver) ? 'log list-row pending-driver-row' : 'log list-row'} key={driver.id}>
-        <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(driver)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(driver) } }}>
-          <div className="split"><div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}</small>{onlineMode && appStatus(driver).known && <small className={appStatus(driver).needsInvite && driver.active !== false ? 'driver-app-status warn' : 'driver-app-status'}>{appStatus(driver).label} · {appStatus(driver).pushEnabled ? 'notifikace zapnuté' : 'notifikace vypnuté'}</small>}</div><span className={driver.active ? 'pill good' : isPendingDriver(driver) ? 'pill warn' : 'pill bad'}>{driver.active ? 'Aktivní' : isPendingDriver(driver) ? 'Čeká na schválení' : 'Neaktivní'}</span></div>
-          {driver.note && <p className="muted compact-note">{driver.note}</p>}
+      <div className="stack compact-list">{sortedDrivers.map((driver) => {
+        const pending = isPendingDriver(driver)
+        const status = appStatus(driver)
+        return <div className={pending ? 'log list-row pending-driver-row' : 'log list-row'} key={driver.id}>
+          <div className="list-row-main" role="button" tabIndex={0} aria-label={`Detail řidiče ${driver.name || 'Bez jména'}`} onClick={() => openEdit(driver)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit(driver) } }}>
+            <div className="split">
+              <div><b>{driver.name || 'Bez jména'}</b><br /><small className="muted">{driver.phone || 'Bez telefonu'} · {driver.email || 'Bez e-mailu'}</small>{onlineMode && status.known && <small className={status.needsInvite && driver.active !== false ? 'driver-app-status warn' : 'driver-app-status'}>{status.label} · {status.pushEnabled ? 'notifikace zapnuté' : 'notifikace vypnuté'}</small>}</div>
+              <span className="list-row-end">{driver.active === false && <span className={pending ? 'pill warn' : 'pill'}>{pending ? 'Čeká na schválení' : 'Vyřazený'}</span>}<ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" /></span>
+            </div>
+            {driver.note && <p className="muted compact-note">{driver.note}</p>}
+          </div>
+          {driver.active === false && <div className="row-actions list-row-actions">
+            <button type="button" className={pending ? 'primary' : ''} onClick={() => restore(driver)}>{pending ? 'Schválit' : 'Obnovit'}</button>
+          </div>}
         </div>
-        <div className="row-actions list-row-actions">
-          <button onClick={() => openEdit(driver)}>Upravit</button>
-          {driver.active === false ? <button className={isPendingDriver(driver) ? 'primary' : ''} onClick={() => restore(driver)}>{isPendingDriver(driver) ? 'Schválit' : 'Obnovit'}</button> : <DeleteIconButton label="Deaktivovat řidiče" onClick={() => softDelete(driver)} />}
-        </div>
-      </div>)}</div>
+      })}</div>
     </div>
     <SideDrawer title={editing ? 'Detail řidiče' : 'Přidat řidiče'} open={drawerOpen} onClose={closeDrawer}>
       <form className="form two-col" onSubmit={submit}>
@@ -152,7 +158,7 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
         <Field label="E-mail"><input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="volitelné" /></Field>
         <Field label="Telefon"><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
         <Field label="Role"><input value="Řidič" readOnly /></Field>
-        <Field label="Aktivní"><select value={String(form.active)} onChange={(event) => setForm({ ...form, active: event.target.value === 'true' })}><option value="true">Ano</option><option value="false">Ne</option></select></Field>
+        <Field label="Stav"><select value={String(form.active)} onChange={(event) => setForm({ ...form, active: event.target.value === 'true' })}><option value="true">Aktivní</option><option value="false">Vyřazený</option></select></Field>
         <Field label="Poznámka" className="span2"><textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></Field>
         {/* account linking is normally automatic (same e-mail at sign-up); the raw ID is only for fixing a broken link */}
         <details className="field span2 drawer-advanced">
@@ -161,10 +167,13 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
         </details>
         <div className="field span2 drawer-form-actions">
           <button className="primary" type="submit">{editing ? 'Uložit změny' : 'Vytvořit řidiče'}</button>
-          <button className="ghost" type="button" onClick={closeDrawer}>Zrušit</button>
+          <button className="ghost" type="button" onClick={closeDrawer}>Zavřít</button>
         </div>
-        {editing && <div className="field span2">
-          <button className="danger" type="button" onClick={() => softDelete()} disabled={editingDriver?.active === false}>Deaktivovat řidiče</button>
+        {editing && editingDriver && <div className="field span2 drawer-retire">
+          {editingDriver.active === false
+            ? <button className="ghost" type="button" onClick={() => restore(editingDriver)}>{isPendingDriver(editingDriver) ? 'Schválit řidiče' : 'Obnovit řidiče'}</button>
+            : <button className="ghost" type="button" onClick={() => retire()}>Vyřadit řidiče</button>}
+          <small className="muted">{editingDriver.active === false ? 'Řidič se znovu nabídne do směn a uvidí je v aplikaci.' : 'Vyřazený řidič se nenabízí do směn. Historie zůstane a jde ho kdykoli obnovit.'}</small>
         </div>}
         {editing && editingDriver && <div className="field span2 driver-invite">
           <span className="drawer-section-title">Aplikace řidiče</span>
@@ -179,29 +188,19 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
         {editing && canRemoveDrivers && editingDriver && <div className="field span2 driver-removal">
           <span className="drawer-section-title">Odstranění řidiče</span>
           {onlineMode && editingDriver.profileId && <>
-            <button className="ghost danger-soft" type="button" onClick={() => openRemoval('login')}>Zrušit přihlašovací účet</button>
+            <button className="danger" type="button" onClick={() => openRemoval('login')}>Odstranit přihlašovací účet</button>
             <small className="muted">Když řidič nemůže obnovit heslo. Směny i výčetky zůstanou a řidič si vytvoří nový účet se stejným e-mailem.</small>
           </>}
-          <button className="danger" type="button" onClick={() => openRemoval('complete')}>Smazat řidiče trvale</button>
-          <small className="muted">Když řidič odešel. Smaže i jeho směny, výčetky, výměny a přihlašovací účet. Nejde vrátit.</small>
+          <button className="danger" type="button" onClick={() => openRemoval('complete')}>Trvale odstranit řidiče</button>
+          <small className="muted">Když řidič odešel. Odstraní i jeho směny, výčetky, výměny a přihlašovací účet. Nejde vrátit.</small>
         </div>}
       </form>
     </SideDrawer>
-    {deleteDriver && <ConfirmActionModal
-      title="Deaktivovat řidiče"
-      message="Řidič se skryje jako neaktivní, ale jeho historické směny a záznamy zůstanou zachované."
-      confirmLabel="Deaktivovat řidiče"
-      confirmClass="danger"
-      onClose={() => setDriverToDelete('')}
-      onConfirm={confirmSoftDelete}
-    >
-      <ActionSummary eyebrow="Řidič" title={deleteDriver.name || 'Bez jména'} meta={deleteDriver.email || deleteDriver.phone || 'Bez kontaktu'} />
-    </ConfirmActionModal>}
     {removalDriver && removal.kind === 'complete' && <ConfirmActionModal
-      title="Smazat řidiče trvale"
+      title="Trvale odstranit řidiče"
       message={`${removalLabel} zmizí z aplikace i s celou historií. Tuto akci nejde vrátit.`}
-      warning={`${driverRemovalSummaryText(driverRemovalSummary(data, removalDriver.id, todayISO()), { hasLogin: Boolean(removalDriver.profileId) })} Výčetky potřebné pro účetnictví si nejdřív ulož (Dashboard → Záloha JSON).`}
-      confirmLabel={removing ? 'Mažu…' : 'Smazat trvale'}
+      warning={`${driverRemovalSummaryText(driverRemovalSummary(data, removalDriver.id, todayISO()), { hasLogin: Boolean(removalDriver.profileId) })} Výčetky potřebné pro účetnictví si nejdřív ulož (Nastavení → Záloha a export).`}
+      confirmLabel={removing ? 'Odstraňuji…' : 'Trvale odstranit'}
       confirmClass="danger"
       confirmDisabled={!removalConfirmed || removing}
       onClose={closeRemoval}
@@ -213,12 +212,12 @@ export function Drivers({ data, commit, services, ui, onlineMode = false, reload
       </Field>
     </ConfirmActionModal>}
     {removalDriver && removal.kind === 'login' && <ConfirmActionModal
-      title="Zrušit přihlašovací účet"
+      title="Odstranit přihlašovací účet"
       message={`${removalLabel} se starým účtem už nepřihlásí. Směny, výčetky i ostatní údaje zůstanou.`}
       warning={removalDriver.email
         ? `Potom ať si řidič v aplikaci vytvoří nový účet s e-mailem ${removalDriver.email}. Aplikace ho sama napojí na jeho historii.`
         : 'Řidič nemá uložený e-mail. Doplň ho a ulož, jinak se nový účet na jeho historii nenapojí.'}
-      confirmLabel={removing ? 'Ruším…' : 'Zrušit účet'}
+      confirmLabel={removing ? 'Odstraňuji…' : 'Odstranit účet'}
       confirmClass="danger"
       confirmDisabled={!removalDriver.email || removing}
       onClose={closeRemoval}

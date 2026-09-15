@@ -179,7 +179,7 @@ export function SettlementFormModal({ data, helpers, commit, shift, currentDrive
           </>}
           {staffCanEdit && <>
             <button className="ghost" type="button" onClick={() => upsertSettlement(existing?.status || 'draft')} disabled={saving}>{saving ? 'Ukládám…' : 'Uložit'}</button>
-            {existing && <button className="danger" type="button" onClick={returnSettlement} disabled={saving}>Vrátit k opravě</button>}
+            {existing && <button className="ghost" type="button" onClick={returnSettlement} disabled={saving}>Vrátit k opravě</button>}
             <button className="primary" type="button" onClick={() => upsertSettlement('approved')} disabled={saving}>{saving ? 'Schvaluji…' : 'Schválit'}</button>
           </>}
         </div>}
@@ -192,7 +192,7 @@ export function SettlementFormModal({ data, helpers, commit, shift, currentDrive
       reason={returnReason}
       placeholder="Např. doplň hotovost, oprav kilometry nebo přidej poznámku."
       confirmLabel="Vrátit k opravě"
-      confirmClass="danger"
+      confirmClass="primary"
       onReasonChange={setReturnReason}
       onClose={() => setReturnDialogOpen(false)}
       onConfirm={() => {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { formatDate } from './lib/dateTime.js'
 import { czechCount } from './lib/drivers.js'
 import { uid } from './lib/ids.js'
@@ -51,14 +52,25 @@ export function CoverageNorms({ data, commit, today, ui }) {
     closeSlotDrawer()
   }
   const confirmRemove = () => {
-    commit((prev) => ({ ...prev, settings: removeCoverageSlot(prev.settings, slotToRemove.id) }), `Smazáno pásmo pokrytí ${slotToRemove.name}.`)
+    commit((prev) => ({ ...prev, settings: removeCoverageSlot(prev.settings, slotToRemove.id) }), `Odstraněno pásmo pokrytí ${slotToRemove.name}.`)
     setSlotToRemove(null)
     closeSlotDrawer()
   }
-  const resetNeed = (entry, slot) => commit(
-    (prev) => ({ ...prev, settings: setCoverageNeedsForDay(prev.settings, entry.date, { [entry.slotId]: coverageNeedFor(slot, entry.date).base }, today) }),
-    `Vrácena běžná potřeba řidičů na ${formatDate(entry.date)} (${slot.name}).`,
-  )
+  // Going back to the usual need is a quick change; the notice can put the day's need back.
+  const resetNeed = (entry, slot) => {
+    const label = `${formatDate(entry.date)} (${slot.name})`
+    commit(
+      (prev) => ({ ...prev, settings: setCoverageNeedsForDay(prev.settings, entry.date, { [entry.slotId]: coverageNeedFor(slot, entry.date).base }, today) }),
+      `Vrácena běžná potřeba řidičů na ${label}.`,
+    )
+    showNotice(`Na ${label} platí zase běžná potřeba.`, {
+      tone: 'good',
+      undo: () => commit(
+        (prev) => ({ ...prev, settings: setCoverageNeedsForDay(prev.settings, entry.date, { [entry.slotId]: entry.minDrivers }, today) }),
+        `Potřeba řidičů na ${label} vrácena na ${driversLabel(entry.minDrivers)}.`,
+      ),
+    })
+  }
   const removalNeeds = slotToRemove ? coverageNeedsList(data.settings).filter((entry) => entry.slotId === slotToRemove.id && entry.date >= today).length : 0
   const form = slotDrawer?.form
 
@@ -70,15 +82,11 @@ export function CoverageNorms({ data, commit, today, ui }) {
       <div className="section-title"><h3>Běžná potřeba</h3><span className="pill">{slots.length}</span></div>
       <div className="stack compact-list">
         {slots.map((slot) => <div className="log list-row" key={slot.id}>
-          <div className="list-row-main" role="button" tabIndex={0} onClick={() => openEdit(slot)} onKeyDown={openOnKey(() => openEdit(slot))}>
+          <div className="list-row-main" role="button" tabIndex={0} aria-label={`Upravit pásmo ${slot.name}`} onClick={() => openEdit(slot)} onKeyDown={openOnKey(() => openEdit(slot))}>
             <div className="split">
               <div><b>{slot.name}</b><br /><small className="muted">{slot.start}–{slot.end} · {coverageDaysLabel(slot)}</small></div>
-              <span className="pill">{slot.minDrivers ? driversLabel(slot.minDrivers) : 'jen na vybrané dny'}</span>
+              <span className="list-row-end"><span className="pill">{slot.minDrivers ? driversLabel(slot.minDrivers) : 'jen na vybrané dny'}</span><ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" /></span>
             </div>
-          </div>
-          <div className="row-actions list-row-actions">
-            <button type="button" onClick={() => openEdit(slot)}>Upravit</button>
-            <button type="button" className="danger-mini" onClick={() => setSlotToRemove(slot)}>Smazat</button>
           </div>
         </div>)}
         {!slots.length && <div className="empty">Zatím žádné pásmo. Přidejte třeba „Noc 22:00–06:00, 2 řidiči“.</div>}
@@ -90,15 +98,14 @@ export function CoverageNorms({ data, commit, today, ui }) {
         {upcomingNeeds.map((entry) => {
           const slot = slotById.get(entry.slotId)
           return <div className="log list-row" key={`${entry.date}-${entry.slotId}`}>
-            <div className="list-row-main" role="button" tabIndex={0} onClick={() => setNeedDate(entry.date)} onKeyDown={openOnKey(() => setNeedDate(entry.date))}>
+            <div className="list-row-main" role="button" tabIndex={0} aria-label={`Upravit potřebu na ${formatDate(entry.date)}`} onClick={() => setNeedDate(entry.date)} onKeyDown={openOnKey(() => setNeedDate(entry.date))}>
               <div className="split">
                 <div><b>{formatDate(entry.date)} · {slot.name}</b><br /><small className="muted">{slot.start}–{slot.end} · běžně {driversLabel(coverageNeedFor(slot, entry.date).base)}</small></div>
-                <span className="pill warn">{driversLabel(entry.minDrivers)}</span>
+                <span className="list-row-end"><span className="pill warn">{driversLabel(entry.minDrivers)}</span><ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" /></span>
               </div>
             </div>
             <div className="row-actions list-row-actions">
-              <button type="button" onClick={() => setNeedDate(entry.date)}>Upravit</button>
-              <button type="button" className="danger-mini" onClick={() => resetNeed(entry, slot)}>Vrátit běžnou</button>
+              <button type="button" onClick={() => resetNeed(entry, slot)}>Vrátit běžnou</button>
             </div>
           </div>
         })}
@@ -127,10 +134,10 @@ export function CoverageNorms({ data, commit, today, ui }) {
         </div>
         <div className="field span2 drawer-form-actions">
           <button className="primary" type="submit">{slotDrawer.id ? 'Uložit změny' : 'Přidat pásmo'}</button>
-          <button className="ghost" type="button" onClick={closeSlotDrawer}>Zrušit</button>
+          <button className="ghost" type="button" onClick={closeSlotDrawer}>Zavřít</button>
         </div>
         {slotDrawer.id && <div className="field span2">
-          <button className="danger" type="button" onClick={() => setSlotToRemove(slotById.get(slotDrawer.id))}>Smazat pásmo</button>
+          <button className="danger" type="button" onClick={() => setSlotToRemove(slotById.get(slotDrawer.id))}>Odstranit pásmo</button>
         </div>}
       </form>}
     </SideDrawer>
@@ -138,10 +145,10 @@ export function CoverageNorms({ data, commit, today, ui }) {
       {needDate && <DayNeedForm key={needDate} data={data} commit={commit} date={needDate} today={today} chooseDate ui={ui} onCancel={() => setNeedDate('')} onSaved={() => setNeedDate('')} />}
     </SideDrawer>
     {slotToRemove && <ConfirmActionModal
-      title="Smazat pásmo pokrytí"
+      title="Odstranit pásmo pokrytí"
       message="Pásmo zmizí z plánu i z ranního upozornění. Směny, které už existují, se nezmění."
-      warning={removalNeeds ? `Smaže se i potřeba nastavená na konkrétní dny (${removalNeeds}).` : ''}
-      confirmLabel="Smazat pásmo"
+      warning={removalNeeds ? `Odstraní se i potřeba nastavená na konkrétní dny (${removalNeeds}).` : ''}
+      confirmLabel="Odstranit pásmo"
       confirmClass="danger"
       onClose={() => setSlotToRemove(null)}
       onConfirm={confirmRemove}

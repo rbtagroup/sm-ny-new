@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Check, MessageSquarePlus, Trash2 } from 'lucide-react'
+import { Check, EyeOff, MessageSquarePlus } from 'lucide-react'
 import { PushSetupCard } from './PushSetupCard.jsx'
 import { StaffMessageComposer } from './StaffMessageComposer.jsx'
 import { StaffMessageHistory } from './StaffMessageHistory.jsx'
 import { todayISO } from './lib/dateTime.js'
+import { showNotice } from './lib/notice.js'
 import { splitStaffInbox } from './lib/staffNotifications.js'
 import { driverMessageHistory } from './lib/driverMessages.js'
 import {
@@ -26,41 +27,35 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
   const staffInbox = isDriver ? null : splitStaffInbox(visible, data, { today: todayISO(), isRead: (notice) => isInboxNoticeRead(notice, inboxContext) })
   const notificationGroups = isDriver ? groups : groupStaffNotificationsByCategory(staffInbox.open)
   const unreadCount = isDriver ? unread.length : staffInbox.openUnread.length
-  const [undoDeleteIds, setUndoDeleteIds] = useState([])
   const markOne = (id) => commit((prev) => ({ ...prev, notifications: markInboxNotificationsRead(prev.notifications || [], [id], inboxContext) }), 'Notifikace označena jako přečtená.')
-  const queueUndo = (ids) => {
+  // Hiding only takes notices out of this inbox; the notice after it can bring them back.
+  const offerUndo = (ids) => {
     const clean = [...new Set((ids || []).filter(Boolean))]
     if (!clean.length) return
-    setUndoDeleteIds(clean)
-    setTimeout(() => {
-      setUndoDeleteIds((current) => clean.every((id) => current.includes(id)) ? [] : current)
-    }, 5000)
+    showNotice(clean.length === 1 ? 'Notifikace je skrytá.' : `Skryto notifikací: ${clean.length}.`, {
+      tone: 'good',
+      undo: () => commit((prev) => ({ ...prev, notifications: restoreInboxNotifications(prev.notifications || [], new Set(clean), inboxContext) }), 'Skrytí notifikací vráceno zpět.'),
+    })
   }
   const deleteOne = (id) => {
     const notice = visible.find((n) => n.id === id)
     if (!notice) return
     commit((prev) => ({ ...prev, notifications: markInboxNotificationsDeleted(prev.notifications || [], [id], inboxContext) }), 'Notifikace skryta.')
-    queueUndo([id])
-  }
-  const undoDelete = () => {
-    if (!undoDeleteIds.length) return
-    const ids = new Set(undoDeleteIds)
-    commit((prev) => ({ ...prev, notifications: restoreInboxNotifications(prev.notifications || [], ids, inboxContext) }), 'Skrytí notifikace vráceno zpět.')
-    setUndoDeleteIds([])
+    offerUndo([id])
   }
   const markAll = () => commit((prev) => ({ ...prev, notifications: markInboxNotificationsRead(prev.notifications || [], visibleIds, inboxContext) }), 'Notifikace označeny jako přečtené.')
   const hideNotices = (items, message) => {
     const ids = new Set(items.map((n) => n.id))
     if (!ids.size) return
     commit((prev) => ({ ...prev, notifications: markInboxNotificationsDeleted(prev.notifications || [], ids, inboxContext) }), message)
-    queueUndo([...ids])
+    offerUndo([...ids])
   }
   // Read items that still wait for dispatch stay listed until they are handled.
   const clearRead = () => hideNotices(visible.filter((n) => isInboxNoticeRead(n, inboxContext) && !staffInbox?.open.includes(n)), 'Přečtené notifikace skryty.')
   const staffNotificationActions = !isDriver ? <>
     <button className="primary notification-toolbar-button" type="button" onClick={() => setComposerOpen(true)}><MessageSquarePlus size={17} strokeWidth={2.3} aria-hidden="true" />Nová zpráva řidičům</button>
     <button className="ghost notification-toolbar-button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>
-    <button className="danger notification-toolbar-button" onClick={clearRead}><Trash2 size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>
+    <button className="ghost notification-toolbar-button" onClick={clearRead}><EyeOff size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>
   </> : null
   // Folded staff sections need no read state: nothing there waits for dispatch.
   const renderNotice = (n, options = {}) => {
@@ -76,7 +71,7 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
           </div>
           <div className="driver-notification-row-actions">
             {!read && <button className="driver-notification-icon-button good" type="button" onClick={() => markOne(n.id)} aria-label="Označit jako přečtené" title="Přečteno"><Check size={18} strokeWidth={2.4} aria-hidden="true" /></button>}
-            <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => deleteOne(n.id)} aria-label="Skrýt notifikaci" title="Skrýt"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button>
+            <button className="driver-notification-icon-button" type="button" onClick={() => deleteOne(n.id)} aria-label="Skrýt notifikaci" title="Skrýt"><EyeOff size={18} strokeWidth={2.2} aria-hidden="true" /></button>
           </div>
         </div>
         <p>{n.body || 'Bez detailu'}</p>
@@ -91,7 +86,7 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
         </div>
         <div className="driver-notification-row-actions">
           {!read && <button className="driver-notification-icon-button good" type="button" onClick={() => markOne(n.id)} aria-label="Označit jako přečtené" title="Přečteno"><Check size={18} strokeWidth={2.4} aria-hidden="true" /></button>}
-          <button className="driver-notification-icon-button danger-icon" type="button" onClick={() => deleteOne(n.id)} aria-label="Skrýt notifikaci" title="Skrýt"><Trash2 size={18} strokeWidth={2.2} aria-hidden="true" /></button>
+          <button className="driver-notification-icon-button" type="button" onClick={() => deleteOne(n.id)} aria-label="Skrýt notifikaci" title="Skrýt"><EyeOff size={18} strokeWidth={2.2} aria-hidden="true" /></button>
         </div>
       </div>
       <p>{n.body || 'Bez detailu'}</p>
@@ -99,11 +94,10 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
   }
   return <>
     <PageTitle title="Notifikace">{staffNotificationActions}</PageTitle>
-    {undoDeleteIds.length > 0 && <div className="toast-undo"><span>{undoDeleteIds.length === 1 ? 'Notifikace skryta.' : `${undoDeleteIds.length} notifikací skryto.`}</span><button onClick={undoDelete}>Vrátit zpět</button></div>}
     <div className={`card notifications-card ${isDriver ? 'driver-notifications-card' : ''}`.trim()}><div className="section-title"><h3>{isDriver ? 'Doručené' : 'K vyřízení'}</h3><span className={unreadCount ? 'pill warn' : 'pill good'}>{isDriver ? `${unreadCount} nepřečteno` : `${staffInbox.open.length} čeká · ${unreadCount} nepřečteno`}</span></div>
       {isDriver && (unread.length > 0 || hasRead) && <div className="driver-notifications-toolbar">
         {unread.length > 0 && <button className="ghost" type="button" onClick={markAll}><Check size={17} strokeWidth={2.4} aria-hidden="true" />Přečteno vše</button>}
-        {hasRead && <button className="ghost danger-soft" type="button" onClick={clearRead}><Trash2 size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>}
+        {hasRead && <button className="ghost" type="button" onClick={clearRead}><EyeOff size={17} strokeWidth={2.2} aria-hidden="true" />Skrýt přečtené</button>}
       </div>}
       <div className="notification-groups">
       {notificationGroups.map(([label, items]) => <section className="notification-group" key={label}>
@@ -114,11 +108,11 @@ export function NotificationsView({ data, helpers, commit, currentDriver, isDriv
       {!isDriver && !staffInbox.open.length && <div className="empty">Nic nečeká na vyřízení.</div>}
       {!isDriver && [
         ['done', 'Vyřízené a informace', staffInbox.done, 'Skrýt vyřízené', 'Vyřízené notifikace skryty.'],
-        ['sent', 'Odesláno řidičům', staffInbox.sent, 'Skrýt odeslané', 'Odeslané notifikace skryty.'],
+        ['sent', 'Upozornění řidičům', staffInbox.sent, 'Skrýt upozornění', 'Upozornění řidičům skryta.'],
       ].filter(([, , items]) => items.length).map(([key, label, items, hideLabel, hideMessage]) => <details className="notification-archive" key={key} data-section={key}>
         <summary><span>{label}</span><span className="pill">{items.length}</span></summary>
         <div className="stack">{items.map((n) => renderNotice(n, { archived: true }))}</div>
-        <button className="ghost danger-soft notification-archive-clear" type="button" onClick={() => hideNotices(items, hideMessage)}><Trash2 size={16} strokeWidth={2.2} aria-hidden="true" />{hideLabel}</button>
+        <button className="ghost notification-archive-clear" type="button" onClick={() => hideNotices(items, hideMessage)}><EyeOff size={16} strokeWidth={2.2} aria-hidden="true" />{hideLabel}</button>
       </details>)}
     </div></div>
     {/* Dispatch sees what waits for it on top; sent messages and this device's notifications stay below. */}

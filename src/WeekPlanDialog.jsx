@@ -58,7 +58,7 @@ export function WeekPlanDialog({ data, weeks, helpers, commit, services, ui, onC
     </label>}
     {(conflictsSkipped > 0 || allowConflicts) && <label className="week-plan-option">
       <input type="checkbox" checked={allowConflicts} onChange={(event) => setAllowConflicts(event.target.checked)} />
-      <span><b>Vytvořit i směny s kolizí</b><small>Kolize pak uvidíš v plánu a vyřešíš je ručně.</small></span>
+      <span><b>Vytvořit i směny s problémem</b><small>Problémy pak uvidíš v plánu a vyřešíš je ručně.</small></span>
     </label>}
     <div className="week-plan-summary" aria-live="polite">
       {preview.planned.length

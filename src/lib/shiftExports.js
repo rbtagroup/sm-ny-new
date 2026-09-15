@@ -71,7 +71,7 @@ export function backup(data) {
 }
 
 export function exportCSV(data, helpers) {
-  const rows = [['Datum','Start','Konec','Řidič','Vozidlo','Typ','Stav','Poznámka','Instrukce','Důvod odmítnutí','Nástup','Ukončení','Reálný čas','Výměna','Kolize']]
+  const rows = [['Datum','Start','Konec','Řidič','Vozidlo','Typ','Stav','Poznámka','Instrukce','Důvod odmítnutí','Nástup','Ukončení','Reálný čas','Výměna','Problémy']]
   sortByDateTime(data.shifts).forEach((shift) => rows.push([shift.date, shift.start, shift.end, helpers.driverName(shift.driverId), helpers.vehicleName(shift.vehicleId), shiftTypeMap[shift.type] || shift.type, statusMap[shift.status] || shift.status, shift.note || '', shift.instruction || '', shift.declineReason || '', shift.actualStartAt || '', shift.actualEndAt || '', durationLabel(actualDurationMinutes(shift)), shift.swapRequestStatus || '', helpers.conflictMessages(shift).join(' | ')]))
   const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(';')).join('\n')
   download(`rbshift-smeny-${todayISO()}.csv`, `\ufeff${csv}`, 'text/csv;charset=utf-8')

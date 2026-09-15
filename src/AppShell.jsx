@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, CalendarDays, Car, Clock, House, LayoutDashboard, LayoutTemplate, LogOut, Menu, Receipt, Settings as SettingsIcon, Target, Users, X } from 'lucide-react'
+import { Bell, CalendarDays, Car, ChevronDown, Clock, House, LayoutDashboard, LayoutTemplate, LogOut, Menu, Receipt, Settings as SettingsIcon, Target, Users, X } from 'lucide-react'
 import { roleMap } from './lib/appConfig.js'
 import { appFriendlyError } from './lib/errors.js'
 import { driverInitials, staffDisplayName, staffInitials } from './lib/display.js'
@@ -18,7 +18,7 @@ const syncErrorTitles = {
   load: 'Data se nepodařilo načíst',
   push: 'Uloženo, ale upozornění řidičům neodešlo',
 }
-const syncChipLabels = { save: 'Neuloženo', load: 'Nenačteno', push: 'Push neodešel' }
+const syncChipLabels = { save: 'Neuloženo', load: 'Nenačteno', push: 'Upozornění neodešlo' }
 
 // Save state in the top bar, visible on every page and screen size: saving, a short "saved", or the failure with a retry.
 export function SyncStatus({ syncState, onRetry, idle = null }) {
@@ -63,10 +63,10 @@ export function DriverAppShell({ currentDriver, onlineMode, page, unreadCount, o
         {avatarUrl ? <img className="driver-avatar-img" src={avatarUrl} alt={driverName} /> : <div className="logo compact-logo">{driverInitials(driverName)}</div>}
         <div><strong>{driverName}</strong><small>Řidič</small></div>
       </div>
-      {onlineMode ? <SyncStatus syncState={syncState} onRetry={onRetrySync} idle={<span className="pill good">Online ●</span>} /> : <span className="pill warn">Demo</span>}
+      {onlineMode ? <SyncStatus syncState={syncState} onRetry={onRetrySync} idle={<span className="pill good"><span className="status-dot good" aria-hidden="true"></span>Online</span>} /> : <span className="pill warn">Demo</span>}
     </header>
     <main className={`driver-main-v2 ${page === 'driverSettings' ? 'driver-main-settings' : ''}`}>
-      {onlineMode && currentDriver?.active === false && <div className="alert warn" role="status"><b>Účet zatím není aktivní</b><br /><span>Dispečink tvůj řidičský účet ještě neschválil nebo ho deaktivoval. Jakmile ho aktivuje, uvidíš tady směny a zprávy.</span></div>}
+      {onlineMode && currentDriver?.active === false && <div className="alert warn" role="status"><b>Účet zatím není aktivní</b><br /><span>Dispečink tvůj řidičský účet ještě neschválil nebo ho vyřadil. Jakmile ho schválí nebo obnoví, uvidíš tady směny a zprávy.</span></div>}
       {children}
     </main>
     <nav className="driver-bottom-nav" aria-label="Řidičská navigace">
@@ -217,7 +217,7 @@ function AppTopBar({ title, companyName, unreadCount, notifications, profile, cu
         </div>}
       </div>
       <div className="topbar-menu-wrap">
-        <button className="topbar-user-button" aria-expanded={userMenuOpen} onClick={openUserMenu}><span>{staffInitials(profile, currentDriver, role)}</span><b>{displayName}</b><em>▾</em></button>
+        <button className="topbar-user-button" aria-expanded={userMenuOpen} onClick={openUserMenu}><span>{staffInitials(profile, currentDriver, role)}</span><b>{displayName}</b><em><ChevronDown size={15} strokeWidth={2.4} aria-hidden="true" /></em></button>
         {userMenuOpen && <div className="topbar-dropdown user-dropdown">
           <button onClick={goSettings} disabled={!canOpenSettings}>Profil</button>
           <button onClick={goSettings} disabled={!canOpenSettings}>Nastavení</button>

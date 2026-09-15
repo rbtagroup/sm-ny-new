@@ -106,5 +106,5 @@ export function driverRemovalSummaryText(summary = {}, { hasLogin = false } = {}
   ]
   if (summary.availability) parts.push('dostupnost a absence')
   if (hasLogin) parts.push('přihlašovací účet')
-  return `Smaže se: ${parts.join(', ')}.`
+  return `Odstraní se: ${parts.join(', ')}.`
 }

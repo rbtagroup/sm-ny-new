@@ -1,11 +1,12 @@
 import { ShiftMobileCard } from './DriverWidgets.jsx'
+import { ToneIcon } from './AppUi.jsx'
 import { formatDate } from './lib/dateTime.js'
 
 export function DriverQuickStrip({ chips }) {
   if (!chips.length) return null
 
   return <div className="driver-quick-strip" aria-label="Rychlý přehled">
-    {chips.map((chip) => <button key={chip.key} type="button" className={`quick-chip ${chip.kind || ''}`} onClick={chip.onClick}>{chip.label}</button>)}
+    {chips.map((chip) => <button key={chip.key} type="button" className={`quick-chip tone-${chip.tone}`} onClick={chip.onClick}><ToneIcon tone={chip.tone} size={14} />{chip.label}</button>)}
   </div>
 }
 
@@ -110,7 +111,7 @@ export function DriverSwapModal({ swapDraft, swapShift, swapColleagues, helpers,
       {!swapColleagues.length && <div className="alert warn">Výměna se odešle jen dispečinku, protože není aktivní kolega.</div>}
       <div className="row-actions driver-swap-actions">
         <button className="primary" type="submit">Odeslat výměnu</button>
-        <button className="ghost" type="button" onClick={onClose}>Zrušit</button>
+        <button className="ghost" type="button" onClick={onClose}>Zpět</button>
       </div>
     </form>
   </Modal>

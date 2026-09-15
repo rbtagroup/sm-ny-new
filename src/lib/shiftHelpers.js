@@ -1,4 +1,3 @@
-import { statusToneMap } from './appConfig.js'
 import { availabilityStateForShift } from './availability.js'
 import { dateInRange, overlapsShift } from './dateTime.js'
 
@@ -18,8 +17,8 @@ export function buildHelpers(data) {
     if (!shift.date || !shift.start || !shift.end) conflicts.push('Chybí datum nebo čas směny.')
     if (!d && shift.status !== 'open') conflicts.push('Není vybraný řidič.')
     if (!v && shift.status !== 'open') conflicts.push('Není vybrané vozidlo.')
-    if (d && !d.active) conflicts.push(`Řidič ${d.name} je neaktivní.`)
-    if (v && !v.active) conflicts.push(`Vozidlo ${v.name} je neaktivní.`)
+    if (d && !d.active) conflicts.push(`Řidič ${d.name} je vyřazený.`)
+    if (v && !v.active) conflicts.push(`Vozidlo ${v.name} je vyřazené.`)
     data.shifts.forEach((other) => {
       if (other.id === shift.id || ['cancelled', 'declined'].includes(other.status)) return
       if (!shift.date || !other.date || !shift.start || !shift.end || !other.start || !other.end) return
@@ -37,6 +36,5 @@ export function buildHelpers(data) {
     if (availability === 'outside') conflicts.push(`Řidič ${driverName(shift.driverId)} nemá v tomto čase zadanou dostupnost.`)
     return [...new Set(conflicts)]
   }
-  const statusClass = (status) => statusToneMap[status] || 'warn'
-  return { driver, vehicle, driverName, vehicleName, conflictMessages, statusClass }
+  return { driver, vehicle, driverName, vehicleName, conflictMessages }
 }

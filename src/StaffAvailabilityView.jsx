@@ -1,27 +1,26 @@
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Repeat } from 'lucide-react'
 import { addDays, formatDate, startOfWeek, todayISO, weekdayOf } from './lib/dateTime.js'
 import { weekdayMap } from './lib/appConfig.js'
 import { dateRangeLabel } from './lib/display.js'
 import { uid } from './lib/ids.js'
 import { showNotice } from './lib/notice.js'
+import { takeBackChange } from './lib/undo.js'
 import { absenceFromForm, availabilityEntryFromForm, availabilityEntryLabel, availabilityWeekGrid } from './lib/availabilityGrid.js'
 import { AvailabilityEntryForm, blankAvailabilityForm } from './AvailabilityEntryForm.jsx'
 
 const kindLabels = { available: 'Může jet', preferred: 'Preferuje', unavailable: 'Nemůže', absent: 'Nepřítomnost' }
 
-// the repeat mark stays on the same line as the time
-const chipText = (item) => (item.kind === 'unavailable' ? `nemůže ${item.label}` : item.label) + (item.weekly ? '\u00a0↻' : '')
+const chipText = (item) => (item.kind === 'unavailable' ? `nemůže ${item.label}` : item.label)
 const chipTitle = (item) => `${kindLabels[item.kind]}: ${item.label}${item.weekly ? ', každý týden' : ''}${item.note ? ` · ${item.note}` : ''}`
 
 // Dispatch view of availability: active drivers × days of a week, with + in every cell and details on a tap.
 export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
-  const { ActionSummary, ConfirmActionModal, PageTitle, SideDrawer } = ui
+  const { ActionSummary, PageTitle, SideDrawer } = ui
   const [weekStart, setWeekStart] = useState(() => startOfWeek(today))
   const [pickedDay, setPickedDay] = useState(today)
   const [form, setForm] = useState(null)
   const [detail, setDetail] = useState(null)
-  const [deleteOpen, setDeleteOpen] = useState(false)
   const grid = availabilityWeekGrid(data, weekStart)
   const activeDay = grid.days.includes(pickedDay) ? pickedDay : grid.days[0]
   const drivers = grid.rows.map((row) => row.driver)
@@ -45,14 +44,21 @@ export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
     }
     setForm(null)
   }
-  const confirmRemove = () => {
+  // Removed from the detail panel; the notice after it can bring the record back.
+  const remove = () => {
     if (!detail) return
-    if (detail.type === 'absence') commit((prev) => ({ ...prev, absences: (prev.absences || []).filter((item) => item.id !== detail.id) }), `Odstraněna nepřítomnost řidiče ${driverName(detail.entry.driverId)}.`)
-    else commit((prev) => ({ ...prev, availability: (prev.availability || []).filter((item) => item.id !== detail.id) }), `Odstraněna dostupnost řidiče ${driverName(detail.entry.driverId)}.`)
-    setDeleteOpen(false)
+    const { entry, type } = detail
+    const key = type === 'absence' ? 'absences' : 'availability'
+    const what = type === 'absence' ? 'nepřítomnost' : 'dostupnost'
+    commit((prev) => ({ ...prev, [key]: (prev[key] || []).filter((item) => item.id !== entry.id) }), `Odstraněna ${what} řidiče ${driverName(entry.driverId)}.`)
     setDetail(null)
+    showNotice(`Záznam řidiče ${driverName(entry.driverId)} je odstraněný.`, {
+      tone: 'good',
+      undo: () => commit((prev) => takeBackChange(prev, [{ key, before: [entry] }]), `Vrácena ${what} řidiče ${driverName(entry.driverId)}.`),
+    })
   }
-  const chips = (items) => items.map((item) => <button type="button" key={item.id} className={`availability-chip kind-${item.kind}`} title={chipTitle(item)} aria-label={chipTitle(item)} onClick={() => setDetail(item)}>{chipText(item)}</button>)
+  // the repeat mark stays on the same line as the time
+  const chips = (items) => items.map((item) => <button type="button" key={item.id} className={`availability-chip kind-${item.kind}`} title={chipTitle(item)} aria-label={chipTitle(item)} onClick={() => setDetail(item)}>{chipText(item)}{item.weekly && <Repeat size={12} strokeWidth={2.6} aria-hidden="true" />}</button>)
   const detailMeta = detail?.type === 'absence'
     ? `${dateRangeLabel(detail.entry.from, detail.entry.to)}${detail.entry.reason ? ` · ${detail.entry.reason}` : ''}`
     : detail ? `${availabilityEntryLabel(detail.entry)}${detail.note ? ` · ${detail.note}` : ''}` : ''
@@ -69,7 +75,7 @@ export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
     <div className="availability-legend" aria-label="Legenda">
       <span className="pill">{formatDate(grid.days[0])}–{formatDate(grid.days[6])}</span>
       {['available', 'preferred', 'unavailable', 'absent'].map((kind) => <span key={kind} className={`availability-chip is-legend kind-${kind}`}>{kindLabels[kind]}</span>)}
-      <span className="muted availability-legend-note">↻ = každý týden</span>
+      <span className="muted availability-legend-note"><Repeat size={13} strokeWidth={2.4} aria-label="opakování" /> = každý týden</span>
     </div>
 
     {!grid.rows.length && <div className="card empty">Zatím nemáte žádné aktivní řidiče.</div>}
@@ -115,19 +121,10 @@ export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
     <SideDrawer title={detail?.type === 'absence' ? 'Nepřítomnost' : 'Dostupnost'} open={Boolean(detail)} onClose={() => setDetail(null)}>
       {detail && <div className="stack availability-detail">
         <ActionSummary eyebrow={kindLabels[detail.kind]} title={driverName(detail.entry.driverId)} meta={detailMeta} />
-        {detail.weekly && <p className="muted">Opakuje se každý týden. Odstranění platí pro všechny týdny.</p>}
-        <button type="button" className="danger" onClick={() => setDeleteOpen(true)}>Odstranit záznam</button>
+        {detail.weekly && <p className="muted"><Repeat size={14} strokeWidth={2.4} aria-hidden="true" /> Opakuje se každý týden. Odstranění platí pro všechny týdny.</p>}
+        <p className="muted">Odstraněný záznam se přestane hlídat při plánování.</p>
+        <button type="button" className="danger" onClick={remove}>Odstranit záznam</button>
       </div>}
     </SideDrawer>
-    {detail && deleteOpen && <ConfirmActionModal
-      title={detail.type === 'absence' ? 'Odstranit nepřítomnost' : 'Odstranit dostupnost'}
-      message={detail.weekly ? 'Záznam se opakuje každý týden, odstraní se ze všech týdnů.' : 'Záznam zmizí z dostupnosti řidiče a přestane se hlídat při plánování.'}
-      confirmLabel="Odstranit"
-      confirmClass="danger"
-      onClose={() => setDeleteOpen(false)}
-      onConfirm={confirmRemove}
-    >
-      <ActionSummary eyebrow={kindLabels[detail.kind]} title={driverName(detail.entry.driverId)} meta={detailMeta} />
-    </ConfirmActionModal>}
   </>
 }

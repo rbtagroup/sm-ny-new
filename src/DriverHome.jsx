@@ -235,8 +235,8 @@ export function DriverHome({ data, helpers, commit, currentDriver, profile = nul
   }
   const scrollToDriverSection = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const quickChips = [
-    awaitingBelow.length > 0 ? { key: 'awaiting', label: `⏳ ${awaitingBelow.length} čeká`, kind: 'warn', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
-    incomingSwaps.length > 0 ? { key: 'swaps', label: `↔ ${incomingSwaps.length} výměny`, kind: 'warn', onClick: () => scrollToDriverSection('driver-incoming-swaps-section') } : null,
+    awaitingBelow.length > 0 ? { key: 'awaiting', label: `${awaitingBelow.length} čeká na potvrzení`, tone: 'pending', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
+    incomingSwaps.length > 0 ? { key: 'swaps', label: `${incomingSwaps.length} ${incomingSwaps.length === 1 ? 'výměna' : incomingSwaps.length < 5 ? 'výměny' : 'výměn'} pro tebe`, tone: 'swap', onClick: () => scrollToDriverSection('driver-incoming-swaps-section') } : null,
   ].filter(Boolean)
   const actions = { setStatus, checkIn, requestCheckOut, setSettlementShiftId, requestSwap, cancelSwap, decline }
   const cardProps = { data, helpers, expandedShiftId, onExpand: setExpandedShiftId, actions, ui }

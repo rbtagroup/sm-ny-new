@@ -61,21 +61,6 @@
   margin-bottom: 14px;
 }
 
-.shift-card.status-draft,
-.shift-card.status-assigned {
-  background: linear-gradient(135deg,rgba(255,207,90,.13),rgba(0,0,0,.14));
-}
-
-.shift-card.status-confirmed,
-.shift-card.status-completed {
-  background: linear-gradient(135deg,rgba(72,213,151,.12),rgba(0,0,0,.15));
-}
-
-.shift-card.status-declined,
-.shift-card.status-cancelled {
-  background: linear-gradient(135deg,rgba(255,107,107,.13),rgba(0,0,0,.15));
-}
-
 .compact-shift {
   gap: 8px;
 }
@@ -238,25 +223,29 @@
   transform: translateY(-1px);
 }
 
-.calendar-shift-card.line-good {
-  border-left-color: var(--good);
+/* The card tone (status, or a waiting swap or a problem on top of it) paints the left edge and a faint wash. */
+.calendar-shift-card[class*="tone-"] {
+  border-left-color: rgb(var(--tone));
+  background: linear-gradient(90deg,rgba(var(--tone),.12),rgba(0,0,0,.16) 72%);
 }
 
-.calendar-shift-card.line-open {
-  border-left-color: var(--warn);
+.calendar-shift-card.tone-draft {
+  border-left-style: dashed;
 }
 
-.calendar-shift-card.line-waiting {
-  border-left-color: #ff9f43;
+.calendar-shift-card.tone-cancelled {
+  opacity: .72;
 }
 
-.calendar-shift-card.line-swap {
-  border-left-color: var(--blue);
-  background: rgba(128,199,255,.10);
+.calendar-shift-card.tone-cancelled .calendar-shift-time {
+  text-decoration: line-through;
 }
 
-.calendar-shift-card.line-bad {
-  border-left-color: var(--bad);
+/* the status icon in front of the driver repeats the status for anyone who does not tell the colors apart */
+.calendar-shift-status {
+  display: inline-flex;
+  margin: 0 5px -2px 0;
+  color: rgb(var(--tone));
 }
 
 .calendar-shift-time,
@@ -281,16 +270,23 @@
   color: #f3f7ff;
 }
 
-.calendar-shift-conflict {
+.calendar-shift-conflict,
+.calendar-shift-swap {
   font-size: 12px;
-  color: #ffdede;
   font-weight: 850;
 }
 
+.calendar-shift-conflict {
+  color: rgb(var(--tone-problem));
+}
+
 .calendar-shift-swap {
-  font-size: 12px;
-  color: #cfeaff;
-  font-weight: 900;
+  color: rgb(var(--tone-swap));
+}
+
+.calendar-shift-conflict svg,
+.calendar-shift-swap svg {
+  margin: 0 4px -2px 0;
 }
 
 .planner-main-grid {
@@ -507,15 +503,6 @@
   display: none;
 }
 
-.shift-detail-more > summary::after {
-  content: "▾";
-  color: var(--muted);
-}
-
-.shift-detail-more[open] > summary::after {
-  content: "▴";
-}
-
 .shift-detail-more > div {
   display: grid;
   gap: 8px;
@@ -526,16 +513,17 @@
   margin: 0;
 }
 
+/* A missing driver has the tone of an open shift: something to fill, not an error. */
 .calendar-gap {
   display: grid;
   gap: 2px;
   width: 100%;
   margin-bottom: 7px;
   padding: 7px 9px;
-  border: 1px dashed rgba(255,207,90,.55);
+  border: 1px dashed rgba(var(--tone-open),.5);
   border-radius: 12px;
-  background: rgba(255,207,90,.07);
-  color: #fff3c7;
+  background: rgba(var(--tone-open),.06);
+  color: #dcecfb;
   font-size: 12px;
   line-height: 1.25;
   text-align: left;
@@ -543,7 +531,7 @@
 
 .calendar-gap:hover {
   border-style: solid;
-  background: rgba(255,207,90,.12);
+  background: rgba(var(--tone-open),.12);
 }
 
 .calendar-gap-name {
@@ -552,14 +540,14 @@
 }
 
 .calendar-gap-action {
-  color: var(--gold);
+  color: rgb(var(--tone-open));
   font-weight: 900;
 }
 
 /* Narrow week columns put "chybí N" on its own line; the list layout keeps it inline after a dot. */
 .day-gap-label {
   display: block;
-  color: #ffcf5a;
+  color: rgb(var(--tone-open));
   font-size: 12px;
   font-weight: 800;
 }
@@ -571,17 +559,21 @@
 /* A need set for the day that is already met stays visible, calm and green. */
 .calendar-gap.is-met {
   border-style: solid;
-  border-color: rgba(72,213,151,.38);
-  background: rgba(72,213,151,.07);
+  border-color: rgba(var(--tone-confirmed),.38);
+  background: rgba(var(--tone-confirmed),.07);
   color: #d7f7e8;
 }
 
 .calendar-gap.is-met:hover {
-  background: rgba(72,213,151,.12);
+  background: rgba(var(--tone-confirmed),.12);
 }
 
 .calendar-gap.is-met .calendar-gap-action {
-  color: var(--good);
+  color: rgb(var(--tone-confirmed));
+}
+
+.calendar-gap-action svg {
+  margin: 0 3px -2px 0;
 }
 
 /* Coverage: need of one day, filling a slot and the norms page. */
@@ -1052,10 +1044,22 @@
   cursor: default;
 }
 
+.planner-kpi-context svg {
+  color: var(--gold);
+}
+
+/* problems in the plan share the problem tone of the calendar cards, missing drivers the open-shift tone */
 .planner-kpi-item.danger {
   color: #ffdede;
-  border-color: rgba(255,107,107,.45);
-  background: rgba(255,107,107,.10);
+  border-color: rgba(var(--tone-problem),.45);
+  background: rgba(var(--tone-problem),.10);
+}
+
+.planner-kpi-item.danger b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgb(var(--tone-problem));
 }
 
 .planner-kpi-item.danger span {
@@ -1063,25 +1067,76 @@
 }
 
 .planner-kpi-item.danger.active {
-  box-shadow: 0 0 0 3px rgba(255,107,107,.14);
+  box-shadow: 0 0 0 3px rgba(var(--tone-problem),.16);
 }
 
 .planner-kpi-item.missing {
-  color: #fff3c7;
-  border-color: rgba(255,207,90,.42);
-  background: rgba(255,207,90,.10);
+  color: #dcecfb;
+  border-color: rgba(var(--tone-open),.42);
+  background: rgba(var(--tone-open),.09);
 }
 
 .planner-kpi-item.missing span {
-  color: #fff3c7;
+  color: #dcecfb;
 }
 
 .planner-kpi-item.missing button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   border: 0;
   background: transparent;
-  color: var(--gold);
+  color: rgb(var(--tone-open));
   font-weight: 950;
   padding: 0 0 0 5px;
+}
+
+.calendar-card-title {
+  flex-wrap: wrap;
+}
+
+.shift-check-ok {
+  white-space: nowrap;
+}
+
+.status-legend-toggle {
+  position: relative;
+  margin-left: auto;
+}
+
+.status-legend-toggle > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.04);
+  color: #c5d2e3;
+  font-size: 13px;
+  font-weight: 800;
+  list-style: none;
+  cursor: pointer;
+}
+
+.status-legend-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.status-legend-toggle > .status-legend {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  display: grid;
+  gap: 10px;
+  width: max-content;
+  max-width: min(320px,calc(100vw - 40px));
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #0b1626;
+  box-shadow: var(--shadow);
 }
 
 .planner-kpi-reset {
@@ -1120,16 +1175,6 @@
 
 .planner-more-actions {
   position: relative;
-}
-
-.planner-more-actions > summary::after {
-  content: "▾";
-  margin-left: 6px;
-  color: var(--muted);
-}
-
-.planner-more-actions[open] > summary::after {
-  content: "▴";
 }
 
 .planner-more-panel {
@@ -1426,18 +1471,12 @@
     background: rgba(255,255,255,.035);
   }
 
-  .staff-shift-card.status-confirmed,
-  .staff-shift-card.status-completed {
-    border-left-color: var(--good);
+  .staff-shift-card[class*="tone-"] {
+    border-left-color: rgb(var(--tone));
   }
 
-  .staff-shift-card.status-declined,
-  .staff-shift-card.status-cancelled {
-    border-left-color: var(--bad);
-  }
-
-  .staff-shift-card.status-open {
-    border-left-color: var(--warn);
+  .staff-shift-card.tone-draft {
+    border-left-style: dashed;
   }
 
   .staff-shift-card-head {
@@ -1470,20 +1509,17 @@
     flex: 0 0 auto;
   }
 
+  /* the facts of a shift are labelled values, not boxes inside the card */
   .staff-shift-card-grid {
     display: grid;
     grid-template-columns: repeat(2,minmax(0,1fr));
-    gap: 8px;
+    gap: 10px 14px;
   }
 
   .staff-shift-card-grid > span {
     display: grid;
-    gap: 3px;
+    gap: 2px;
     min-width: 0;
-    padding: 9px;
-    border: 1px solid rgba(255,255,255,.10);
-    border-radius: 12px;
-    background: rgba(0,0,0,.10);
   }
 
   .staff-shift-card-grid small {
@@ -1554,19 +1590,9 @@
     display: none;
   }
 
-  .staff-shift-more-actions > summary::after {
-    content: "▾";
-    margin-left: 7px;
-    color: #fff3c7;
-  }
-
   .staff-shift-more-actions[open] > summary {
     border-bottom: 1px solid rgba(255,255,255,.10);
     color: var(--text);
-  }
-
-  .staff-shift-more-actions[open] > summary::after {
-    content: "▴";
   }
 
   .staff-shift-more-actions-panel {
@@ -1581,17 +1607,6 @@
     min-height: 40px;
     padding: 8px 10px;
     line-height: 1.15;
-  }
-
-  .staff-shift-more-actions-panel .icon-only {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .staff-shift-card-actions .icon-only {
-    display: grid;
-    place-items: center;
-    padding: 0;
   }
 
   .missing-coverage-table {

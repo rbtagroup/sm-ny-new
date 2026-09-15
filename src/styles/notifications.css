@@ -59,15 +59,6 @@
   display: none;
 }
 
-.notification-archive > summary::after {
-  content: '▾';
-  color: var(--muted);
-}
-
-.notification-archive[open] > summary::after {
-  content: '▴';
-}
-
 .notification-archive > summary .pill {
   margin-left: auto;
 }
@@ -81,9 +72,6 @@
   align-items: center;
   gap: 8px;
   margin: 0 12px 12px;
-  border-color: rgba(255,107,107,.36);
-  background: rgba(255,107,107,.08);
-  color: #ffd7d7;
 }
 
 .notification-row.notification-read {
@@ -132,12 +120,6 @@
   justify-content: center;
   gap: 7px;
   line-height: 1.15;
-}
-
-.driver-notifications-toolbar .danger-soft {
-  border-color: rgba(255,107,107,.36);
-  background: rgba(255,107,107,.08);
-  color: #ffd7d7;
 }
 
 .driver-notification-row {
@@ -229,12 +211,6 @@
   border-color: rgba(72,213,151,.38);
   color: #d8fff0;
   background: rgba(72,213,151,.10);
-}
-
-.driver-notification-icon-button.danger-icon {
-  border-color: rgba(255,107,107,.34);
-  color: #ffd7d7;
-  background: rgba(255,107,107,.08);
 }
 
 .driver-empty-inbox {

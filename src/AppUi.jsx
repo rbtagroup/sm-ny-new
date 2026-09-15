@@ -1,5 +1,5 @@
 import { Children, cloneElement, isValidElement, useEffect, useId, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Ban, CheckCheck, CircleCheck, CircleX, Hourglass, PencilLine, TriangleAlert, Undo2, UserPlus, X } from 'lucide-react'
 import { formatDate } from './lib/dateTime.js'
 import { NOTICE_EVENT } from './lib/notice.js'
 import { money } from './lib/display.js'
@@ -7,7 +7,9 @@ import { computeSettlementMetrics } from './lib/settlements.js'
 import {
   settlementStatusMap,
   settlementToneMap,
+  statusLegend,
   statusMap,
+  statusToneMap,
 } from './lib/appConfig.js'
 
 export function PageTitle({ title, subtitle, children }) {
@@ -18,8 +20,38 @@ export function Kpi({ label, value, hint, kind = '' }) {
   return <div className="card kpi"><div className="label">{label}</div><div className="value">{value}</div>{hint && <div className={`hint ${kind}`}>{hint}</div>}</div>
 }
 
-export function StatusPill({ status, helpers }) {
-  return <span className={`pill ${helpers.statusClass(status)}`}>{statusMap[status] || status}</span>
+// The icon that goes with each tone, so a status reads by shape as well as by color.
+export const toneIcons = {
+  draft: PencilLine,
+  pending: Hourglass,
+  open: UserPlus,
+  confirmed: CircleCheck,
+  done: CheckCheck,
+  declined: CircleX,
+  cancelled: Ban,
+  swap: ArrowLeftRight,
+  problem: TriangleAlert,
+}
+
+export function ToneIcon({ tone, size = 14 }) {
+  const Icon = toneIcons[tone]
+  return Icon ? <Icon size={size} strokeWidth={2.3} aria-hidden="true" /> : null
+}
+
+export function TonePill({ tone, children, className = '' }) {
+  return <span className={`pill tone-pill tone-${tone} ${className}`.trim()}><ToneIcon tone={tone} size={13} />{children}</span>
+}
+
+export function StatusPill({ status }) {
+  return <TonePill tone={statusToneMap[status] || 'pending'}>{statusMap[status] || status}</TonePill>
+}
+
+// What the colors and icons of shift statuses mean; `tones` picks the ones a screen can show.
+export function StatusLegend({ tones = null, className = '' }) {
+  const items = tones ? statusLegend.filter(([tone]) => tones.includes(tone)) : statusLegend
+  return <ul className={`status-legend ${className}`.trim()} aria-label="Legenda stavů">
+    {items.map(([tone, label]) => <li key={tone} className={`tone-${tone}`}><ToneIcon tone={tone} size={13} />{label}</li>)}
+  </ul>
 }
 
 const labelableTags = new Set(['input', 'select', 'textarea'])
@@ -35,10 +67,6 @@ export function Field({ label, children, className = '' }) {
 
 export function Select({ id, value, onChange, options }) {
   return <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>{Object.entries(options).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
-}
-
-export function DeleteIconButton({ label = 'Odstranit', onClick, className = '' }) {
-  return <button className={`danger-mini icon-only ${className}`.trim()} type="button" onClick={onClick} aria-label={label} title={label}><Trash2 size={16} strokeWidth={2.2} aria-hidden="true" /></button>
 }
 
 export function Modal({ title, children, onClose, className = '', backdropClassName = '' }) {
@@ -121,13 +149,12 @@ export function SideDrawer({ title, open, onClose, children }) {
 }
 
 export function ConflictBox({ messages }) {
-  return <div className="stack">{messages?.length ? messages.map((message, index) => <div key={index} className="alert bad">{message}</div>) : <div className="alert good">Bez kolize.</div>}</div>
+  return <div className="stack">{messages?.length ? messages.map((message, index) => <div key={index} className="alert bad">{message}</div>) : <div className="alert good">Bez problémů.</div>}</div>
 }
 
 export function SettlementStatusPill({ settlement }) {
   const status = settlement?.status || 'missing'
-  if (status === 'missing') return <span className="pill warn">Bez výčetky</span>
-  return <span className={`pill ${settlementToneMap[status] || 'warn'}`}>{settlementStatusMap[status] || status}</span>
+  return <TonePill tone={settlementToneMap[status] || 'pending'}>{status === 'missing' ? 'Bez výčetky' : settlementStatusMap[status] || status}</TonePill>
 }
 
 export function SettlementSummary({ settlement }) {
@@ -159,12 +186,18 @@ export function NoticeToast() {
   }, [])
   useEffect(() => {
     if (!notice) return undefined
-    const timer = setTimeout(() => setNotice(null), notice.tone === 'good' ? 3200 : 6500)
+    // a change that can be taken back stays on screen long enough to reach "Vrátit zpět"
+    const timer = setTimeout(() => setNotice(null), notice.undo ? 9000 : notice.tone === 'good' ? 3200 : 6500)
     return () => clearTimeout(timer)
   }, [notice])
   if (!notice) return null
+  const undo = () => {
+    setNotice(null)
+    notice.undo()
+  }
   return <div className={`app-notice ${notice.tone}`} role={notice.tone === 'good' ? 'status' : 'alert'}>
     <span>{notice.message}</span>
-    <button type="button" className="app-notice-close" aria-label="Zavřít upozornění" onClick={() => setNotice(null)}>×</button>
+    {notice.undo && <button type="button" className="app-notice-undo" onClick={undo}><Undo2 size={16} strokeWidth={2.4} aria-hidden="true" />Vrátit zpět</button>}
+    <button type="button" className="app-notice-close" aria-label="Zavřít upozornění" onClick={() => setNotice(null)}><X size={18} strokeWidth={2.4} aria-hidden="true" /></button>
   </div>
 }
