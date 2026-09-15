@@ -1094,3 +1094,343 @@
     border-radius: 22px;
   }
 }
+
+/* Driver home: the shift that matters now with one next step, then the offer to switch on notifications. */
+.driver-now {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid rgba(245,199,106,.6);
+  border-radius: 22px;
+  background: linear-gradient(180deg,rgba(245,199,106,.16),rgba(255,255,255,.04));
+  box-shadow: 0 0 0 1px rgba(245,199,106,.12),var(--shadow);
+}
+
+.driver-now.kind-running {
+  border-color: rgba(72,213,151,.6);
+  background: linear-gradient(180deg,rgba(72,213,151,.16),rgba(255,255,255,.04));
+}
+
+.driver-now.kind-next,
+.driver-now.kind-idle {
+  border-color: var(--line);
+  background: rgba(255,255,255,.045);
+  box-shadow: none;
+}
+
+.driver-now-kicker {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.driver-now.kind-running .driver-now-kicker {
+  color: var(--good);
+}
+
+.driver-now.kind-next .driver-now-kicker,
+.driver-now.kind-idle .driver-now-kicker {
+  color: var(--muted);
+}
+
+.driver-now-when {
+  display: grid;
+  gap: 2px;
+}
+
+.driver-now-when span {
+  color: #dbeafe;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.driver-now-when strong {
+  font-size: 42px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+}
+
+.driver-now-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #dbeafe;
+  font-weight: 700;
+}
+
+.driver-now-line svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.driver-now-line.is-countdown {
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.driver-now-line.is-countdown svg {
+  color: var(--gold);
+}
+
+.driver-now-note,
+.driver-now-copy,
+.driver-now-hint {
+  margin: 0;
+  color: #cdd9ea;
+}
+
+.driver-now-hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.driver-now-action {
+  width: 100%;
+  min-height: 58px;
+  border-radius: 16px;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.driver-now-action.is-go {
+  border-color: rgba(72,213,151,.72);
+  background: linear-gradient(135deg,#d8fff0,#48d597);
+  color: #06251a;
+}
+
+.driver-now-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.driver-now-secondary button {
+  flex: 1;
+  min-height: 44px;
+}
+
+.driver-push-prompt {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr);
+  align-items: start;
+  gap: 10px 12px;
+  padding: 14px;
+  border: 1px solid rgba(128,199,255,.35);
+  border-radius: 18px;
+  background: rgba(128,199,255,.08);
+}
+
+.driver-push-prompt-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(128,199,255,.16);
+  color: var(--blue);
+}
+
+.driver-push-prompt-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.driver-push-prompt-copy p {
+  margin: 0;
+  color: #cdd9ea;
+  font-size: 14px;
+}
+
+.driver-push-prompt-copy small {
+  color: #ffe6a3;
+}
+
+.driver-push-prompt-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 8px;
+}
+
+.driver-push-prompt-actions button {
+  flex: 1;
+  min-height: 44px;
+}
+
+/* Calendar: a picked day and its shifts, in the card and in the 4-week view. */
+.driver-day.selected {
+  border-color: rgba(128,199,255,.7);
+  background: rgba(128,199,255,.14);
+}
+
+.driver-day-detail {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(128,199,255,.35);
+  border-radius: 16px;
+  background: rgba(128,199,255,.07);
+}
+
+.driver-day-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.driver-day-detail-head .ghost {
+  width: auto;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.driver-day-detail ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.driver-day-detail li {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.driver-day-detail li .driver-cal-dot {
+  width: 10px;
+  height: 10px;
+}
+
+.driver-day-detail li div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.driver-day-detail li small {
+  color: var(--muted);
+}
+
+.driver-day-detail li .ghost {
+  width: auto;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.driver-day-detail p,
+.driver-calendar-tip {
+  margin: 0;
+}
+
+.driver-calendar-tip {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+/* Driver availability: quick starts, then what is coming up. */
+.driver-availability {
+  display: grid;
+  gap: 12px;
+}
+
+.driver-availability .topbar {
+  margin-bottom: 0;
+}
+
+.driver-availability .topbar .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.driver-availability-quick {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.driver-availability-quick::-webkit-scrollbar {
+  display: none;
+}
+
+.driver-availability-quick button {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 999px;
+}
+
+.driver-availability-section .section-title {
+  margin-bottom: 8px;
+}
+
+.driver-availability-hint {
+  margin: -2px 0 10px;
+  font-size: 13px;
+}
+
+.driver-availability-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.driver-availability-row {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+}
+
+.driver-availability-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.driver-availability-copy b {
+  overflow-wrap: anywhere;
+}
+
+.driver-availability-copy small {
+  color: var(--muted);
+}
+
+.driver-availability-empty {
+  text-align: center;
+}
+
+.driver-availability-modal .availability-form {
+  gap: 12px;
+}
+
+@media (max-width: 420px) {
+  .driver-availability-row {
+    grid-template-columns: minmax(0,1fr) auto;
+  }
+
+  .driver-availability-row .availability-chip {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}

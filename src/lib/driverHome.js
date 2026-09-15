@@ -1,4 +1,4 @@
-import { addDays, intervalForShift, todayISO } from './dateTime.js'
+import { addDays, formatDate, intervalForShift, todayISO } from './dateTime.js'
 import { sortByDateTime } from './display.js'
 import {
   canOpenSettlement,
@@ -7,6 +7,7 @@ import {
   shiftIsInStartWindow,
   shiftNeedsSettlementAction,
 } from './settlements.js'
+import { driverShiftActions } from './shiftActions.js'
 
 const hiddenDriverStatuses = new Set(['cancelled', 'declined', 'rejected'])
 
@@ -61,4 +62,55 @@ export function selectDriverHomeState(data = {}, { currentDriver, swapDraft, act
     swapColleagues,
     swapShift,
   }
+}
+
+const minutesText = (minutes) => {
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return hours ? `${hours} h${rest ? ` ${rest} min` : ''}` : `${rest} min`
+}
+
+const daysBetween = (fromDate, toDate) => Math.round((new Date(`${toDate}T12:00:00`) - new Date(`${fromDate}T12:00:00`)) / 86400000)
+
+// "dnes", "zítra", "čt 17. 09." for the big time on the driver home.
+export function driverDayLabel(date, today = todayISO()) {
+  if (date === today) return 'Dnes'
+  if (date === addDays(today, 1)) return 'Zítra'
+  return formatDate(date)
+}
+
+// How far away a shift start is, in words a driver reads at a glance.
+export function startsInLabel(shift, nowTs = Date.now(), today = todayISO()) {
+  const [startAt] = intervalForShift(shift)
+  const minutes = Math.ceil((startAt - nowTs) / 60000)
+  if (minutes <= 0) return `začala před ${minutesText(-minutes)}`
+  if (minutes < 60 * 6) return `nástup za ${minutesText(minutes)}`
+  // the day itself is shown above the time, so the countdown only says how far away it is
+  if (minutes < 60 * 48) return `za ${Math.round(minutes / 60)} h`
+  const days = daysBetween(today, shift.date)
+  return `za ${days} ${days >= 5 ? 'dní' : 'dny'}`
+}
+
+export function endsInLabel(shift, nowTs = Date.now()) {
+  const [, endAt] = intervalForShift(shift)
+  const minutes = Math.ceil((endAt - nowTs) / 60000)
+  return minutes > 0 ? `končí za ${minutesText(minutes)}` : `měla skončit před ${minutesText(-minutes)}`
+}
+
+// The one thing the driver should do now: finish a running shift, hand in a settlement, check in,
+// confirm a waiting shift, or just see the next one.
+export function driverNowState(data = {}, { currentDriver, nowTs = Date.now(), today = todayISO() } = {}) {
+  const { shifts } = selectDriverHomeState(data, { currentDriver, nowTs, today })
+  const settlementOf = (shift) => settlementForShift(data, shift.id) || null
+  const actionsOf = (shift) => driverShiftActions(shift, { now: nowTs, hasSettlement: Boolean(settlementOf(shift)) })
+  const running = shifts.find((shift) => shift.actualStartAt && !shift.actualEndAt)
+  if (running) return { kind: 'running', shift: running, settlement: null }
+  const settlementShift = shifts.find((shift) => shiftNeedsSettlementAction(shift, settlementOf(shift)))
+  if (settlementShift) return { kind: 'settlement', shift: settlementShift, settlement: settlementOf(settlementShift) }
+  const checkInShift = shifts.find((shift) => actionsOf(shift).checkIn)
+  if (checkInShift) return { kind: 'checkIn', shift: checkInShift, settlement: null }
+  const waiting = shifts.find((shift) => actionsOf(shift).confirm)
+  if (waiting) return { kind: 'confirm', shift: waiting, settlement: null }
+  const next = shifts.find((shift) => !['completed', 'cancelled', 'declined'].includes(shift.status) && intervalForShift(shift)[0] > nowTs)
+  return next ? { kind: 'next', shift: next, settlement: null } : { kind: 'idle', shift: null, settlement: null }
 }

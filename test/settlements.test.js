@@ -70,3 +70,26 @@ test('shiftIsInStartWindow accepts one hour before start through active shift sp
   assert.equal(shiftIsInStartWindow(shift, new Date('2026-05-11T06:00:00').getTime()), true)
   assert.equal(shiftIsInStartWindow(shift, new Date('2026-05-11T05:59:00').getTime()), false)
 })
+
+test('settlement errors point at the field with a readable message', async () => {
+  const { settlementFieldErrors } = await import('../src/lib/settlements.js')
+  assert.deepEqual(settlementFieldErrors({ driver: 'Roman', kmStart: '120', kmEnd: '100', trzba: '', palivo: '-5', iacCount: '1.5' }), {
+    palivo: 'Palivo nemůže být záporné.',
+    kmEnd: 'Konečný stav tachometru je menší než počáteční.',
+    trzba: 'Tržba musí být větší než 0.',
+    iacCount: 'Jízdy IAC: zadejte celé číslo.',
+  })
+  assert.deepEqual(settlementFieldErrors({ driver: 'Roman', kmStart: '0', kmEnd: '300', trzba: '2500' }), {})
+  assert.deepEqual(settlementFieldErrors({ driver: 'Roman', kmStart: '152 300', kmEnd: '152 545', trzba: '4 200,50', palivo: '350', cashActual: '' }), {})
+  assert.deepEqual(settlementFieldErrors({ driver: 'Roman', kmStart: '100', kmEnd: '12abc', trzba: '2500', myti: '1.2.3' }), {
+    kmEnd: 'Konečné km: zadejte číslo.',
+    myti: 'Mytí: zadejte číslo.',
+  })
+})
+
+test('settlement numbers ignore spaces used as thousands separators', async () => {
+  const { settlementNumber } = await import('../src/lib/settlements.js')
+  assert.equal(settlementNumber('4 200'), 4200)
+  assert.equal(settlementNumber('4 200,5'), 4200.5)
+  assert.equal(settlementNumber(''), 0)
+})

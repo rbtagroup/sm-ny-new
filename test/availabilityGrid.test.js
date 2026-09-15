@@ -47,3 +47,26 @@ test('new entries from the grid form: one day, a night into the next day, weekly
   assert.deepEqual(absenceFromForm({ driverId: 'd1', from: '2026-09-18', to: '2026-09-20', reason: ' Nemoc ' }, 'abs1').entry, { id: 'abs1', driverId: 'd1', from: '2026-09-18', to: '2026-09-20', reason: 'Nemoc' })
   assert.match(absenceFromForm({ driverId: 'd1', from: '2026-09-20', to: '2026-09-18' }, 'x').error, /pozdější/)
 })
+
+test('driver availability lists upcoming entries with readable labels', async () => {
+  const { availabilityEntryLabel, upcomingAvailability } = await import('../src/lib/availabilityGrid.js')
+  assert.equal(availabilityEntryLabel({ weekday: 1, date: '', start: '06:00', end: '18:00' }), 'každé pondělí 06:00–18:00')
+  assert.equal(availabilityEntryLabel({ fromAt: '2026-09-17T22:00', toAt: '2026-09-18T06:00' }), 'čt 17. 09. 22:00–06:00 (do rána)')
+  assert.equal(availabilityEntryLabel({ fromAt: '2026-09-17T00:00', toAt: '2026-09-17T23:59' }), 'čt 17. 09. celý den')
+  assert.equal(availabilityEntryLabel({ fromAt: '2026-09-17T08:00', toAt: '2026-09-19T12:00' }), 'čt 17. 09. 08:00 – so 19. 09. 12:00')
+  const data = {
+    availability: [
+      { id: 'w-sat', driverId: 'd1', weekday: 6, date: '', start: '10:00', end: '23:00' },
+      { id: 'w-mon', driverId: 'd1', weekday: 1, date: '', start: '06:00', end: '18:00' },
+      { id: 'old', driverId: 'd1', weekday: '', date: '', fromAt: '2026-09-10T07:00', toAt: '2026-09-10T19:00' },
+      { id: 'night', driverId: 'd1', weekday: '', date: '', fromAt: '2026-09-14T22:00', toAt: '2026-09-15T06:00' },
+      { id: 'later', driverId: 'd1', weekday: '', date: '', fromAt: '2026-09-20T07:00', toAt: '2026-09-20T19:00' },
+      { id: 'other', driverId: 'd2', weekday: 2, date: '', start: '06:00', end: '14:00' },
+    ],
+    absences: [{ id: 'a-old', driverId: 'd1', from: '2026-09-01', to: '2026-09-05' }, { id: 'a-now', driverId: 'd1', from: '2026-09-14', to: '2026-09-16', reason: 'Nemoc' }],
+  }
+  const upcoming = upcomingAvailability(data, 'd1', '2026-09-15')
+  assert.deepEqual(upcoming.weekly.map((slot) => slot.id), ['w-mon', 'w-sat'])
+  assert.deepEqual(upcoming.dated.map((slot) => slot.id), ['night', 'later'])
+  assert.deepEqual(upcoming.absences.map((absence) => absence.id), ['a-now'])
+})

@@ -1,56 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Bell, Check, Trash2 } from 'lucide-react'
 import { formatDateTime } from './lib/dateTime.js'
 import { appFriendlyError } from './lib/errors.js'
+import { usePushDevice } from './usePushDevice.js'
 import { addNotificationsToData } from './lib/notifications.js'
-import { showBrowserNotification, subscribeDeviceForPush } from './lib/pushClient.js'
+import { showBrowserNotification } from './lib/pushClient.js'
 import { pushResultLabel } from './lib/pushResultLabel.js'
 import { deviceLabelFromUserAgent } from './lib/display.js'
 
 export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, session, ui, services }) {
   const { Kpi, Modal } = ui
-  const { uid, makeNotice } = services
-  const [permission, setPermission] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'))
+  const { makeNotice } = services
+  const push = usePushDevice({ data, commit, currentDriver, isDriver, profile, services })
+  const { permission, setPermission, isStandalone, supported, pushSupported, vapidPublicKey, myDevices, activeDevices, isIosLike } = push
   const [status, setStatus] = useState('')
-  const [isStandalone, setIsStandalone] = useState(() => Boolean(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator?.standalone === true))
-  const [currentEndpoint, setCurrentEndpoint] = useState(null)
   const [deviceToRemove, setDeviceToRemove] = useState('')
-  const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
 
-  useEffect(() => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setCurrentEndpoint(''); return }
-    navigator.serviceWorker.ready
-      .then((reg) => reg.pushManager.getSubscription())
-      .then((sub) => setCurrentEndpoint(sub?.endpoint || ''))
-      .catch(() => setCurrentEndpoint(''))
-  }, [permission])
-
-  useEffect(() => {
-    const media = window.matchMedia?.('(display-mode: standalone)')
-    if (!media) return undefined
-    const update = () => setIsStandalone(Boolean(media.matches || window.navigator?.standalone === true))
-    update()
-    if (media.addEventListener) {
-      media.addEventListener('change', update)
-      return () => media.removeEventListener('change', update)
-    }
-    media.addListener?.(update)
-    return () => media.removeListener?.(update)
-  }, [])
-
-  const subscribe = async () => {
-    try {
-      const sub = await subscribeDeviceForPush(vapidPublicKey)
-      const record = { id: uid('push'), profileId: profile?.id || '', driverId: isDriver ? currentDriver?.id || '' : '', role: isDriver ? 'driver' : (profile?.role || 'admin'), endpoint: sub.endpoint || '', subscription: sub, platform: navigator.userAgent, createdAt: new Date().toISOString(), active: true }
-      commit((prev) => ({ ...prev, pushSubscriptions: [record, ...(prev.pushSubscriptions || []).filter((x) => x.endpoint !== record.endpoint)] }), 'Zařízení povolilo notifikace.')
-      setPermission('granted')
-      setStatus(sub.endpoint ? 'Zařízení je přihlášené k push notifikacím.' : 'Notifikace jsou povolené, ale server je na toto zařízení zatím neumí posílat.')
-      await showBrowserNotification('RBSHIFT notifikace aktivní', 'Test notifikace proběhl v pořádku.')
-    } catch (err) {
-      setPermission('Notification' in window ? Notification.permission : 'unsupported')
-      setStatus(appFriendlyError(err?.message || 'Notifikace se nepodařilo povolit.'))
-    }
-  }
+  const subscribe = async () => setStatus((await push.enable()).message)
 
   const test = async () => {
     try {
@@ -77,12 +43,6 @@ export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, 
     if (!session?.access_token) setStatus(pushResultLabel({ skipped: true, reason: 'missing-auth-token' }))
   }
 
-  const supported = 'serviceWorker' in navigator && 'Notification' in window
-  const pushSupported = 'PushManager' in window
-  const myDevices = isDriver
-    ? (data.pushSubscriptions || []).filter((p) => p.driverId === currentDriver?.id && currentEndpoint !== null && p.endpoint === currentEndpoint)
-    : (data.pushSubscriptions || []).filter((p) => p.profileId === profile?.id || p.role === profile?.role)
-  const activeDevices = myDevices.filter((p) => p.active !== false)
   const lastPushAt = activeDevices.map((p) => p.lastDeliveryAt).filter(Boolean).sort().at(-1) || ''
   const permissionLabel = ({ granted: 'povoleno', denied: 'blokováno', default: 'čeká na povolení', unsupported: 'nepodporováno' })[permission] || permission
   const driverPushState = !supported
@@ -92,7 +52,6 @@ export function PushSetupCard({ data, commit, currentDriver, isDriver, profile, 
       : activeDevices.length
         ? ['Aktivní', 'good']
         : ['Vypnuto', 'warn']
-  const isIosLike = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const showIosGuide = (!isDriver || isIosLike) && !isStandalone && activeDevices.length === 0
   const removalDevice = myDevices.find((d) => d.id === deviceToRemove)
 

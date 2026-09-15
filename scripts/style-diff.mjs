@@ -85,8 +85,10 @@ const states = [
   ['staff', 'user-menu', [staffNav('Plán směn'), clickFirst('.topbar-user-button')]],
   ['staff', 'bell-menu', [staffNav('Plán směn'), clickFirst('.topbar-icon-button')]],
   ['driver', 'home', [driverNav('Domů')]],
-  ['driver', 'home-calendar', [driverNav('Domů'), click('button', 'Zobrazit')]],
+  ['driver', 'home-calendar', [driverNav('Domů'), click('button', '4 týdny')]],
+  ['driver', 'home-calendar-day', [driverNav('Domů'), click('button', '4 týdny'), `(() => { const day = document.querySelectorAll('.driver-calendar-modal .driver-day')[3]; day?.click(); return Boolean(day) })()`]],
   ['driver', 'availability', [driverNav('Dostupnost')]],
+  ['driver', 'availability-add', [driverNav('Dostupnost'), click('.driver-availability-quick button', 'Dovolená')]],
   ['driver', 'notifications', [driverNav('Notifikace')]],
   ['driver', 'settings', [driverNav('Nastavení')]],
 ].filter(([role, name]) => !onlyStates || onlyStates.has(`${role}:${name}`))

@@ -316,7 +316,7 @@ function App({ session = null, profile = null, signOut = null }) {
   const updateToast = <>{updateWorker && <UpdateReadyToast applying={updateApplying} onRefresh={applyPwaUpdate} onDismiss={dismissPwaUpdate} />}<NoticeToast /></>
 
   if (isDriver) return <DriverAppShell currentDriver={currentDriver} onlineMode={onlineMode} page={page} unreadCount={unreadForCurrent} onPageChange={setPage} syncState={syncState} onRetrySync={() => reloadOnline()} updateToast={updateToast}>
-      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} ui={driverHomeUi} services={driverHomeServices} />}
+      {page === 'driver' && <DriverHome data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} profile={profile} ui={driverHomeUi} services={driverHomeServices} />}
       {page === 'notifications' && <NotificationsView data={data} helpers={helpers} commit={commit} currentDriver={currentDriver} isDriver={isDriver} profile={profile} session={session} ui={notificationUi} services={notificationServices} />}
       {page === 'availability' && <Availability data={data} commit={commit} currentDriver={currentDriver} ui={availabilityUi} />}
       {page === 'driverSettings' && <DriverSettings data={data} commit={commit} currentDriver={currentDriver} profile={profile} session={session} onlineMode={onlineMode} signOut={signOut} syncState={syncState} version={VERSION} ui={driverSettingsUi} notificationUi={notificationUi} notificationServices={notificationServices} />}
@@ -365,7 +365,7 @@ const plannerServices = { uid, buildHelpers, makeNotice, adminNotice, appendSwap
 const dashboardUi = { PageTitle, Kpi, StatusPill }
 const dashboardServices = { copyText, makeNotice, shiftTableUi, shiftTableServices }
 const driverHomeUi = { ConflictBox, Field, Kpi, Modal, ReasonActionModal, SettlementFormModal, SettlementStatusPill, SettlementSummary, ShiftActionSummary, StatusPill }
-const availabilityUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle }
+const availabilityUi = { ActionSummary, ConfirmActionModal, Field, Modal, PageTitle }
 const staffAvailabilityUi = { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer }
 const driversUi = { ActionSummary, ConfirmActionModal, DeleteIconButton, Field, PageTitle, SideDrawer }
 const driversServices = { uid, supabase, copyText }

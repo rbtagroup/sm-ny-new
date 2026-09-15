@@ -42,8 +42,11 @@ const settlementShiftLabels = {
 
 const settlementMoney = (value) => `${Math.round(Number(value || 0)).toLocaleString('cs-CZ')} Kč`
 
+// "4 200", "4 200" (as cs-CZ formats it) and "12,5" all read as numbers
+const settlementNumberText = (value) => String(value ?? '').replace(/\s/g, '')
+
 export function settlementNumber(value) {
-  const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'))
+  const parsed = Number.parseFloat(settlementNumberText(value).replace(',', '.'))
   return Number.isFinite(parsed) ? parsed : 0
 }
 
@@ -141,23 +144,46 @@ export function computeSettlementMetrics(inputs = {}, config = {}) {
   }
 }
 
-export function validateSettlementInputs(inputs = {}, config = {}) {
+export const settlementFieldLabels = {
+  kmStart: 'Počáteční km',
+  kmEnd: 'Konečné km',
+  trzba: 'Tržba',
+  pristavne: 'Přístavné',
+  kartou: 'Kartou',
+  fakturou: 'Fakturou',
+  palivo: 'Palivo',
+  myti: 'Mytí',
+  jine: 'Jiné náklady',
+  cashActual: 'Hotovost u sebe',
+  iacCount: 'Jízdy IAC',
+  shkmCount: 'Jízdy SHKM',
+}
+
+// What is wrong with each field, so the form can point at it; the first message of each field also feeds the list below.
+export function settlementFieldErrors(inputs = {}, config = {}) {
   const values = normalizeSettlementInputs(inputs)
-  const errors = []
-  if (!values.driver) errors.push('Vyplň jméno řidiče.')
-  if (values.kmStart < 0) errors.push('Počáteční km nemohou být záporné.')
-  if (values.kmEnd < 0) errors.push('Konečné km nemohou být záporné.')
-  if (values.kmEnd < values.kmStart) errors.push('Konečný stav tachometru je menší než počáteční.')
-  if (values.trzba <= 0) errors.push('Tržba musí být větší než 0.')
-  ;['pristavne','palivo','myti','kartou','fakturou','jine','cashActual','iacCount','shkmCount'].forEach((key) => {
-    if (values[key] < 0) errors.push(`${key} nesmí být záporné.`)
-  })
-  ;['iacCount','shkmCount'].forEach((key) => {
-    if (!Number.isInteger(values[key])) errors.push(`${key} musí být celé číslo.`)
-  })
+  const errors = {}
+  if (!values.driver) errors.driver = 'Chybí jméno řidiče.'
+  // text that is not a number would otherwise count as 0 or as its leading digits ("12abc" as 12)
+  for (const key of Object.keys(settlementFieldLabels)) {
+    const text = settlementNumberText(inputs[key])
+    if (text && !/^-?\d+(?:[.,]\d+)?$/.test(text)) errors[key] = `${settlementFieldLabels[key]}: zadejte číslo.`
+  }
+  for (const key of ['kmStart', 'kmEnd', 'pristavne', 'kartou', 'fakturou', 'palivo', 'myti', 'jine', 'cashActual', 'iacCount', 'shkmCount']) {
+    if (!errors[key] && values[key] < 0) errors[key] = `${settlementFieldLabels[key]} nemůže být záporné.`
+  }
+  if (!errors.kmStart && !errors.kmEnd && values.kmEnd < values.kmStart) errors.kmEnd = 'Konečný stav tachometru je menší než počáteční.'
+  if (!errors.trzba && values.trzba <= 0) errors.trzba = 'Tržba musí být větší než 0.'
+  for (const key of ['iacCount', 'shkmCount']) {
+    if (!errors[key] && !Number.isInteger(values[key])) errors[key] = `${settlementFieldLabels[key]}: zadejte celé číslo.`
+  }
   const metrics = computeSettlementMetrics(inputs, config)
-  if (metrics.invoiceKm > metrics.kmReal) errors.push(`Smluvní km (${metrics.invoiceKm.toLocaleString('cs-CZ')}) jsou vyšší než najeté km (${metrics.kmReal.toLocaleString('cs-CZ')}).`)
-  return [...new Set(errors)]
+  if (!errors.iacCount && !errors.shkmCount && metrics.invoiceKm > metrics.kmReal) errors.iacCount = `Smluvní km (${metrics.invoiceKm.toLocaleString('cs-CZ')}) jsou vyšší než najeté km (${metrics.kmReal.toLocaleString('cs-CZ')}).`
+  return errors
+}
+
+export function validateSettlementInputs(inputs = {}, config = {}) {
+  return [...new Set(Object.values(settlementFieldErrors(inputs, config)))]
 }
 
 export function settlementForShift(data = {}, shiftId) {

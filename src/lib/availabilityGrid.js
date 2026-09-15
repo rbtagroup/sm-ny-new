@@ -1,4 +1,4 @@
-import { addDays, dateInRange, datePart, isPlausiblePlanDate, timePart, weekdayOf } from './dateTime.js'
+import { addDays, dateInRange, datePart, formatDate, isPlausiblePlanDate, timePart, weekdayOf } from './dateTime.js'
 import { availabilityKind, availabilityNoteText } from './availability.js'
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -70,4 +70,35 @@ export function absenceFromForm(form = {}, id) {
   if (!isPlausiblePlanDate(form.from) || !isPlausiblePlanDate(form.to)) return { error: 'Zkontrolujte datum, rok musí být mezi 2020 a 2100.' }
   if (form.to < form.from) return { error: 'Datum do musí být stejné nebo pozdější než od.' }
   return { entry: { id, driverId: form.driverId, from: form.from, to: form.to, reason: String(form.reason || '').trim() } }
+}
+
+export const everyWeekdayLabel = { 0: 'každou neděli', 1: 'každé pondělí', 2: 'každé úterý', 3: 'každou středu', 4: 'každý čtvrtek', 5: 'každý pátek', 6: 'každou sobotu' }
+
+// One readable line for an availability entry: "každé pondělí 06:00–18:00", "čt 17. 09. 22:00–06:00 (do rána)".
+export function availabilityEntryLabel(slot = {}) {
+  const times = (start, end) => (fullDay(start, end) ? 'celý den' : `${start}–${end}`)
+  if (slot.fromAt && slot.toAt) {
+    const fromDate = datePart(slot.fromAt)
+    const toDate = datePart(slot.toAt)
+    const start = timePart(slot.fromAt)
+    const end = timePart(slot.toAt)
+    if (fromDate === toDate) return `${formatDate(fromDate)} ${times(start, end)}`
+    if (toDate === addDays(fromDate, 1) && end <= start) return `${formatDate(fromDate)} ${start}–${end} (do rána)`
+    return `${formatDate(fromDate)} ${start} – ${formatDate(toDate)} ${end}`
+  }
+  if (slot.date) return `${formatDate(slot.date)} ${times(slot.start, slot.end)}`
+  return `${everyWeekdayLabel[Number(slot.weekday)] || 'každý týden'} ${times(slot.start, slot.end)}`
+}
+
+// A driver's availability from today on: weekly rules, entries for particular days and absences, each in time order.
+export function upcomingAvailability(data = {}, driverId, today) {
+  const mine = (data.availability || []).filter((slot) => slot.driverId === driverId)
+  const weekdayOrder = (slot) => (Number(slot.weekday) + 6) % 7
+  return {
+    weekly: mine.filter((slot) => !slot.fromAt && !slot.date && String(slot.weekday ?? '') !== '').sort((a, b) => weekdayOrder(a) - weekdayOrder(b) || String(a.start).localeCompare(String(b.start))),
+    dated: mine
+      .filter((slot) => (slot.fromAt ? datePart(slot.toAt || slot.fromAt) >= today : Boolean(slot.date) && slot.date >= today))
+      .sort((a, b) => `${a.fromAt || `${a.date}T${a.start}`}`.localeCompare(`${b.fromAt || `${b.date}T${b.start}`}`)),
+    absences: (data.absences || []).filter((absence) => absence.driverId === driverId && absence.to >= today).sort((a, b) => a.from.localeCompare(b.from)),
+  }
 }

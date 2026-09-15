@@ -9,10 +9,8 @@ export function DriverQuickStrip({ chips }) {
   </div>
 }
 
-export function DriverAwaitingSection({ awaiting, focusId, cardProps }) {
+export function DriverAwaitingSection({ awaiting, cardProps }) {
   if (!awaiting.length) return null
-
-  const visibleAwaiting = awaiting.filter((shift) => shift.id !== focusId)
 
   return <details id="driver-awaiting-section" className="card collapse-card driver-open-shifts">
     <summary>
@@ -21,8 +19,7 @@ export function DriverAwaitingSection({ awaiting, focusId, cardProps }) {
     </summary>
     <div className="collapse-content">
       <div className="stack">
-        {visibleAwaiting.map((shift) => <ShiftMobileCard s={shift} key={shift.id} {...cardProps} />)}
-        {visibleAwaiting.length === 0 && <div className="empty">Aktuální směna je zobrazená nahoře.</div>}
+        {awaiting.map((shift) => <ShiftMobileCard s={shift} key={shift.id} {...cardProps} />)}
       </div>
     </div>
   </details>

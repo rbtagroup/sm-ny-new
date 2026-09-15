@@ -78,7 +78,7 @@ export function ShiftMobileCard({ s, focusCard = false, data, helpers, expandedS
   }
   const canCollapse = !shouldDefaultFull
   return <div className={focusCard ? 'card driver-hero' : 'card driver-shift-card'}>
-    <div className="driver-shift-head" style={canCollapse ? { cursor: 'pointer' } : undefined} onClick={canCollapse ? () => onExpand('') : undefined} role={canCollapse ? 'button' : undefined} aria-label={canCollapse ? 'Sbalit směnu' : undefined}><div><span className="driver-date">{formatDate(s.date)}{!conflictMessages.length && <em className="driver-ok-mini">· bez kolize</em>}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} />{canCollapse && <span className="driver-card-toggle" aria-hidden="true">▴</span>}</div></div>
+    <div className="driver-shift-head" style={canCollapse ? { cursor: 'pointer' } : undefined} onClick={canCollapse ? () => onExpand('') : undefined} role={canCollapse ? 'button' : undefined} aria-label={canCollapse ? 'Sbalit směnu' : undefined}><div><span className="driver-date">{formatDate(s.date)}</span><h3>{s.start}–{s.end}</h3><p className="muted">{vehicle?.name ? `${vehicle.name} · ${vehicle.plate || 'SPZ nezadaná'}` : 'Vozidlo přiřadí dispečer před nástupem.'}</p></div><div className="driver-shift-status-row"><StatusPill status={s.status} helpers={helpers} />{canCollapse && <span className="driver-card-toggle" aria-hidden="true">▴</span>}</div></div>
     {s.instruction && <div className="driver-instruction"><b>Instrukce:</b><br />{s.instruction}</div>}
     {s.note && <p className="muted driver-note">{s.note}</p>}
     {(s.actualStartAt || s.actualEndAt) && <div className="driver-mini-grid">{s.actualStartAt && <Kpi label="Nástup" value={new Date(s.actualStartAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="zaznamenáno" />}{s.actualEndAt && <Kpi label="Konec" value={new Date(s.actualEndAt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} hint="hotovo" />}{duration != null && <Kpi label="Reál" value={durationLabel(duration)} hint="docházka" />}</div>}
@@ -165,10 +165,11 @@ export function DriverActionModal({ dialog, shift, request, helpers, onClose, on
   </Modal>
 }
 
-export function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
+export function DriverTwoWeekCalendar({ shifts, openShifts, helpers, myOpenInterests = [], onApplyForOpenShift }) {
   const [selectedDay, setSelectedDay] = useState('')
   const [calendarOpen, setCalendarOpen] = useState(false)
-  const weekStart = startOfWeek(todayISO())
+  const today = todayISO()
+  const weekStart = startOfWeek(today)
   const dayRows = [0, 7].map((offset) => Array.from({ length: 7 }, (_, i) => addDays(weekStart, offset + i)))
   const modalRows = [0, 7, 14, 21].map((offset) => Array.from({ length: 7 }, (_, i) => addDays(weekStart, offset + i)))
   useEffect(() => {
@@ -189,42 +190,59 @@ export function DriverTwoWeekCalendar({ shifts, openShifts, helpers }) {
   const dayItems = (day) => [
     ...shifts.filter((s) => s.date === day).map((s) => {
       const type = dotTypeForShift(s)
-      return type ? { type, label: `${shiftTypeName(s)} · ${s.start}–${s.end} · ${helpers.vehicleName(s.vehicleId)} · ${statusMap[s.status] || s.status}` } : null
+      return type ? { type, shift: s, status: statusMap[s.status] || s.status } : null
     }).filter(Boolean),
-    ...openShifts.filter((s) => s.date === day).map((s) => ({ type: 'open', label: `${shiftTypeName(s)} · ${s.start}–${s.end} · ${helpers.vehicleName(s.vehicleId)} · volná směna` })),
-  ].sort((a, b) => dotPriority[a.type] - dotPriority[b.type])
+    ...openShifts.filter((s) => s.date === day).map((s) => ({ type: 'open', shift: s, status: 'volná směna' })),
+  ].sort((a, b) => dotPriority[a.type] - dotPriority[b.type] || a.shift.start.localeCompare(b.shift.start))
   const weekLabel = (index) => index === 0 ? 'Tento týden' : (index === 1 ? 'Příští týden' : `Týden ${index + 1}`)
-  const Dot = ({ type }) => <span className={`driver-cal-dot ${type}`} aria-hidden="true"></span>
-  const DotList = ({ items }) => {
+  // plain render helpers, not components: day buttons keep focus when a day is picked
+  const dots = (items) => {
     const visible = items.slice(0, 3)
     const extra = items.length - visible.length
-    return <small>{visible.map((item, index) => <Dot key={`${item.type}-${index}`} type={item.type} />)}{extra > 0 && <span className="driver-cal-more">+{extra}</span>}</small>
+    return <small>{visible.map((item, index) => <span key={`${item.type}-${index}`} className={`driver-cal-dot ${item.type}`} aria-hidden="true"></span>)}{extra > 0 && <span className="driver-cal-more">+{extra}</span>}</small>
   }
-  const viewHasConflict = (rows) => rows.some((days) => days.some((day) => dayItems(day).some((x) => x.type === 'conflict')))
-  const CalendarLegend = ({ showConflict }) => <div className="driver-calendar-legend">
-    <span><Dot type="confirmed" />potvrzená</span><span><Dot type="open" />volná</span><span><Dot type="waiting" />čeká</span>{showConflict && <span><Dot type="conflict" />kolize</span>}
+  const viewHasConflict = (rows) => rows.some((days) => days.some((day) => dayItems(day).some((item) => item.type === 'conflict')))
+  const legend = (showConflict) => <div className="driver-calendar-legend">
+    <span><span className="driver-cal-dot confirmed" aria-hidden="true"></span>potvrzená</span><span><span className="driver-cal-dot open" aria-hidden="true"></span>volná</span><span><span className="driver-cal-dot waiting" aria-hidden="true"></span>čeká</span>{showConflict && <span><span className="driver-cal-dot conflict" aria-hidden="true"></span>kolize</span>}
   </div>
-  const WeekRow = ({ days, index, interactive = true }) => <div className="driver-week-block">
+  const weekRow = (days, index) => <div className="driver-week-block" key={days[0]}>
     <div className="driver-week-title">{weekLabel(index)} <span>{formatDate(days[0])} – {formatDate(days[6])}</span></div>
     <div className="driver-week-grid">{days.map((day) => {
       const items = dayItems(day)
-      const className = day === todayISO() ? 'driver-day today' : 'driver-day'
-      const content = <><b>{weekdayMap[new Date(day).getDay()]?.slice(0,2)}</b><strong>{Number(day.slice(8,10))}</strong><DotList items={items} /></>
-      return interactive
-        ? <button key={day} className={className} onClick={() => setSelectedDay(selectedDay === day ? '' : day)}>{content}</button>
-        : <div key={day} className={className}>{content}</div>
+      const className = ['driver-day', day === today ? 'today' : '', day === selectedDay ? 'selected' : ''].filter(Boolean).join(' ')
+      return <button type="button" key={day} className={className} aria-pressed={day === selectedDay} aria-label={`${formatNoticeDate(day)}: ${items.length ? `${items.length} směn` : 'bez směn'}`} onClick={() => setSelectedDay(selectedDay === day ? '' : day)}>
+        <b>{weekdayMap[new Date(`${day}T12:00:00`).getDay()]?.slice(0, 2)}</b><strong>{Number(day.slice(8, 10))}</strong>{dots(items)}
+      </button>
     })}</div>
   </div>
+  const dayDetail = (day) => {
+    // dots put the most urgent first, the day list reads in time order
+    const items = dayItems(day).sort((a, b) => a.shift.start.localeCompare(b.shift.start))
+    return <div className="driver-day-detail" aria-live="polite">
+      <div className="driver-day-detail-head"><b>{formatDate(day)}</b><button type="button" className="ghost" onClick={() => setSelectedDay('')}>Zavřít</button></div>
+      {items.length ? <ul>{items.map((item) => {
+        const interested = myOpenInterests.some((request) => request.shiftId === item.shift.id)
+        return <li key={item.shift.id}>
+          <span className={`driver-cal-dot ${item.type}`} aria-hidden="true"></span>
+          <div><b>{item.shift.start}–{item.shift.end} · {shiftTypeName(item.shift)}</b><small>{helpers.vehicleName(item.shift.vehicleId)} · {item.status}</small></div>
+          {item.type === 'open' && onApplyForOpenShift && (interested ? <span className="pill good">Zájem odeslán</span> : <button type="button" className="ghost" onClick={() => onApplyForOpenShift(item.shift)}>Mám zájem</button>)}
+        </li>
+      })}</ul> : <p className="muted">Tento den nemáš směnu a není tu volná směna.</p>}
+    </div>
+  }
   return <div className="card driver-calendar-card">
-    <div className="section-title"><h3>Kalendář 2 týdny</h3><button type="button" className="pill" onClick={() => setCalendarOpen(true)}>Zobrazit</button></div>
-    {dayRows.map((days, rowIndex) => <WeekRow key={rowIndex} days={days} index={rowIndex} />)}
-    <CalendarLegend showConflict={viewHasConflict(dayRows)} />
-    {selectedDay && <div className="alert good"><b>{formatNoticeDate(selectedDay)}</b><br />{dayItems(selectedDay).length ? dayItems(selectedDay).map((x, i) => <div key={i}>{x.label}</div>) : <span>Bez směn.</span>}</div>}
+    <div className="section-title"><h3>Kalendář</h3><button type="button" className="pill" onClick={() => setCalendarOpen(true)}>4 týdny</button></div>
+    {dayRows.map((days, rowIndex) => weekRow(days, rowIndex))}
+    {legend(viewHasConflict(dayRows))}
+    {selectedDay && !calendarOpen && dayDetail(selectedDay)}
     {calendarOpen && <div className="modal-backdrop driver-calendar-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCalendarOpen(false) }}>
-      <div className="modal-card card driver-calendar-modal" role="dialog" aria-modal="true" aria-label="Kalendář">
-        <div className="section-title"><h3>Kalendář</h3><button className="ghost driver-calendar-modal-close" onClick={() => setCalendarOpen(false)} aria-label="Zavřít kalendář">✕</button></div>
-        <div className="driver-calendar-modal-body">{modalRows.map((days, rowIndex) => <WeekRow key={rowIndex} days={days} index={rowIndex} interactive={false} />)}</div>
-        <CalendarLegend showConflict={viewHasConflict(modalRows)} />
+      <div className="modal-card card driver-calendar-modal" role="dialog" aria-modal="true" aria-label="Kalendář na 4 týdny">
+        <div className="section-title"><h3>Kalendář na 4 týdny</h3><button className="ghost driver-calendar-modal-close" onClick={() => setCalendarOpen(false)} aria-label="Zavřít kalendář">✕</button></div>
+        <div className="driver-calendar-modal-body">
+          {modalRows.map((days, rowIndex) => weekRow(days, rowIndex))}
+          {legend(viewHasConflict(modalRows))}
+          {selectedDay ? dayDetail(selectedDay) : <p className="muted driver-calendar-tip">Klepni na den a uvidíš jeho směny.</p>}
+        </div>
       </div>
     </div>}
   </div>

@@ -1,26 +1,22 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
-import { addDays, EARLIEST_PLAN_DATE, formatDate, LATEST_PLAN_DATE, startOfWeek, todayISO, weekdayOf } from './lib/dateTime.js'
-import { availabilityLabel } from './lib/availability.js'
+import { addDays, formatDate, startOfWeek, todayISO, weekdayOf } from './lib/dateTime.js'
 import { weekdayMap } from './lib/appConfig.js'
 import { dateRangeLabel } from './lib/display.js'
 import { uid } from './lib/ids.js'
 import { showNotice } from './lib/notice.js'
-import { absenceFromForm, availabilityEntryFromForm, availabilityPresets, availabilityWeekGrid } from './lib/availabilityGrid.js'
+import { absenceFromForm, availabilityEntryFromForm, availabilityEntryLabel, availabilityWeekGrid } from './lib/availabilityGrid.js'
+import { AvailabilityEntryForm, blankAvailabilityForm } from './AvailabilityEntryForm.jsx'
 
-const entryTypes = [['available', 'Může jet'], ['preferred', 'Preferuje'], ['unavailable', 'Nemůže'], ['absent', 'Nepřítomnost']]
 const kindLabels = { available: 'Může jet', preferred: 'Preferuje', unavailable: 'Nemůže', absent: 'Nepřítomnost' }
-const absenceReasons = ['Dovolená', 'Nemoc', 'Volno']
-const everyWeekday = { 0: 'každou neděli', 1: 'každé pondělí', 2: 'každé úterý', 3: 'každou středu', 4: 'každý čtvrtek', 5: 'každý pátek', 6: 'každou sobotu' }
 
-const blankForm = (driverId = '', date = todayISO()) => ({ type: 'available', driverId, date, start: '06:00', end: '14:00', repeatWeekly: false, note: '', from: date, to: date, reason: '' })
 // the repeat mark stays on the same line as the time
 const chipText = (item) => (item.kind === 'unavailable' ? `nemůže ${item.label}` : item.label) + (item.weekly ? '\u00a0↻' : '')
 const chipTitle = (item) => `${kindLabels[item.kind]}: ${item.label}${item.weekly ? ', každý týden' : ''}${item.note ? ` · ${item.note}` : ''}`
 
 // Dispatch view of availability: active drivers × days of a week, with + in every cell and details on a tap.
 export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
-  const { ActionSummary, ConfirmActionModal, Field, PageTitle, SideDrawer } = ui
+  const { ActionSummary, ConfirmActionModal, PageTitle, SideDrawer } = ui
   const [weekStart, setWeekStart] = useState(() => startOfWeek(today))
   const [pickedDay, setPickedDay] = useState(today)
   const [form, setForm] = useState(null)
@@ -34,9 +30,8 @@ export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
   const moveWeek = (days) => setWeekStart((current) => addDays(current, days))
   const openNew = (driverId = drivers[0]?.id || '', date = activeDay) => {
     if (!drivers.length) return showNotice('Nejdřív přidejte aktivního řidiče.')
-    setForm(blankForm(driverId, date))
+    setForm(blankAvailabilityForm(driverId, date))
   }
-  const update = (patch) => setForm((current) => ({ ...current, ...patch }))
   const submit = (event) => {
     event.preventDefault()
     if (form.type === 'absent') {
@@ -46,7 +41,7 @@ export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
     } else {
       const { entry, error } = availabilityEntryFromForm(form, uid('av'))
       if (error) return showNotice(error)
-      commit((prev) => ({ ...prev, availability: [entry, ...(prev.availability || [])] }), `Přidána dostupnost řidiče ${driverName(entry.driverId)}: ${availabilityLabel(entry)}.`)
+      commit((prev) => ({ ...prev, availability: [entry, ...(prev.availability || [])] }), `Přidána dostupnost řidiče ${driverName(entry.driverId)}: ${availabilityEntryLabel(entry)}.`)
     }
     setForm(null)
   }
@@ -60,7 +55,7 @@ export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
   const chips = (items) => items.map((item) => <button type="button" key={item.id} className={`availability-chip kind-${item.kind}`} title={chipTitle(item)} aria-label={chipTitle(item)} onClick={() => setDetail(item)}>{chipText(item)}</button>)
   const detailMeta = detail?.type === 'absence'
     ? `${dateRangeLabel(detail.entry.from, detail.entry.to)}${detail.entry.reason ? ` · ${detail.entry.reason}` : ''}`
-    : detail ? `${availabilityLabel(detail.entry)}${detail.note ? ` · ${detail.note}` : ''}` : ''
+    : detail ? `${availabilityEntryLabel(detail.entry)}${detail.note ? ` · ${detail.note}` : ''}` : ''
 
   return <>
     <PageTitle title="Dostupnost řidičů" subtitle="Kdo může jet a kdo ne. Záznam přidáte tlačítkem + u řidiče a dne.">
@@ -114,43 +109,7 @@ export function StaffAvailability({ data, commit, today = todayISO(), ui }) {
     </div>}
 
     <SideDrawer title="Nový záznam" open={Boolean(form)} onClose={() => setForm(null)}>
-      {form && <form className="form two-col availability-form" onSubmit={submit}>
-        <Field label="Řidič" className="span2"><select value={form.driverId} onChange={(event) => update({ driverId: event.target.value })}>{drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></Field>
-        <div className="field span2">
-          <label>Co zadáváte</label>
-          <div className="availability-choice" role="radiogroup" aria-label="Typ záznamu">
-            {entryTypes.map(([type, label]) => <button type="button" role="radio" key={type} aria-checked={form.type === type} className={`kind-${type} ${form.type === type ? 'active' : ''}`.trim()} onClick={() => update({ type })}>{label}</button>)}
-          </div>
-        </div>
-        {form.type !== 'absent' ? <>
-          <Field label="Den" className="span2"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={form.date} onChange={(event) => update({ date: event.target.value })} /></Field>
-          <div className="field span2">
-            <label>Čas</label>
-            <div className="availability-choice availability-presets">
-              {availabilityPresets.map(([key, label, start, end]) => <button type="button" key={key} className={form.start === start && form.end === end ? 'active' : ''} onClick={() => update({ start, end })}>{label}<small>{start}–{end}</small></button>)}
-            </div>
-          </div>
-          <Field label="Od"><input type="time" value={form.start} onChange={(event) => update({ start: event.target.value })} /></Field>
-          <Field label="Do"><input type="time" value={form.end} onChange={(event) => update({ end: event.target.value })} /></Field>
-          {form.end && form.start && form.end < form.start && <p className="hintline span2 shift-form-hint">Končí následující den ráno.</p>}
-          <label className="field span2 shift-form-check"><input type="checkbox" checked={form.repeatWeekly} onChange={(event) => update({ repeatWeekly: event.target.checked })} />Opakovat každý týden{form.date ? ` (${everyWeekday[weekdayOf(form.date)]})` : ''}</label>
-          <Field label="Poznámka" className="span2"><input value={form.note} onChange={(event) => update({ note: event.target.value })} placeholder="Např. jen po domluvě" /></Field>
-        </> : <>
-          <Field label="Od"><input type="date" min={EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={form.from} onChange={(event) => update({ from: event.target.value, to: form.to < event.target.value ? event.target.value : form.to })} /></Field>
-          <Field label="Do"><input type="date" min={form.from || EARLIEST_PLAN_DATE} max={LATEST_PLAN_DATE} value={form.to} onChange={(event) => update({ to: event.target.value })} /></Field>
-          <div className="field span2">
-            <label>Důvod</label>
-            <div className="availability-choice">
-              {absenceReasons.map((reason) => <button type="button" key={reason} className={form.reason === reason ? 'active' : ''} onClick={() => update({ reason })}>{reason}</button>)}
-            </div>
-            <input value={form.reason} onChange={(event) => update({ reason: event.target.value })} placeholder="Nebo napište vlastní důvod" aria-label="Vlastní důvod" />
-          </div>
-        </>}
-        <div className="field span2 drawer-form-actions">
-          <button className="primary" type="submit">Uložit záznam</button>
-          <button className="ghost" type="button" onClick={() => setForm(null)}>Zrušit</button>
-        </div>
-      </form>}
+      {form && <AvailabilityEntryForm form={form} onChange={setForm} onSubmit={submit} onCancel={() => setForm(null)} drivers={drivers} ui={ui} />}
     </SideDrawer>
 
     <SideDrawer title={detail?.type === 'absence' ? 'Nepřítomnost' : 'Dostupnost'} open={Boolean(detail)} onClose={() => setDetail(null)}>

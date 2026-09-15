@@ -362,3 +362,292 @@
     min-width: 0;
   }
 }
+
+/* Settlement form: grouped fields with units, a total that stays in view and a review before sending. */
+.settlement-form {
+  display: grid;
+  gap: 12px;
+}
+
+.settlement-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px 14px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 16px;
+  background: #0f1a2a;
+}
+
+.settlement-group legend {
+  display: flex;
+  float: left;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 2px;
+  padding: 0;
+}
+
+.settlement-group legend span {
+  font-weight: 900;
+}
+
+.settlement-group legend small {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.settlement-group legend + * {
+  clear: both;
+}
+
+.settlement-fields {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 10px;
+}
+
+.settlement-field {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settlement-field > span:first-child {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.settlement-input {
+  position: relative;
+  display: block;
+}
+
+.settlement-modal .settlement-input input {
+  width: 100%;
+  padding: 12px 52px 12px 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 14px;
+  background: #050b14;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+}
+
+.settlement-modal .settlement-input input:focus {
+  border-color: rgba(245,199,106,.6);
+}
+
+.settlement-input em {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 14px;
+  font-style: normal;
+  pointer-events: none;
+}
+
+.settlement-field.has-error .settlement-input input {
+  border-color: rgba(255,107,107,.7);
+}
+
+.settlement-field-error {
+  color: #ffb4b4;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settlement-group textarea {
+  width: 100%;
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 14px;
+  background: #050b14;
+  color: var(--text);
+  resize: vertical;
+}
+
+.settlement-group[disabled] {
+  opacity: .85;
+}
+
+.settlement-choice {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 6px;
+}
+
+.settlement-choice button {
+  min-height: 44px;
+  padding: 8px 6px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.settlement-choice button.active {
+  border-color: rgba(245,199,106,.65);
+  background: rgba(245,199,106,.16);
+}
+
+.settlement-result-grid b.is-bad {
+  color: var(--bad);
+}
+
+.settlement-result-grid b.is-good {
+  color: var(--good);
+}
+
+/* sticks to the bottom of the dialog: the amount to hand in and the next step are always in reach */
+.settlement-bar {
+  position: sticky;
+  bottom: -18px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  margin: 14px -18px -18px;
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom,0px));
+  border-top: 1px solid rgba(245,199,106,.3);
+  background: #0b1524;
+}
+
+.settlement-bar-total {
+  display: grid;
+  gap: 1px;
+}
+
+.settlement-bar-total span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.settlement-bar-total b {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+
+.settlement-bar-actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settlement-bar-actions button {
+  min-height: 48px;
+}
+
+.settlement-review {
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.settlement-review h4 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.settlement-review-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 16px;
+  background: #0f1a2a;
+  overflow: hidden;
+}
+
+.settlement-review-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.settlement-review-list > div:last-child {
+  border-bottom: 0;
+}
+
+.settlement-review-list dt {
+  color: var(--muted);
+}
+
+.settlement-review-list dd {
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.settlement-review-list dd small {
+  display: block;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.settlement-review-list .is-warn dd {
+  color: #ffcf5a;
+}
+
+.settlement-review-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.settlement-review-actions button {
+  min-height: 52px;
+}
+
+@media (min-width: 901px) {
+  /* the result panel next to the form already shows the amount */
+  .settlement-bar-total {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .settlement-bar {
+    bottom: -16px;
+    margin: 12px -16px -16px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom,0px));
+  }
+
+  .settlement-bar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .settlement-choice {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (max-width: 380px) {
+  .settlement-fields {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   DriverAwaitingSection,
   DriverIncomingSwapsSection,
@@ -7,17 +7,27 @@ import {
   DriverShiftList,
   DriverSwapModal,
 } from './DriverHomeSections.jsx'
-import { DriverActionModal, DriverTwoWeekCalendar, ShiftMobileCard } from './DriverWidgets.jsx'
-import { localStamp } from './lib/dateTime.js'
+import { DriverActionModal, DriverTwoWeekCalendar } from './DriverWidgets.jsx'
+import { DriverNowCard, DriverPushPrompt } from './DriverNowCard.jsx'
+import { localStamp, todayISO } from './lib/dateTime.js'
 import { statusMap } from './lib/appConfig.js'
-import { selectDriverHomeState } from './lib/driverHome.js'
+import { driverNowState, selectDriverHomeState } from './lib/driverHome.js'
 import { settlementForShift } from './lib/settlements.js'
 import { driverShiftActions, statusAfterCheckIn } from './lib/shiftActions.js'
 import { addNotificationsToData } from './lib/notifications.js'
-import { notificationInboxState } from './lib/notificationInbox.js'
 import { shiftNoticeBody } from './lib/display.js'
 
-export function DriverHome({ data, helpers, commit, currentDriver, ui, services }) {
+// The countdown on the home card stays current without a reload.
+function useNowTs(intervalMs) {
+  const [nowTs, setNowTs] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTs(Date.now()), intervalMs)
+    return () => window.clearInterval(timer)
+  }, [intervalMs])
+  return nowTs
+}
+
+export function DriverHome({ data, helpers, commit, currentDriver, profile = null, ui, services }) {
   const { SettlementFormModal } = ui
   const { uid, makeNotice, adminNotice, appendSwapHistory } = services
   const [expandedShiftId, setExpandedShiftId] = useState('')
@@ -31,12 +41,10 @@ export function DriverHome({ data, helpers, commit, currentDriver, ui, services 
     window.clearTimeout(driverToastTimer.current)
     driverToastTimer.current = window.setTimeout(() => setDriverToast(''), 2600)
   }
-  const { visible: visibleNotices, unread: unreadNotices } = notificationInboxState(data, { currentDriver, isDriver: true })
   const {
     actionRequest,
     actionShift,
     awaiting,
-    focus,
     incomingSwaps,
     myOpenInterests,
     openShifts,
@@ -44,6 +52,11 @@ export function DriverHome({ data, helpers, commit, currentDriver, ui, services 
     swapColleagues,
     swapShift,
   } = selectDriverHomeState(data, { currentDriver, swapDraft, actionDialog })
+  const nowTs = useNowTs(30000)
+  const today = todayISO()
+  const now = driverNowState(data, { currentDriver, nowTs, today })
+  // the shift on the top card is not listed again below
+  const awaitingBelow = awaiting.filter((shift) => shift.id !== now.shift?.id)
   const setStatus = (id, status, reason = '', options = {}) => {
     const shift = data.shifts.find((s) => s.id === id)
     const notices = shift ? [adminNotice(`Řidič změnil stav: ${statusMap[status]}`, `${currentDriver?.name || 'Řidič'} · ${shiftNoticeBody(shift, helpers, reason ? `důvod: ${reason}` : '')}`, `driver-${status}`, id, { push: status === 'declined' })] : []
@@ -222,24 +235,24 @@ export function DriverHome({ data, helpers, commit, currentDriver, ui, services 
   }
   const scrollToDriverSection = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const quickChips = [
-    awaiting.length > 0 ? { key: 'awaiting', label: `⏳ ${awaiting.length} čeká`, kind: 'warn', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
+    awaitingBelow.length > 0 ? { key: 'awaiting', label: `⏳ ${awaitingBelow.length} čeká`, kind: 'warn', onClick: () => scrollToDriverSection('driver-awaiting-section') } : null,
     incomingSwaps.length > 0 ? { key: 'swaps', label: `↔ ${incomingSwaps.length} výměny`, kind: 'warn', onClick: () => scrollToDriverSection('driver-incoming-swaps-section') } : null,
   ].filter(Boolean)
   const actions = { setStatus, checkIn, requestCheckOut, setSettlementShiftId, requestSwap, cancelSwap, decline }
   const cardProps = { data, helpers, expandedShiftId, onExpand: setExpandedShiftId, actions, ui }
-  const otherShifts = shifts.filter((s) => s.id !== focus?.id)
+  const otherShifts = shifts.filter((s) => s.id !== now.shift?.id)
   const highlightOpenShifts = openShifts.length >= 4
   const settlementShift = data.shifts.find((s) => s.id === settlementShiftId)
   return <div className="driver-view driver-mobile-view driver-priority-view">
     {driverToast && <div className="planner-toast" role="status">{driverToast}</div>}
-    {focus && <div className="driver-section-kicker">Aktuální směna</div>}
-    {focus ? <ShiftMobileCard s={focus} focusCard {...cardProps} /> : <div className="empty driver-empty-focus"><b>Teď není potřeba žádná akce</b><br /><span className="muted">Další plánované směny najdeš níže. Aktuální směna se objeví až ve startovacím okně nebo po ukončení bez odeslané výčetky.</span></div>}
+    <DriverNowCard now={now} nowTs={nowTs} today={today} helpers={helpers} actions={actions} />
+    <DriverPushPrompt data={data} commit={commit} currentDriver={currentDriver} profile={profile} services={services} />
     <DriverQuickStrip chips={quickChips} />
-    <DriverAwaitingSection awaiting={awaiting} focusId={focus?.id} cardProps={cardProps} />
+    <DriverAwaitingSection awaiting={awaitingBelow} cardProps={cardProps} />
     <DriverOpenShiftsSection openShifts={openShifts} myOpenInterests={myOpenInterests} helpers={helpers} highlighted={highlightOpenShifts} onApplyForOpenShift={applyForOpenShift} />
     <DriverIncomingSwapsSection incomingSwaps={incomingSwaps} helpers={helpers} currentDriverId={currentDriver?.id} onAcceptSwap={acceptSwap} onDeclineSwap={declineSwap} />
     <DriverShiftList shifts={otherShifts} cardProps={cardProps} />
-    <DriverTwoWeekCalendar shifts={shifts} openShifts={openShifts} helpers={helpers} />
+    <DriverTwoWeekCalendar shifts={shifts} openShifts={openShifts} helpers={helpers} myOpenInterests={myOpenInterests} onApplyForOpenShift={applyForOpenShift} />
     <DriverSwapModal swapDraft={swapDraft} swapShift={swapShift} swapColleagues={swapColleagues} helpers={helpers} ui={ui} onClose={closeSwapModal} onChange={setSwapDraft} onSubmit={submitSwap} />
     <DriverActionModal
       dialog={actionDialog}
